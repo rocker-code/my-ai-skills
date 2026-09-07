@@ -1,29 +1,61 @@
 ---
 name: implement-issue
-description: Implement a GitHub issue end-to-end in the current repository. Use when asked to implement, develop, execute, or continue work on a GitHub issue. Reads the complete issue and discussion, inspects the current codebase, uses OpenSpec when present, selects relevant installed technical skills, implements the change, validates acceptance criteria, runs appropriate checks, and leaves the work ready for a pull request.
+description: Implement a GitHub issue end-to-end using an OpenSpec-first workflow. Use when asked to implement, develop, execute, or continue work on a GitHub issue. Reads the complete issue and discussion, inspects the existing repository, creates or updates the OpenSpec change before production code when OpenSpec is available, validates proposal/spec/design/tasks, then implements, tests, validates acceptance criteria, and leaves the work ready for a pull request.
+compatibility: OpenCode or another coding agent with GitHub, repository, Git, and OpenSpec access
+metadata:
+  category: workflow
+  workflow: issue-to-implementation
+  methodology: openspec-first
 ---
 
 # Implement Issue
 
-Implement a GitHub issue completely and safely in the current repository.
+Implement a GitHub issue completely and safely using an **OpenSpec-first** development workflow.
 
-This is a workflow/orchestration skill. It coordinates issue discovery, repository analysis, OpenSpec, implementation, testing, validation, and PR readiness.
+This skill is an orchestration skill. It coordinates requirements discovery, repository analysis, OpenSpec, technical skills, implementation, tests, validation, and PR readiness.
 
-It does not replace specialized technical skills. Discover and use the relevant installed skills for the actual domain and technology instead of duplicating their guidance here.
+The default behavior is **not** to start coding immediately.
 
-## When to use
+When the repository uses OpenSpec, production code must not be modified until the issue has been reconciled with the current implementation and the relevant OpenSpec change is ready for implementation.
+
+## Core workflow
+
+```text
+GitHub Issue + comments
+        ↓
+inspect repository and current behavior
+        ↓
+reconcile requirements with code/tests/docs
+        ↓
+OpenSpec change
+        ↓
+proposal / specs / design / tasks
+        ↓
+OpenSpec validation + implementation readiness gate
+        ↓
+implementation
+        ↓
+tests + static validation
+        ↓
+diff review + acceptance criteria
+        ↓
+PR READY
+```
+
+The OpenSpec stage is a **gate**, not optional documentation generated after coding.
+
+# When to use
 
 Use this skill when the user asks to:
 
 - implement a GitHub issue;
 - develop an issue;
-- work on issue `#123`;
-- execute the requirements from an issue;
-- continue implementation of an issue;
-- turn a GitHub issue into working code;
-- prepare an implemented issue for a pull request.
+- execute issue `#123`;
+- continue an implementation from an issue;
+- turn an approved GitHub issue into working code;
+- prepare an issue implementation for a pull request.
 
-Typical invocations include:
+Typical inputs:
 
 ```text
 implement issue 123
@@ -31,531 +63,392 @@ implement #123
 implement https://github.com/owner/repo/issues/123
 ```
 
-## Expected outcome
-
-Unless a concrete blocker prevents completion, finish with:
-
-1. requirements understood from the complete issue and discussion;
-2. current implementation inspected;
-3. OpenSpec created or updated when required and available;
-4. appropriate technical skills selected;
-5. production code implemented;
-6. obsolete code removed when replacement/removal is part of scope;
-7. relevant tests added or updated;
-8. appropriate validation executed;
-9. final diff reviewed;
-10. every acceptance criterion verified;
-11. repository left ready for a pull request.
-
-Do not stop after planning when the request is to implement.
-
 # Sources of truth
 
-Use the following precedence model.
+Use these sources with distinct responsibilities.
 
-## Requested scope
+## GitHub Issue — requested intent and scope
 
-The GitHub issue is the primary source for what the user wants changed.
+Read the complete issue and relevant discussion:
 
-Read:
-
-- issue title;
-- complete issue body;
+- title;
+- body;
 - acceptance criteria;
-- labels and milestone when useful;
-- all relevant issue comments;
-- linked issues or PRs when they materially affect the requirement.
+- comments;
+- linked issues/PRs when material;
+- labels/milestone when useful.
+
+The latest explicit product or architectural decision supersedes older conflicting discussion.
 
 Never implement from the title alone.
 
-Issue comments may contain later decisions that supersede the original description.
+## Repository — current implementation reality
 
-## Behavioral contract
+The repository tells you how the system currently works.
 
-When OpenSpec is present, treat the applicable OpenSpec artifacts as the behavioral and architectural contract.
+Inspect before designing.
 
-If the issue contains a newer explicit behavioral decision that conflicts with OpenSpec, update OpenSpec before or alongside implementation.
+Do not assume the issue accurately describes the current implementation.
 
-Do not silently let implementation details become the specification.
+## OpenSpec — approved behavioral and architectural contract
 
-## Current implementation reality
+When OpenSpec exists, it is the contract that must bridge requested intent and implementation.
 
-The repository is authoritative for how the system currently works.
+The required sequence is:
 
-Inspect existing code before designing changes. An issue may describe an older version of the architecture.
+```text
+requirements
+→ specification
+→ implementation
+```
 
-## Project conventions
+not:
 
-Repository-level instructions override generic workflow preferences when they do not contradict the requested behavior.
+```text
+requirements
+→ implementation
+→ retroactive specification
+```
 
-Look for files such as:
+## Tests — executable evidence
+
+Tests describe expected and compatibility behavior, but may also be stale. Reconcile them with the approved issue and OpenSpec instead of blindly treating either code or tests as desired behavior.
+
+## Repository instructions — local engineering rules
+
+Read applicable files such as:
 
 ```text
 AGENTS.md
 CLAUDE.md
 README.md
 CONTRIBUTING.md
-.opencode/
 .github/
+.opencode/
 openspec/
 .openspec/
 docs/
 ```
 
-# Workflow
+# Mandatory phase 1 — Retrieve and understand the issue
 
-## 1. Resolve the issue and repository
-
-Accept any of:
+Resolve the repository and issue from:
 
 - issue number;
 - `#<number>`;
-- full GitHub issue URL.
+- full URL.
 
-If only a number is provided, infer the repository from the current Git worktree.
+Use available GitHub tooling. Retrieve the complete issue and all relevant comments.
 
-If a full URL is provided, use the repository identified by that URL.
+Build an internal requirement model containing:
 
-Use available GitHub tooling, preferably GitHub CLI or native GitHub integrations already available in the environment.
+- objective;
+- functional requirements;
+- non-functional requirements;
+- acceptance criteria;
+- constraints;
+- explicit non-goals;
+- dependencies;
+- architectural decisions;
+- unresolved questions.
 
-Retrieve the complete issue and comments.
+Do not ask the user to repeat information that can be obtained from GitHub or the repository.
 
-Do not ask the user to paste content that can be retrieved directly.
+# Mandatory phase 2 — Inspect the repository before proposing changes
 
-## 2. Establish repository state
+Before editing production code, inspect:
 
-Before editing, inspect:
-
-- repository root;
-- current branch;
-- default branch when relevant;
-- remote repository;
-- working-tree status;
-- project/runtime/framework;
-- test infrastructure;
-- static analysis and lint tooling;
-- repository instructions;
-- OpenSpec presence;
-- relevant architecture.
-
-Do not discard, overwrite, stage, or accidentally include unrelated local changes.
-
-If the worktree contains unrelated modifications, preserve them and isolate your changes as much as practical.
-
-## 3. Build a requirement model
-
-Before implementation, derive an internal model of the issue.
-
-Identify:
-
-### Objective
-
-What outcome must exist when the issue is complete?
-
-### Functional requirements
-
-What behavior must be added, changed, migrated, or removed?
-
-### Non-functional requirements
-
-Consider explicit requirements involving:
-
-- security;
-- concurrency;
-- performance;
-- observability;
-- accessibility;
-- maintainability;
-- compatibility;
-- data integrity.
-
-### Acceptance criteria
-
-Extract every explicit criterion, including criteria added or clarified in comments.
-
-### Constraints
-
-Identify requirements such as:
-
-- reuse a specific existing service;
-- use native framework behavior;
-- preserve API compatibility;
-- avoid a particular implementation;
-- do not run a certain test suite;
-- avoid schema changes;
-- maintain a specific state transition model.
-
-### Non-goals
-
-Record things explicitly excluded from the issue.
-
-Do not implement them opportunistically.
-
-### Dependencies
-
-Identify related:
-
-- issues;
-- modules;
-- packages;
-- APIs;
-- integrations;
-- database entities;
-- shared services;
-- frontend screens;
-- configuration.
-
-### Open questions
-
-Resolve ambiguity from the issue, comments, repository, tests, OpenSpec, and project documentation before asking the user.
-
-Do not ask questions already answered by repository evidence or prior issue discussion.
-
-## 4. Inspect the existing implementation
-
-Search for the current implementation before proposing a new one.
-
-Use domain terminology and identifiers from the issue to locate:
-
-- classes;
-- interfaces;
-- services;
-- models;
-- database tables;
-- GraphQL operations;
-- REST endpoints;
-- controllers;
-- commands;
-- jobs;
-- event handlers;
+- repository status and branch;
+- relevant modules/components;
+- existing implementation;
+- entrypoints;
+- application/domain services;
+- persistence/integrations;
+- tests;
 - configuration;
-- UI screens;
-- hooks/state;
-- tests.
+- existing OpenSpec artifacts;
+- related architecture documentation.
 
-Trace the relevant execution flow.
+Trace the affected runtime path.
 
-For backend work, understand the path roughly as:
+For backend work, understand roughly:
 
 ```text
 entrypoint
-→ authorization/validation
-→ application/domain logic
+→ auth/validation
+→ application/domain behavior
 → persistence/integration
 → response
 ```
 
-For frontend/mobile work, understand the path roughly as:
+For frontend/mobile work, understand roughly:
 
 ```text
 route/screen
 → state/form
-→ service/API
-→ transformation/domain logic
+→ API/service
+→ domain/transformation
 → rendering/navigation
 ```
 
-Identify existing extension points and reusable abstractions.
+Identify what should be reused, changed, migrated, or removed.
 
-Prefer extending the current architecture over introducing a parallel implementation.
+Do not introduce parallel architecture merely because creating something new is easier than understanding what exists.
 
-## 5. Reconcile issue, code, tests, and specifications
+# Mandatory phase 3 — Reconcile issue, implementation, tests, and specifications
 
 Compare:
 
 ```text
-GitHub issue
-↔ issue comments
-↔ OpenSpec
+Issue + comments
 ↔ repository
 ↔ tests
+↔ existing OpenSpec
+↔ project documentation
 ```
 
-Classify material discrepancies.
+Resolve material inconsistencies before implementation.
 
-### Repository evolved, requirement still valid
+Classify discrepancies such as:
 
-Adapt the solution to the current architecture while preserving the requested outcome.
+- repository evolved but requirement remains valid;
+- original requirement was superseded by later discussion;
+- current implementation conflicts with the requested target architecture;
+- OpenSpec is stale;
+- tests represent obsolete behavior;
+- unrelated inconsistency outside issue scope.
 
-### Requirement was superseded
+Do not broaden scope to repair unrelated architecture.
 
-Follow the latest explicit decision.
-
-### Current implementation conflicts with requested architecture
-
-Change it when the issue clearly requests that refactor.
-
-### OpenSpec is stale
-
-Update OpenSpec when the desired observable behavior has changed.
-
-### Unrelated inconsistency
-
-Do not broaden scope simply to clean it up.
-
-Record important unrelated findings in the completion report if useful.
-
-## 6. Use OpenSpec when present
+# Mandatory phase 4 — OpenSpec-first gate
 
 Detect whether the repository uses OpenSpec.
 
-Common indicators include:
+If OpenSpec is present, **load and follow the `openspec-workflow` skill before implementation**.
 
-```text
-openspec/
-.openspec/
-OpenSpec configuration
-existing change artifacts
-OpenSpec commands or documentation
-```
+This is mandatory unless the user explicitly instructs otherwise.
 
-If OpenSpec is not used by the repository, continue without inventing it.
+## Find or create the change
 
-If OpenSpec is used, inspect the repository's OpenSpec instructions and existing changes before acting.
-
-### Find an existing change first
-
-Search for an existing change related to:
+First search for an existing OpenSpec change using:
 
 - issue number;
-- feature name;
-- domain terminology;
-- current branch.
+- feature/domain terminology;
+- branch name;
+- related capability/module.
 
-Continue an applicable change instead of creating a duplicate.
+Reuse the existing applicable change instead of creating a duplicate.
 
-### Create or update a change when appropriate
+If no suitable change exists, create one according to the repository's OpenSpec conventions.
 
-A specification change is usually warranted when the issue materially modifies:
+## Translate the issue into OpenSpec
 
-- user-visible behavior;
-- domain rules;
+Use the GitHub issue as input, not as a replacement for specification.
+
+The OpenSpec artifacts should make the agreed solution explicit before implementation.
+
+Depending on the repository workflow, this can include:
+
+- proposal;
+- capability/spec delta;
+- scenarios;
+- design/architecture decisions;
+- implementation tasks;
+- migration/compatibility notes.
+
+The specification should cover relevant behavior such as:
+
+- actors/callers;
+- preconditions;
+- expected results;
+- domain invariants;
+- state transitions;
+- validation and error behavior;
 - API contracts;
 - persistence semantics;
-- state transitions;
-- integration behavior;
-- architectural responsibility.
+- concurrency/atomicity when relevant;
+- edge cases;
+- compatibility;
+- explicitly removed behavior;
+- non-goals.
 
-A pure implementation refactor with no behavioral or contract change may not require a new spec unless repository conventions require one.
+## Design before code
 
-### Preferred sequence
+If the issue contains architectural change, use the OpenSpec design artifacts to explicitly decide:
+
+- ownership/responsibility;
+- existing components to reuse;
+- components to remove;
+- interfaces/contracts;
+- state/data model changes;
+- transaction boundaries;
+- concurrency strategy;
+- migration strategy;
+- framework-native mechanisms;
+- compatibility trade-offs.
+
+Do not allow these decisions to emerge accidentally while writing code.
+
+## Tasks before code
+
+Implementation tasks must be concrete and traceable to requirements/specification.
+
+Tasks should include, when relevant:
+
+- production changes;
+- tests;
+- data/schema changes;
+- API/schema changes;
+- cleanup/removal of obsolete implementation;
+- documentation/configuration;
+- validation.
+
+## Readiness gate
+
+Before editing production code, verify all of the following:
 
 ```text
-GitHub issue
-→ OpenSpec proposal/change
-→ specification/design/tasks
-→ implementation
-→ validation
+[ ] issue and comments are understood
+[ ] current implementation was inspected
+[ ] applicable OpenSpec change was found or created
+[ ] requested behavior is represented in specs/scenarios
+[ ] important architectural decisions are represented when needed
+[ ] implementation tasks exist and are coherent
+[ ] obvious contradictions have been reconciled
+[ ] OpenSpec validation passes when tooling supports it
 ```
 
-Follow the actual OpenSpec workflow configured in the repository rather than assuming exact command names or artifact structure.
+Only after this gate passes may implementation begin.
 
-If implementation reveals a necessary behavioral change not represented by the spec, update the spec before continuing with that behavior.
+If OpenSpec validation cannot run because of an environmental/tooling limitation, inspect the artifacts manually and report that limitation. Do not silently skip the specification stage.
 
-## 7. Discover and use relevant technical skills
+## If OpenSpec is absent
 
-This skill orchestrates work; technical skills provide domain-specific guidance.
+If the repository genuinely does not use OpenSpec, do not introduce it automatically. Follow the remaining workflow with an explicit implementation plan before code.
 
-Inspect available installed skills and load only those relevant to the issue.
+# Mandatory phase 5 — Select technical skills
 
-Examples may include skills for:
+This skill orchestrates the workflow; it does not contain every domain rule.
+
+Discover and load only the technical skills relevant to the implementation.
+
+Examples can include:
 
 - clean architecture;
 - clean code;
-- domain-driven design;
-- framework-specific development;
-- APIs;
-- database modeling;
-- orders/payments;
-- catalog;
-- configuration;
+- DDD;
+- Magento/Adobe Commerce specialists;
+- frontend/mobile specialists;
+- API/GraphQL skills;
 - security;
 - performance;
-- frontend/mobile development;
+- database/data modeling;
 - testing;
 - Git/GitHub conventions.
 
-Do not activate every skill indiscriminately.
+Prefer the smallest useful set.
 
-Select the smallest useful set based on the files and behavior involved.
+Priority when instructions conflict:
 
-When skill instructions conflict, prefer in this order:
-
-1. explicit user requirement;
+1. explicit user decision;
 2. repository-specific instructions;
-3. applicable behavioral specification;
-4. framework/domain-specific skill;
+3. approved OpenSpec contract;
+4. framework/domain skill;
 5. generic engineering skill.
 
-Never use a generic architecture rule to override a required native framework pattern without a concrete reason.
+# Mandatory phase 6 — Implement from OpenSpec tasks
 
-## 8. Create an implementation plan
+Once the readiness gate passes, implement the change by following the OpenSpec tasks and the approved design/specification.
 
-Before editing, produce a concrete internal plan mapping requirements to code changes.
+Do not treat tasks as suggestions unrelated to code. They are the implementation checklist.
 
-Identify:
+## Implementation principles
 
-- components to modify;
-- components to add;
-- components to remove;
-- behavior to preserve;
-- APIs/schema changes;
-- persistence changes;
-- migration/data patch needs;
-- OpenSpec changes;
-- tests to add/update;
-- compatibility impact;
-- cleanup required by the issue.
+- Prefer native framework mechanisms where practical.
+- Extend existing architecture before creating parallel abstractions.
+- Centralize domain invariants.
+- Preserve transaction boundaries and data integrity.
+- Explicitly analyze concurrency for reservations, inventory, payment, order state, uniqueness, counters, or shared resources.
+- Avoid unrelated refactoring.
+- Do not leave obsolete code behind when the approved change replaces it.
+- Do not keep two sources of truth for the same behavior merely for convenience.
 
-Prefer the smallest coherent implementation.
+## Keep OpenSpec synchronized
 
-Avoid:
+If implementation reveals that the approved behavior/design must change:
 
-- speculative abstractions;
-- duplicate services;
-- premature generalization;
-- hidden compatibility layers;
-- parallel implementations of native framework capabilities;
-- leaving dead code after a requested replacement.
+```text
+STOP implementation of that affected behavior
+        ↓
+update OpenSpec
+        ↓
+validate/reconcile specification
+        ↓
+update tasks if required
+        ↓
+resume implementation
+```
 
-If the issue explicitly replaces an old implementation, include removal of obsolete code in the plan where safe and within scope.
+Never finish coding first and update the spec afterward merely to match what was built.
 
-## 9. Implement the change
+# Mandatory phase 7 — Tests and validation
 
-Implement the plan using the repository's architecture and conventions.
+Tests are implementation tasks, not optional cleanup.
 
-### Prefer native mechanisms
+Add or update coverage based on changed behavior and risk.
 
-Use framework-native behavior when practical rather than recreating platform features.
-
-### Centralize invariants
-
-Do not duplicate core business rules across multiple entrypoints.
-
-If the same invariant applies to API, admin, CLI, job, or other paths, place it in the appropriate shared application/domain layer.
-
-### Preserve transactional integrity
-
-When several persistent operations represent one logical state transition, evaluate whether they must be atomic.
-
-### Evaluate concurrency
-
-Explicitly inspect race conditions for functionality involving:
-
-- reservation/scheduling;
-- inventory;
-- payment;
-- order transitions;
-- uniqueness;
-- counters;
-- shared resources.
-
-### Avoid unrelated refactoring
-
-Refactor adjacent code only when required to implement the issue correctly or to avoid leaving a structurally broken solution.
-
-## 10. Remove obsolete implementation when required
-
-Do not treat implementation as additive by default.
-
-If the issue changes architecture or replaces an existing mechanism, inspect whether any of the following are now obsolete:
-
-- classes;
-- interfaces;
-- configuration;
-- schema fields;
-- database writes;
-- observers/plugins/listeners;
-- jobs;
-- feature flags;
-- compatibility branches;
-- tests;
-- dead methods.
-
-Remove obsolete code when it is safe, explicitly intended, and within issue scope.
-
-Do not retain a second source of truth merely because the old code already exists.
-
-## 11. Add and update tests
-
-Tests are part of implementation, not optional cleanup.
-
-Map tests to changed behavior and regression risk.
-
-Consider coverage for:
+Consider:
 
 ```text
 happy path
 validation failures
-boundary conditions
+edge/boundary cases
 authorization
 state transitions
 error handling
-regressions
-concurrency/atomicity when relevant
+regression behavior
+atomicity/concurrency when relevant
 ```
 
-Prefer updating existing tests when they already model the affected behavior.
+Run the narrowest high-confidence checks first, then broader checks as appropriate.
 
-Do not weaken, delete, or skip meaningful tests just to make validation pass.
+Possible checks include:
 
-Respect repository instructions regarding suites that should not be executed locally.
-
-## 12. Validate incrementally
-
-Run the narrowest high-confidence checks first, then broader checks where appropriate.
-
-Depending on the project, this may include:
-
-- targeted unit tests;
-- targeted integration tests;
+- unit tests;
+- integration tests;
 - type checking;
-- linting;
+- lint;
 - static analysis;
 - schema validation;
-- compilation/build;
+- build/compile;
 - OpenSpec validation.
 
-Run broader suites only when appropriate for the repository, environment, issue risk, and explicit instructions.
+Respect repository-specific restrictions such as suites that should not be executed locally.
 
-Never claim a check passed unless it was actually executed successfully.
+Never claim a validation passed unless it actually ran successfully.
 
-If a validation step cannot run because of an environmental limitation, report it accurately instead of fabricating success.
+# Mandatory phase 8 — Review implementation against OpenSpec
 
-## 13. Review the complete diff
+Before declaring completion, perform a deliberate three-way review:
 
-Before declaring completion, inspect the final diff and working-tree status.
+```text
+GitHub acceptance criteria
+↔ OpenSpec requirements/tasks
+↔ final code/tests
+```
 
-Look for:
+Inspect the full diff and verify:
 
-- unrelated changes;
-- accidental generated files;
-- duplicated logic;
-- debug statements;
-- temporary code;
-- commented-out implementation;
-- hardcoded values;
-- incomplete cleanup;
-- naming inconsistency;
-- missing error handling;
-- security issues;
-- compatibility mistakes;
-- excessive abstractions;
-- missing tests.
+- every change maps to the approved scope;
+- no requirement was missed;
+- no accidental behavior was added;
+- no obsolete implementation remains when removal was required;
+- tests represent the final behavior;
+- OpenSpec still matches implementation;
+- tasks accurately reflect completion;
+- unrelated working-tree changes are not included.
 
-Ask:
-
-> Does every changed line contribute to satisfying the issue or keeping that implementation correct?
-
-Remove accidental scope.
-
-## 14. Verify every acceptance criterion
-
-Return to the complete issue and comments after implementation.
-
-Verify every requirement individually.
-
-Internally classify each criterion as:
+Internally classify every acceptance criterion:
 
 ```text
 PASS
@@ -564,186 +457,119 @@ FAIL
 NOT APPLICABLE
 ```
 
-Do not declare the issue complete while a required criterion remains `PARTIAL` or `FAIL`.
+Do not declare completion with required criteria in `PARTIAL` or `FAIL`.
 
-Pay attention to requirements introduced in comments, not only Markdown checkboxes in the original body.
+# Mandatory phase 9 — PR readiness
 
-## 15. Finalize OpenSpec state
+The default endpoint is **PR READY**, not automatic PR creation.
 
-When OpenSpec is in use:
+The implementation is PR-ready only when:
 
-- update implementation tasks accurately;
-- validate the changed artifacts;
-- ensure the final implementation matches the specification;
-- do not archive a change unless repository workflow or user instruction says this stage should archive it.
-
-Do not mark tasks complete merely because files were edited.
-
-## 16. Prepare Git state for PR
-
-Before considering the work PR-ready:
-
-- inspect `git status`;
-- inspect the final diff;
-- ensure unrelated files are excluded;
-- ensure local/generated artifacts are excluded;
-- confirm the branch is appropriate;
-- follow repository commit conventions if committing.
-
-Do not rewrite unrelated commits or destroy existing work.
-
-If commit-related skills are installed, use them when they add value.
-
-## 17. Pull request readiness
-
-The default endpoint of this skill is **PR-ready**, not necessarily PR creation.
-
-The work is PR-ready when:
-
-- requested behavior is implemented;
+- issue requirements are satisfied;
+- OpenSpec is synchronized when present;
+- required OpenSpec tasks are complete;
+- relevant validation was executed;
+- final diff was reviewed;
 - acceptance criteria pass;
-- relevant tests/checks have been run as far as the environment allows;
-- OpenSpec is consistent when applicable;
-- final diff has been reviewed;
 - no known implementation blocker remains.
 
-If the user explicitly asks to create the pull request as part of the same request, create it using available GitHub tooling after validation.
+Do not archive the OpenSpec change merely because implementation is complete unless repository workflow explicitly requires archival at this stage.
 
-Do not automatically open a PR when the user only asked to implement unless repository/project instructions explicitly define that behavior.
+Create a PR only when the user or repository workflow asks for it.
 
-# GitHub interaction rules
+# Working-tree and Git safety
 
-Prefer native GitHub integrations or `gh` when available.
+Before changing files:
 
-When retrieving the issue, make sure comments are included.
+- inspect `git status`;
+- preserve unrelated local modifications;
+- do not reset or overwrite user work.
 
-When the issue references another issue or PR whose content materially affects implementation, inspect that reference rather than guessing.
+Before PR readiness:
 
-Do not post progress noise to the GitHub issue unless explicitly requested by the user or repository workflow.
-
-Do not close the issue automatically unless the user or established project workflow requires it.
-
-# Failure handling
-
-## GitHub retrieval failure
-
-If the issue cannot be retrieved:
-
-1. verify repository and issue identifier;
-2. try another available GitHub mechanism when reasonable;
-3. report the exact blocker if access still fails.
-
-Do not invent issue requirements.
-
-## Tool or command failure
-
-When OpenSpec, tests, linters, build tools, or other commands fail:
-
-1. inspect the failure;
-2. determine whether it is caused by the implementation;
-3. fix implementation-caused failures;
-4. distinguish pre-existing failures from regressions;
-5. report unresolved environmental or unrelated failures.
-
-## Existing failing checks
-
-Do not silently absorb unrelated failures into issue scope.
-
-Identify whether the failure is:
-
-- pre-existing;
-- caused by the current changes;
-- environmental;
-- directly required to fix for the issue.
-
-## Requirement cannot be satisfied
-
-If a requirement cannot be implemented because of a concrete technical constraint, report:
-
-- the affected requirement;
-- the constraint;
-- supporting repository/tool evidence;
-- impact;
-- safest next step.
+- inspect final `git status`;
+- inspect the complete diff;
+- exclude unrelated/generated/local files;
+- follow repository commit conventions when committing.
 
 # Prohibited behavior
 
 Do not:
 
-- implement from issue title alone;
+- start writing production code immediately after reading the issue;
+- implement before inspecting the existing architecture;
+- skip OpenSpec when the repository uses it;
+- create a spec only after implementation to document whatever was coded;
+- treat OpenSpec tasks as optional;
+- implement from the issue title alone;
 - ignore issue comments;
-- assume the issue description matches current code;
 - invent requirements;
 - silently broaden scope;
-- ask for information already available in GitHub or the repository;
-- create duplicate architecture without inspecting existing code;
-- replace native framework capabilities with custom infrastructure without justification;
-- blindly follow stale issue text over newer explicit decisions;
-- allow implementation to silently redefine OpenSpec behavior;
-- mark acceptance criteria complete without verification;
-- claim tests/checks passed when they were not run;
-- delete unrelated local modifications;
-- include unrelated files in commits or PRs;
-- keep obsolete code as a second source of truth when the issue explicitly replaces it;
-- stop after writing a plan when implementation was requested.
+- create duplicate architecture without examining existing mechanisms;
+- blindly preserve legacy code that the approved change replaces;
+- blindly change legacy behavior merely because it looks old;
+- claim tests or validation passed when they did not run;
+- mark acceptance criteria complete without checking them;
+- discard unrelated local modifications;
+- automatically archive OpenSpec changes unless required;
+- automatically close the issue unless explicitly requested.
 
 # Completion report
 
-At the end, provide a concise structured report using the following format.
+Return a concise structured report.
 
-## Implementation summary
+## Issue
 
-Describe the implemented outcome, not every command executed.
-
-## Architecture
-
-Summarize meaningful architectural decisions, especially reuse of existing components and removal/replacement of old mechanisms.
-
-## Files/components
-
-Summarize important components added, changed, or removed.
+- issue number/title;
+- objective implemented.
 
 ## OpenSpec
 
-State one of:
+Report one of:
 
 ```text
-Updated existing change: <name>
+Reused change: <name>
 Created change: <name>
-No specification change required
 OpenSpec not present
 ```
 
+Then report:
+
+- specs/design/tasks updated;
+- OpenSpec validation result;
+- whether implementation matches the final contract.
+
+## Implementation
+
+Summarize important components changed or removed and key architecture decisions.
+
 ## Validation
 
-Report only checks actually executed.
+List only checks actually executed and their real result.
 
 Example:
 
 ```text
-PASS Unit tests
-PASS Static analysis
-PASS Lint
+PASS targeted unit tests
+PASS static analysis
 PASS OpenSpec validation
-NOT RUN Functional tests — excluded by repository instructions
+NOT RUN functional suite — excluded by repository instructions
 ```
 
 ## Acceptance criteria
 
-State whether all criteria were satisfied and identify any intentional or unavoidable exception.
+State whether all required criteria passed and mention any exception.
 
-## PR readiness
+## Status
 
-End with exactly one of:
+Finish with exactly one:
 
 ```text
 READY FOR PR
 ```
 
-or:
+or
 
 ```text
-NOT READY FOR PR
+NOT READY FOR PR — <concrete blocker>
 ```
-
-If not ready, state the concrete blocker immediately after it.
