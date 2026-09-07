@@ -1,174 +1,299 @@
 ---
 name: openspec-workflow
-description: Manage OpenSpec as the behavioral contract for an implementation workflow. Use when a repository contains OpenSpec and a change must be created, continued, updated, validated, or reconciled with GitHub issues, code, tests, or review feedback.
+description: Manage OpenSpec as the mandatory behavioral and architectural contract before implementation when a repository uses OpenSpec. Use to create, continue, reconcile, validate, and keep an OpenSpec change synchronized with GitHub requirements, repository reality, code, tests, and review feedback.
 compatibility: OpenCode or another coding agent with repository access and OpenSpec tooling when available
 metadata:
   category: workflow
   workflow: specification-management
+  methodology: specification-first
 ---
 
 # OpenSpec Workflow
 
-Use OpenSpec as the behavioral and architectural contract between requirements and implementation.
+Use OpenSpec as the formal bridge between approved requirements and implementation.
 
-## Principles
+When a repository uses OpenSpec, this workflow is a **pre-implementation gate**.
 
-1. Requirements describe intent; OpenSpec describes agreed behavior; code implements it.
-2. Do not create duplicate changes when a relevant OpenSpec change already exists.
-3. Behavioral changes discovered during implementation or review must update OpenSpec before the implementation becomes authoritative.
-4. Pure implementation refactors do not require specification churn unless repository conventions require it.
-5. Never rewrite unrelated specifications to make the current change look consistent.
+The default sequence is:
 
-## Detect OpenSpec
+```text
+requirement
+→ repository analysis
+→ OpenSpec change
+→ proposal/spec/design/tasks
+→ validation/readiness
+→ implementation
+→ implementation validation
+```
 
-Inspect the repository for OpenSpec configuration, directories, existing changes, commands, and project instructions.
+Never default to:
 
-If OpenSpec is not present, stop applying this skill without introducing it automatically.
+```text
+requirement
+→ code
+→ generate spec afterward
+```
 
-## Locate an existing change
+# Principles
 
-Search by:
+1. Requirements describe intent.
+2. Repository inspection describes current reality.
+3. OpenSpec defines the agreed target behavior and important architectural decisions.
+4. Code and tests implement that contract.
+5. OpenSpec must be ready before production implementation begins.
+6. Do not create duplicate changes when an applicable change already exists.
+7. Behavioral or architectural changes discovered during implementation or review must update OpenSpec before the affected code proceeds.
+8. Pure implementation refactors with no behavioral/contract impact do not require artificial specification churn unless repository conventions say otherwise.
+9. Never rewrite unrelated specifications merely to make the current change appear consistent.
+
+# Detect OpenSpec
+
+Inspect repository instructions, configuration, directories, existing changes, and available commands.
+
+Common indicators include:
+
+```text
+openspec/
+.openspec/
+OpenSpec config
+existing proposal/spec/design/tasks artifacts
+OpenSpec CLI commands
+repository documentation referring to OpenSpec
+```
+
+If OpenSpec is genuinely absent, stop applying this skill without introducing it automatically.
+
+# Understand the requirement before creating artifacts
+
+Before creating or modifying a change:
+
+- read the complete GitHub issue or approved requirement;
+- read relevant comments and later decisions;
+- inspect the current implementation;
+- inspect relevant tests;
+- inspect existing specifications and architecture documentation.
+
+Do not convert issue text mechanically into a spec without understanding the current system.
+
+# Locate an existing change first
+
+Search for a matching OpenSpec change by:
 
 - GitHub issue number;
-- feature name;
-- domain terms;
+- feature/capability name;
+- domain terminology;
 - branch name;
-- related modules or capabilities.
+- related modules/components.
 
-Continue an existing matching change instead of creating a parallel specification.
+If a matching active change exists, continue it.
 
-## Create a change when needed
+Do not create a parallel change for the same approved behavior without a concrete reason.
 
-A new change is normally justified when the work modifies:
+# Create a change when needed
+
+A change is normally justified when work modifies one or more of:
 
 - user-visible behavior;
 - domain rules or invariants;
-- API or GraphQL contracts;
-- persistence semantics;
+- API/GraphQL contracts;
+- validation/error semantics;
 - state transitions;
+- persistence semantics;
 - integration behavior;
-- architectural ownership or responsibility.
+- concurrency/transaction semantics;
+- architectural ownership/responsibility;
+- compatibility/migration behavior;
+- removal of a previously supported behavior.
 
-Do not create a new spec solely for formatting, mechanical cleanup, or an implementation-only refactor with no observable behavior change.
+A mechanical cleanup or pure implementation refactor may not require a new behavioral spec.
 
-## Required sequence
+# Required specification lifecycle
 
-Prefer this order:
+Follow the repository's actual OpenSpec conventions, but preserve this logical order.
+
+## 1. Proposal / intent
+
+Describe:
+
+- why the change exists;
+- problem being solved;
+- desired outcome;
+- boundaries/non-goals;
+- relevant dependencies;
+- compatibility/migration implications when known.
+
+## 2. Behavioral specification
+
+Define observable behavior and domain contracts.
+
+Cover relevant:
+
+- actors/callers;
+- preconditions;
+- successful behavior;
+- invariants;
+- validation and public errors;
+- state transitions;
+- API contracts;
+- persistence semantics where externally meaningful;
+- edge/boundary cases;
+- concurrency expectations;
+- compatibility requirements;
+- explicitly removed behavior.
+
+Prefer behavior over incidental implementation details.
+
+Avoid encoding temporary class names or low-level method structure unless the architectural contract itself requires them.
+
+## 3. Design / architecture
+
+For architectural or non-trivial implementation changes, decide before coding:
+
+- component ownership;
+- existing mechanisms to reuse;
+- native framework facilities to prefer;
+- interfaces/contracts;
+- data model changes;
+- transaction boundaries;
+- locking/concurrency strategy;
+- migration strategy;
+- compatibility strategy;
+- obsolete components to remove;
+- significant trade-offs.
+
+The purpose is to prevent architecture from emerging accidentally during code generation.
+
+## 4. Tasks
+
+Create concrete, traceable implementation tasks.
+
+Tasks may include:
+
+- production code;
+- API/schema work;
+- database/data migration;
+- tests;
+- cleanup/removal of legacy mechanisms;
+- configuration;
+- documentation;
+- static/schema/OpenSpec validation.
+
+Every important acceptance criterion should map to specification and implementation work.
+
+Do not mark tasks complete before the corresponding work actually exists and has been inspected.
+
+# Pre-implementation readiness gate
+
+Before production code is modified, verify:
 
 ```text
-GitHub issue / approved requirement
-    ↓
-OpenSpec proposal/change
-    ↓
-specification and scenarios
-    ↓
-implementation tasks
-    ↓
-code and tests
-    ↓
-validation
+[ ] approved requirement and comments were read
+[ ] relevant repository implementation was inspected
+[ ] existing applicable OpenSpec change was reused or a new one created
+[ ] requested behavior is represented in the specification
+[ ] important edge cases/invariants are represented
+[ ] architectural decisions are explicit where needed
+[ ] implementation tasks are concrete
+[ ] contradictions with existing specs/code/tests were reconciled
+[ ] OpenSpec validation passes when tooling supports it
 ```
 
-Before implementation, verify that the specification captures the intended behavior and important constraints.
+If this gate is not satisfied, do not proceed to implementation.
 
-## Reconcile sources
+If validation tooling is unavailable, perform a manual consistency review and report the limitation; do not skip the specification stage.
+
+# Reconcile conflicting sources
 
 Compare:
 
 ```text
-GitHub issue
-↔ issue comments
+GitHub issue + comments
+↔ current repository
+↔ current tests
 ↔ OpenSpec
-↔ current code
-↔ tests
+↔ project documentation
 ```
 
-When they conflict:
+Use these rules:
 
-- newer explicit product/architecture decisions supersede older discussion;
-- current code describes reality, not necessarily desired behavior;
-- tests may reveal compatibility requirements;
-- OpenSpec must be updated when the approved desired behavior changes.
+- the latest explicit approved product/architecture decision overrides older conflicting discussion;
+- repository code describes current reality, not necessarily desired behavior;
+- tests provide compatibility evidence but can be obsolete;
+- OpenSpec must be updated when the approved target behavior changes;
+- unrelated inconsistencies remain outside scope unless they block the approved change.
 
-Do not silently reinterpret a behavioral requirement just because the current code works differently.
+Do not silently reinterpret requirements simply because current code behaves differently.
 
-## Specification quality
+# During implementation
 
-Specifications should describe behavior rather than implementation details whenever practical.
+Implementation must follow the approved OpenSpec tasks/spec/design.
 
-Include:
+If new information reveals a necessary change to approved behavior or architecture:
 
-- actors or callers;
-- preconditions;
-- expected behavior;
-- state transitions;
-- invariants;
-- validation/error behavior;
-- important edge cases;
-- compatibility expectations;
-- explicitly excluded behavior when relevant.
+```text
+STOP affected implementation
+→ update OpenSpec
+→ reconcile/validate
+→ update tasks
+→ resume code changes
+```
 
-Avoid encoding incidental class names, internal method names, or temporary implementation details as product behavior.
+Do not finish the implementation and then rewrite OpenSpec to legitimize accidental behavior.
 
-## Tasks
+# During PR review fixes
 
-Implementation tasks should be concrete and traceable to the specification.
+Classify each review finding into one of:
 
-Tasks should cover relevant work such as:
+- implementation defect without contract change;
+- missing implementation of an already specified requirement;
+- behavioral contract change;
+- architectural/design change;
+- stale/invalid review feedback.
 
-- model/schema changes;
-- service/application changes;
-- API changes;
-- migration/data changes;
-- tests;
-- removal of obsolete implementation;
-- documentation or configuration updates;
-- validation.
+For behavioral or architectural changes:
 
-Do not mark a task complete until the corresponding implementation exists and has been reviewed locally.
+1. update OpenSpec first;
+2. validate/reconcile it;
+3. update tasks if necessary;
+4. then change code/tests.
 
-## During implementation
+A reviewer comment is not automatically authoritative over the approved specification.
 
-If new information reveals that the planned behavior must change:
+# Validation before PR readiness
 
-1. confirm the change is actually required by the issue/review/current architecture;
-2. update the relevant OpenSpec artifact;
-3. validate the updated specification when tooling permits;
-4. update implementation tasks;
-5. then modify code/tests.
+Perform a three-way consistency review:
 
-Do not use OpenSpec as after-the-fact documentation for accidental behavior.
+```text
+approved requirements
+↔ OpenSpec
+↔ code/tests
+```
 
-## During PR review fixes
+Verify:
 
-Classify feedback as either:
+- implementation matches the latest spec;
+- tests cover relevant behavior;
+- completed tasks are genuinely complete;
+- no required task is silently omitted;
+- removed behavior/components are reflected where appropriate;
+- no unresolved specification contradiction remains;
+- OpenSpec validation passes when available.
 
-- implementation correction with no behavior change;
-- specification/contract change.
+If validation cannot execute, report it explicitly.
 
-For the second category, update OpenSpec before or together with the code correction.
+# Archival
 
-## Validation
+Do not automatically archive an OpenSpec change merely because implementation is complete.
 
-Before declaring the change PR-ready:
+Archive only when repository workflow or explicit instruction defines that point, commonly after merge or release.
 
-- verify the implementation matches the latest specification;
-- verify tasks accurately reflect completion;
-- run OpenSpec validation if available;
-- ensure no unresolved specification contradiction remains.
-
-If validation cannot run, report that explicitly.
-
-## Archival
-
-Do not automatically archive a change merely because implementation is complete. Archive only when the repository workflow or explicit request calls for it, commonly after merge/release.
-
-## Completion output
+# Completion output
 
 Report:
 
 - OpenSpec present or absent;
-- existing change reused or new change created;
-- artifacts changed;
+- change reused or created;
+- proposal/spec/design/tasks touched;
 - validation result;
-- any remaining specification discrepancy.
+- implementation-readiness status when used before coding;
+- any unresolved specification discrepancy.
