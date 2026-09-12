@@ -1,96 +1,108 @@
 # my-ai-skills
 
-Personal reusable AI agent skills for an issue-driven development workflow using GitHub, OpenSpec and coding agents such as OpenCode or Claude Code.
+Reusable skills and tools for a supervised, issue-driven AI software development lifecycle using GitHub, OpenSpec, ChatGPT, Codex, Claude and Claude Code.
+
+The repository defines one shared protocol across two operating layers:
+
+- **Web / coordination:** requirements, decisions, architecture, contract handoff and independent review.
+- **CLI / execution:** repository exploration, OpenSpec, implementation, tests, PR preparation and review fixes.
+
+GitHub is the source of truth. Material decisions must end up in an issue, PR, architecture document, OpenSpec artifact or code—not only in chat history.
+
+## Lifecycle
+
+```text
+DISCOVERY → READY → IMPLEMENTING → REVIEW → DONE
+```
+
+For repositories with OpenSpec:
+
+```text
+refine issue
+→ issue-explore
+→ [QUESTION] / [DECISION] loop when needed
+→ issue-ready
+→ OpenSpec proposal/spec/design/tasks
+→ proposal review
+→ apply/implementation
+→ prepare-pr
+→ independent review
+→ address-pr-review
+→ final-pr-review + final-review
+→ merge
+```
+
+Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
 ## Skills
 
-### `implement-issue`
+### Shared workflow
 
-Implements a GitHub issue end-to-end in the current repository:
+| Skill | Responsibility |
+|---|---|
+| `issue-explore` | Inspect issue, comments, code and specs without implementing; raise `[QUESTION]` or return `READY FOR PROPOSAL`. |
+| `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
+| `implement-issue` | Resume from completed checkpoints, run OpenSpec-first implementation and leave work ready for a PR. |
+| `openspec-workflow` | Maintain proposal, specs, design and tasks as a pre-code contract. |
+| `prepare-pr` | Self-review, validate and create/prepare a traceable PR. |
+| `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
+| `final-pr-review` | Executor-side final check before external review. |
+| `pr-status` | Read-only classification of the current PR state and next action. |
+| `contract-handoff` | Freeze an implemented backend contract and validate/update the consumer issue. |
 
-- reads the complete issue and comments;
-- inspects the existing implementation before changing code;
-- integrates with OpenSpec when present;
-- discovers and uses relevant installed technical skills;
-- implements the requested behavior;
-- removes obsolete code when replacement is part of the issue;
-- adds or updates tests;
-- runs appropriate validation;
-- verifies every acceptance criterion;
-- leaves the repository ready for a pull request.
+### Web supervision
 
-### `openspec-workflow`
+| Skill | Responsibility |
+|---|---|
+| `refine-issue` | Convert an idea or draft issue into an implementable specification. |
+| `resolve-questions` | Analyze `[QUESTION]` comments and record evidence-backed `[DECISION]` responses. |
+| `review-pr` | Compare issue, decisions, OpenSpec, architecture, diff and tests with review severities. |
+| `final-review` | Enforce Review Freeze: no scope expansion, only merge-blocking validation. |
 
-Keeps OpenSpec synchronized with approved requirements and implementation:
+### Domain checks
 
-- locates or creates the correct OpenSpec change;
-- reconciles issue, spec, code and tests;
-- updates behavioral contracts before implementation diverges;
-- manages tasks and validation;
-- avoids unnecessary specification churn for implementation-only refactors.
+| Skill | Responsibility |
+|---|---|
+| `magento-review` | Adobe Commerce/Magento architecture and implementation checklist, including native reuse and concurrency. |
+| `expo-mobile-review` | Expo/React Native navigation, state, GraphQL, resilience, accessibility and E2E checklist. |
 
-### `prepare-pr`
+## GitHub protocol
 
-Turns a completed implementation into a reviewable pull request:
-
-- reviews the complete branch diff;
-- checks issue and OpenSpec coverage;
-- runs final validation;
-- detects unrelated or accidental changes;
-- prepares commit/push state;
-- creates a structured PR when explicitly requested;
-- avoids duplicate PRs for the same branch.
-
-### `address-pr-review`
-
-Processes PR review feedback end-to-end:
-
-- reads PR conversation and inline review findings;
-- classifies findings as valid, adapted, resolved, obsolete, conflicting or invalid;
-- fixes the underlying issue instead of blindly applying comments;
-- updates OpenSpec when review changes behavior;
-- runs relevant validation;
-- pushes corrections to the same PR branch when the workflow calls for it.
-
-### `pr-status`
-
-Provides a read-only status of an existing pull request:
-
-- correlates issue, OpenSpec, diff, CI and review feedback;
-- identifies real remaining blockers;
-- distinguishes stale comments from actionable findings;
-- classifies the PR state;
-- recommends one concrete next action.
-
-## Suggested workflow
+Discussion markers:
 
 ```text
-Discuss / define feature
-        ↓
-GitHub Issue
-        ↓
-implement-issue
-        ↓
-openspec-workflow (used when OpenSpec is present)
-        ↓
-prepare-pr
-        ↓
-Independent PR review
-        ↓
-address-pr-review
-        ↓
-Independent PR review
-        ↓
-pr-status
-        ↓
-Merge when ready
+[QUESTION]
+[DECISION]
+[IMPLEMENTATION NOTE]
+[RESOLVED]
 ```
 
-The skills are intentionally composable. Workflow skills should rely on installed domain-specific skills (Magento, React Native, clean architecture, security, testing, etc.) instead of duplicating that technical knowledge.
+Review severities:
+
+```text
+[BLOCKER]
+[MUST FIX]
+[SHOULD FIX]
+[NICE TO HAVE]
+```
+
+Read [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol/GITHUB_CONVENTIONS.md) and [REVIEW_POLICY.md](protocol/REVIEW_POLICY.md) for the canonical rules.
+
+## Helper scripts
+
+The scripts require `gh` and `jq` and are read-only:
+
+```bash
+scripts/issue-context https://github.com/owner/repo/issues/123
+scripts/pr-context https://github.com/owner/repo/pull/124
+scripts/workflow-status https://github.com/owner/repo/issues/123
+```
+
+They normalize live GitHub context so agents refresh comments, decisions, reviews and CI instead of relying on stale chat context.
 
 ## Install with skills.sh
 
-Install all skills for OpenCode:
+Install everything for OpenCode:
 
 ```bash
 npx skills add rocker-code/my-ai-skills --all -a opencode
@@ -102,26 +114,29 @@ Install globally:
 npx skills add rocker-code/my-ai-skills --all -a opencode -g
 ```
 
-Install only selected skills:
+Install selected skills:
 
 ```bash
-npx skills add rocker-code/my-ai-skills --skill implement-issue --skill openspec-workflow --skill prepare-pr --skill address-pr-review --skill pr-status -a opencode
+npx skills add rocker-code/my-ai-skills \
+  --skill issue-explore \
+  --skill issue-ready \
+  --skill implement-issue \
+  --skill prepare-pr \
+  --skill address-pr-review \
+  --skill final-pr-review \
+  -a opencode
 ```
 
-For a private GitHub repository, the skills CLI can use the GitHub authentication configured in the local environment.
+For a private repository, configure GitHub authentication in the environment used by `skills.sh`.
 
-## Layout
+## Recommended cross-repository flow
 
-```text
-skills/
-├── implement-issue/
-│   └── SKILL.md
-├── openspec-workflow/
-│   └── SKILL.md
-├── prepare-pr/
-│   └── SKILL.md
-├── address-pr-review/
-│   └── SKILL.md
-└── pr-status/
-    └── SKILL.md
-```
+For backend → mobile work:
+
+1. merge backend contract issues;
+2. run `contract-handoff` against the final backend code and the mobile issue;
+3. update the consumer issue if necessary;
+4. declare `CONTRACT FROZEN`;
+5. only then implement the consumer.
+
+If the producer contract changes after the freeze, explicitly revise the consumer issue and repeat the handoff.
