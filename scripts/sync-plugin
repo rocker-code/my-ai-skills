@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+plugin_root="$repo_root/plugins/my-ai-skills"
+
+[[ -f "$plugin_root/.codex-plugin/plugin.json" ]] || {
+  echo "error: plugin scaffold not found at $plugin_root" >&2
+  exit 1
+}
+
+sync_directory() {
+  local source_dir=$1
+  local target_dir=$2
+
+  [[ -d "$source_dir" ]] || {
+    echo "error: source directory not found: $source_dir" >&2
+    exit 1
+  }
+
+  mkdir -p "$target_dir"
+  find "$target_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  cp -R "$source_dir"/. "$target_dir"/
+}
+
+sync_directory "$repo_root/skills" "$plugin_root/skills"
+sync_directory "$repo_root/protocol" "$plugin_root/protocol"
+sync_directory "$repo_root/templates" "$plugin_root/templates"
+
+mkdir -p "$plugin_root/scripts"
+find "$plugin_root/scripts" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+for helper in issue-context pr-context workflow-status; do
+  install -m 0755 "$repo_root/scripts/$helper" "$plugin_root/scripts/$helper"
+done
+
+echo "Synchronized plugin package: $plugin_root"

@@ -20,6 +20,6 @@ For each question:
 
 Do not disguise uncertainty as a decision. If owner input is required, narrow the question and present a recommendation.
 
-Record each approved answer using `[DECISION]` and `templates/github/decision.md`. When authorized, comment on GitHub; otherwise provide exact copy-ready comments. Do not edit code, run apply or close the issue.
+Record each approved answer using `[DECISION]` and [the decision template](../../templates/github/decision.md). When authorized, comment on GitHub; otherwise provide exact copy-ready comments. Do not edit code, run apply or close the issue.
 
 End with `ALL BLOCKING QUESTIONS RESOLVED` or `OWNER DECISION REQUIRED — <items>`. The executor must then refresh GitHub and run `issue-explore` again before `issue-ready`.

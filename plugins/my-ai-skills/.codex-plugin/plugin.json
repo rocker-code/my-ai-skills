@@ -1,0 +1,26 @@
+{
+  "name": "my-ai-skills",
+  "version": "1.0.0",
+  "description": "Supervised GitHub and OpenSpec workflows for requirements, implementation, contract handoff, and pull request review.",
+  "author": {
+    "name": "Rocker Code",
+    "url": "https://github.com/rocker-code"
+  },
+  "homepage": "https://github.com/rocker-code/my-ai-skills",
+  "repository": "https://github.com/rocker-code/my-ai-skills",
+  "keywords": ["github", "openspec", "code-review", "magento", "expo", "workflow"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Rocker Code AI Workflow",
+    "shortDescription": "Supervised GitHub and OpenSpec development workflow.",
+    "longDescription": "Coordinates issue refinement, exploration, OpenSpec gates, implementation, cross-repository contract handoff, and severity-based pull request review across ChatGPT and Codex.",
+    "developerName": "Rocker Code",
+    "category": "Productivity",
+    "capabilities": ["GitHub workflows", "OpenSpec", "Code review"],
+    "defaultPrompt": [
+      "Refine this GitHub issue before implementation.",
+      "Resolve the blocking questions in this issue.",
+      "Review this pull request against its issue and OpenSpec."
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: issue-context <GitHub issue URL | number> [--repo owner/name]" >&2
+  exit 2
+}
+
+command -v gh >/dev/null || { echo "error: gh is required" >&2; exit 1; }
+command -v jq >/dev/null || { echo "error: jq is required" >&2; exit 1; }
+
+[[ $# -ge 1 ]] || usage
+issue_ref=$1
+shift
+
+repo_args=()
+if [[ $# -ge 2 && $1 == "--repo" ]]; then
+  repo_args=(--repo "$2")
+  shift 2
+fi
+[[ $# -eq 0 ]] || usage
+
+payload=$(gh issue view "$issue_ref" "${repo_args[@]}" --json number,title,state,url,body,author,labels,assignees,milestone,comments)
+
+jq '
+  def marker($name):
+    [.comments[]? | select(.body | test("(?m)^\\[" + $name + "\\]")) |
+      {author: .author.login, createdAt, url, body}];
+  {
+    issue: {
+      number, title, state, url, body,
+      author: .author.login,
+      labels: [.labels[]?.name],
+      assignees: [.assignees[]?.login],
+      milestone: (.milestone.title // null)
+    },
+    protocol: {
+      questions: marker("QUESTION"),
+      decisions: marker("DECISION"),
+      implementation_notes: marker("IMPLEMENTATION NOTE"),
+      resolved: marker("RESOLVED")
+    },
+    comments: [.comments[]? | {author: .author.login, createdAt, url, body}]
+  }
+' <<<"$payload"

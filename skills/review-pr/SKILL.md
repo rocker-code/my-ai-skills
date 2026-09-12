@@ -20,7 +20,7 @@ Load the applicable domain checklist such as `magento-review` or `expo-mobile-re
 
 Check acceptance coverage, contract/schema consistency, state and authorization, data/migration, concurrency/idempotency, failure behavior, security, regressions, native reuse, tests and removal of obsolete code. Do not expand the issue with unrelated redesign.
 
-Classify findings according to `protocol/REVIEW_POLICY.md`:
+Classify findings according to [the review policy](../../protocol/REVIEW_POLICY.md):
 
 - `[BLOCKER]`;
 - `[MUST FIX]`;
