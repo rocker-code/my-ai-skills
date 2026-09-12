@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: pr-context <GitHub PR URL | number> [--repo owner/name]" >&2
+  exit 2
+}
+
+command -v gh >/dev/null || { echo "error: gh is required" >&2; exit 1; }
+command -v jq >/dev/null || { echo "error: jq is required" >&2; exit 1; }
+
+[[ $# -ge 1 ]] || usage
+pr_ref=$1
+shift
+
+repo_args=()
+if [[ $# -ge 2 && $1 == "--repo" ]]; then
+  repo_args=(--repo "$2")
+  shift 2
+fi
+[[ $# -eq 0 ]] || usage
+
+payload=$(gh pr view "$pr_ref" "${repo_args[@]}" --json number,title,state,isDraft,url,body,baseRefName,headRefName,reviewDecision,mergeStateStatus,closingIssuesReferences,commits,files,reviews,comments,statusCheckRollup)
+
+jq '
+  def findings($name):
+    [(.comments[]?.body // empty), (.reviews[]?.body // empty)] |
+    map(select(test("(?m)^\\[" + $name + "\\]")));
+  {
+    pull_request: {
+      number, title, state, isDraft, url, body,
+      base: .baseRefName,
+      head: .headRefName,
+      reviewDecision,
+      mergeStateStatus
+    },
+    linked_issues: [.closingIssuesReferences[]? | {number, title, url}],
+    commits: [.commits[]? | {oid, messageHeadline, committedDate}],
+    files: [.files[]? | {path, additions, deletions}],
+    review: {
+      blocker: findings("BLOCKER"),
+      must_fix: findings("MUST FIX"),
+      should_fix: findings("SHOULD FIX"),
+      nice_to_have: findings("NICE TO HAVE"),
+      reviews: [.reviews[]? | {author: .author.login, state, submittedAt, body}],
+      conversation: [.comments[]? | {author: .author.login, createdAt, url, body}]
+    },
+    checks: [.statusCheckRollup[]? | {
+      name: (.name // .context),
+      status: (.status // null),
+      conclusion: (.conclusion // .state // null)
+    }]
+  }
+' <<<"$payload"
