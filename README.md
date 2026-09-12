@@ -129,6 +129,32 @@ npx skills add rocker-code/my-ai-skills \
 
 For a private repository, configure GitHub authentication in the environment used by `skills.sh`.
 
+## Install as a personal ChatGPT/Codex plugin
+
+The repository also contains a self-contained skills-only plugin at `plugins/my-ai-skills` and a repository marketplace at `.agents/plugins/marketplace.json`.
+
+Add the marketplace once:
+
+```bash
+codex plugin marketplace add rocker-code/my-ai-skills --ref main
+```
+
+Install the plugin:
+
+```bash
+codex plugin add my-ai-skills@rocker-code-ai
+```
+
+In the ChatGPT desktop app, restart the app, open the Plugins Directory, select the **Rocker Code AI** marketplace, and install **Rocker Code AI Workflow**. Start a new conversation after installation so the skills are loaded.
+
+The plugin is personal and does not need to be submitted to the public directory. Publishing it to a ChatGPT workspace is a separate administrative action.
+
+The root `skills/`, `protocol/`, `templates/`, and helper scripts remain the canonical source used by `skills.sh`. Their copies inside `plugins/my-ai-skills/` form the self-contained plugin package. After changing canonical files, synchronize the package with:
+
+```bash
+scripts/sync-plugin
+```
+
 ## Recommended cross-repository flow
 
 For backend → mobile work:

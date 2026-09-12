@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: workflow-status <GitHub issue URL | number> [--repo owner/name]" >&2
+  exit 2
+}
+
+command -v gh >/dev/null || { echo "error: gh is required" >&2; exit 1; }
+command -v jq >/dev/null || { echo "error: jq is required" >&2; exit 1; }
+
+[[ $# -ge 1 ]] || usage
+issue_ref=$1
+shift
+
+repo_args=()
+repo_name=""
+if [[ $# -ge 2 && $1 == "--repo" ]]; then
+  repo_name=$2
+  repo_args=(--repo "$2")
+  shift 2
+fi
+[[ $# -eq 0 ]] || usage
+
+issue=$(gh issue view "$issue_ref" "${repo_args[@]}" --json number,title,state,url,comments)
+issue_number=$(jq -r '.number' <<<"$issue")
+
+if [[ -z $repo_name ]]; then
+  if [[ $issue_ref =~ github\.com/([^/]+/[^/]+)/issues/ ]]; then
+    repo_name=${BASH_REMATCH[1]}
+  else
+    repo_name=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+  fi
+fi
+
+prs=$(gh pr list --repo "$repo_name" --state all --search "#$issue_number" --json number,title,state,isDraft,url,reviewDecision,statusCheckRollup,updatedAt --limit 20)
+
+jq -n --argjson issue "$issue" --argjson prs "$prs" '
+  def has($marker): [$issue.comments[]?.body | select(test("(?m)^\\[" + $marker + "\\]"))] | length > 0;
+  def checks_ok($pr):
+    ([ $pr.statusCheckRollup[]? |
+      (.conclusion // .state // "") |
+      select(. != "SUCCESS" and . != "NEUTRAL" and . != "SKIPPED") ] | length) == 0;
+  ($prs | sort_by(.updatedAt) | reverse | .[0] // null) as $pr |
+  {
+    issue: {number: $issue.number, title: $issue.title, state: $issue.state, url: $issue.url},
+    evidence: {
+      has_question: has("QUESTION"),
+      has_decision: has("DECISION"),
+      has_implementation_note: has("IMPLEMENTATION NOTE"),
+      linked_pr: $pr
+    },
+    inferred_state:
+      if $issue.state == "CLOSED" then "DONE"
+      elif $pr != null and $pr.state == "MERGED" then "DONE"
+      elif $pr != null and ($pr.state == "OPEN" or $pr.state == "CLOSED") then "REVIEW"
+      elif has("QUESTION") and (has("DECISION") | not) then "DISCOVERY"
+      elif has("DECISION") then "READY"
+      else "DISCOVERY"
+      end,
+    checks_appear_clear: (if $pr == null then null else checks_ok($pr) end),
+    note: "State is evidence-based but heuristic; OpenSpec readiness must be verified inside the repository."
+  }
+'

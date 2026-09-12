@@ -40,7 +40,7 @@ Use the repository's conventions and official commands.
 - **Design:** ownership, native mechanisms reused, interfaces, data changes, transactions/locks, migration, compatibility, removals and trade-offs.
 - **Tasks:** traceable production, schema/data, tests, cleanup, docs/config and validation work.
 
-For cross-repository behavior, include the integration contract from `templates/github/integration-contract.md` or its project equivalent.
+For cross-repository behavior, read and use [the integration contract template](../../templates/github/integration-contract.md) or its project equivalent.
 
 ## Proposal checkpoint
 
