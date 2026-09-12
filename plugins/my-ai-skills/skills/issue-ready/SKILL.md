@@ -14,7 +14,7 @@ This is the gate between discovery and OpenSpec proposal. It does not implement 
 
 Re-fetch the complete issue and all current comments. Treat approved `[DECISION]` comments as authoritative and verify that each materially affects the issue, OpenSpec plan or acceptance criteria as needed.
 
-Re-run the `issue-explore` reasoning against the latest repository and existing OpenSpec. For material work, this second exploration after decisions is mandatory; answers may expose new contradictions.
+Re-run the official `/opsx-explore` command against the latest repository and existing OpenSpec, applying the `issue-explore` protocol. For material work, this second exploration after decisions is mandatory; answers may expose new contradictions.
 
 ## Definition of Ready
 

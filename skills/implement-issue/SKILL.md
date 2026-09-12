@@ -18,7 +18,7 @@ Fetch the live issue, all comments and linked PRs before acting. Read repository
 - existing PR → use review/fix workflows, not a duplicate implementation/PR;
 - existing implementation → inspect and resume;
 - matching validated OpenSpec change → reuse it;
-- unresolved `[QUESTION]` or Definition of Ready gap → use `issue-explore`/`issue-ready` and stop;
+- unresolved `[QUESTION]` or Definition of Ready gap → run `/opsx-explore`, apply the `issue-explore` protocol, then use `issue-ready` and stop;
 - ready issue with no approved proposal → run `openspec-workflow` through proposal review;
 - approved proposal → continue to apply.
 

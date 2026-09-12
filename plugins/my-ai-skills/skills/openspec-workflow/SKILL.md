@@ -8,14 +8,14 @@ metadata:
 
 # OpenSpec Workflow
 
-OpenSpec remains the bridge between approved GitHub intent and implementation reality. This skill orchestrates the repository's actual `/opsx:*` commands; it does not replace or emulate them with a parallel format.
+OpenSpec remains the bridge between approved GitHub intent and implementation reality. This skill orchestrates the repository's actual CLI commands, including `/opsx-explore`; it does not replace or emulate them with a parallel format.
 
 ## Required order
 
 ```text
-issue-explore
+/opsx-explore (with the issue-explore protocol)
 → questions/decisions when needed
-→ issue-explore again
+→ /opsx-explore again after decisions
 → issue-ready
 → /opsx:proposal (plus specs/design/tasks as required)
 → proposal review

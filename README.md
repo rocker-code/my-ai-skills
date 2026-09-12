@@ -19,8 +19,9 @@ For repositories with OpenSpec:
 
 ```text
 refine issue
-→ issue-explore
+→ /opsx-explore (using the issue-explore protocol)
 → [QUESTION] / [DECISION] loop when needed
+→ /opsx-explore again after decisions
 → issue-ready
 → OpenSpec proposal/spec/design/tasks
 → proposal review
@@ -40,7 +41,7 @@ Production implementation does not begin while blocking questions remain or befo
 
 | Skill | Responsibility |
 |---|---|
-| `issue-explore` | Inspect issue, comments, code and specs without implementing; raise `[QUESTION]` or return `READY FOR PROPOSAL`. |
+| `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
 | `implement-issue` | Resume from completed checkpoints, run OpenSpec-first implementation and leave work ready for a PR. |
 | `openspec-workflow` | Maintain proposal, specs, design and tasks as a pre-code contract. |
