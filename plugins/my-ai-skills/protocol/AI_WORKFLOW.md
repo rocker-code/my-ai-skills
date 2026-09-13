@@ -19,14 +19,14 @@ The latest explicit approved decision supersedes older conflicting discussion. D
 ## Required flow
 
 1. Refine the GitHub issue.
-2. Explore issue, all comments, code, tests, docs and current OpenSpec. Do not implement.
+2. Run `/opsx-explore` against the issue, all comments, code, tests, docs and current OpenSpec. Do not implement.
 3. Add material ambiguities as `[QUESTION]` and stop.
 4. Record approved answers as `[DECISION]`.
-5. Refresh GitHub and explore again after decisions.
+5. Refresh GitHub and run `/opsx-explore` again after decisions.
 6. Pass `issue-ready`.
-7. Create or update OpenSpec proposal/spec/design/tasks.
+7. Run `/opsx-proposal` to create or update OpenSpec proposal/spec/design/tasks.
 8. Review the proposal before apply for medium or large changes.
-9. Implement only after the gate passes.
+9. Run `/opsx-apply` only after the proposal review gate passes.
 10. Self-review, test and prepare the PR.
 11. Independently review against issue + decisions + OpenSpec + diff + architecture.
 12. Address valid feedback and run `final-pr-review`.

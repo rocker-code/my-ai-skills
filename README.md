@@ -23,9 +23,9 @@ refine issue
 → [QUESTION] / [DECISION] loop when needed
 → /opsx-explore again after decisions
 → issue-ready
-→ OpenSpec proposal/spec/design/tasks
+→ /opsx-proposal
 → proposal review
-→ apply/implementation
+→ /opsx-apply
 → prepare-pr
 → independent review
 → address-pr-review

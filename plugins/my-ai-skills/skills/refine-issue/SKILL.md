@@ -29,4 +29,4 @@ Define:
 
 Use an `Integration Contract` section for producer/consumer issues. Do not invent decisions merely to make the issue appear complete; label them `[QUESTION]`.
 
-When authorized, update/create the GitHub issue. Otherwise output a copy-ready title/body. Finish with `READY FOR ISSUE-EXPLORE` or `NEEDS DECISIONS — <summary>`.
+When authorized, update/create the GitHub issue. Otherwise output a copy-ready title/body. Finish with `READY FOR OPSX EXPLORE` or `NEEDS DECISIONS — <summary>`.
