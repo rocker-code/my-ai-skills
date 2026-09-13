@@ -17,9 +17,9 @@ OpenSpec remains the bridge between approved GitHub intent and implementation re
 → questions/decisions when needed
 → /opsx-explore again after decisions
 → issue-ready
-→ /opsx:proposal (plus specs/design/tasks as required)
+→ /opsx-proposal (plus specs/design/tasks as required)
 → proposal review
-→ /opsx:apply
+→ /opsx-apply
 → validation
 ```
 

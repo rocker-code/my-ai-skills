@@ -1,6 +1,6 @@
 ---
 name: issue-ready
-description: Reassess a GitHub issue after discovery and decisions, enforce a Definition of Ready, and determine whether OpenSpec proposal work may begin. Use after questions were answered or immediately before /opsx:proposal; never implements code.
+description: Reassess a GitHub issue after discovery and decisions, enforce a Definition of Ready, and determine whether OpenSpec proposal work may begin. Use after questions were answered or immediately before /opsx-proposal; never implements code.
 metadata:
   category: workflow
   stage: ready
