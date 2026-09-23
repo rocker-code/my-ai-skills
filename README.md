@@ -33,6 +33,8 @@ refine issue
 → merge
 ```
 
+For milestone execution, invoke `milestone-orchestrator` with the GitHub milestone URL. It runs one issue at a time by default, pins validated OpenSpec artifacts to a commit, then starts `apply` in a genuinely new session. If isolated sessions are unavailable, it stops with a handoff instead of applying in the planning context.
+
 Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
 ## Skills
@@ -41,6 +43,7 @@ Production implementation does not begin while blocking questions remain or befo
 
 | Skill | Responsibility |
 |---|---|
+| `milestone-orchestrator` | Order milestone issues by dependency and hand each issue across isolated OpenSpec planning, apply and verification sessions. |
 | `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
 | `implement-issue` | Resume from completed checkpoints, run OpenSpec-first implementation and leave work ready for a PR. |
