@@ -81,6 +81,7 @@ Production implementation does not begin while blocking questions remain or befo
 |---|---|
 | `magento-review` | Adobe Commerce/Magento architecture and implementation checklist, including native reuse and concurrency. |
 | `expo-mobile-review` | Expo/React Native navigation, state, GraphQL, resilience, accessibility and E2E checklist. |
+| `sonar` | Agent-agnostic SonarQube CLI quality/security analysis, secret scanning, finding classification and remediation evidence. |
 
 ## GitHub protocol
 
@@ -140,6 +141,7 @@ npx skills add rocker-code/my-ai-skills \
   --skill issue-ready \
   --skill implement-issue \
   --skill apply-issue \
+  --skill sonar \
   --skill prepare-pr \
   --skill pr-audit \
   --skill architecture-audit \
