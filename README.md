@@ -26,12 +26,14 @@ issue-audit → refine issue
 → /opsx-proposal
 → explicit human approval of pinned revision
 → new session: apply-issue (/opsx-apply)
-→ prepare-pr (requirement → code → test)
+→ /prepare-pr (requirement → code → test; scoped commit, push and PR)
 → independent pr-audit + architecture-audit when relevant
 → address-pr-review
 → final-pr-review + post-pr-audit + final-review
 → merge → kaizen
 ```
+
+Invoking `/prepare-pr` authorizes the skill to stage and commit only files for the current issue, push its feature branch without force, and open the PR. It does not authorize merging. Explicitly requesting a prepare-only run keeps the work local.
 
 For milestone execution, invoke `milestone-orchestrator` with a GitHub milestone URL. It builds an evidenced dependency graph, reconstructs issue state from durable artifacts and processes one unblocked issue at a time. Each issue stops for explicit approval of its pinned proposal, then Apply starts in a genuinely new session. A PR proceeds through independent audits and CI on the exact head; the owner decides the merge. The orchestrator runs kaizen after the verified merge. If a fresh implementation session is unavailable, it returns a handoff and stops before Apply.
 
