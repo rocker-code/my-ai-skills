@@ -20,7 +20,10 @@ OpenSpec remains the bridge between approved GitHub intent and implementation re
 → /opsx-proposal (plus specs/design/tasks as required)
 → proposal review
 → /opsx-apply
-→ validation
+→ implementation verification + focused tests
+→ strict validation of the active change
+→ archive on the feature branch (sync approved delta specs)
+→ inspect archived artifacts + live specs
 ```
 
 Never default to requirement → code → retrospective spec.
@@ -69,11 +72,19 @@ Before production code:
 [ ] official OpenSpec validation passes, or a reported manual review explains why it could not run
 ```
 
-## During implementation/review
+## Implementation verification and archive
+
+After `/opsx-apply`, finish every approved task and validate that implementation behavior matches the approved scenarios before PR preparation:
+
+1. Run the installed official OpenSpec implementation verifier (for example, `/opsx-verify <change>`) when available. Also map each acceptance criterion/scenario to code and a proving test; report unavailable automated checks as NOT RUN.
+2. Run strict validation on the active change using the command supported by the installed OpenSpec version.
+3. On the issue feature branch, run the installed official archive command (for example, `/opsx-archive <change>` or its documented CLI equivalent). Archive only after tasks, tests, verification and strict validation pass. Sync only the already approved delta specs.
+4. Inspect the diff: retain the completed change under `openspec/changes/archive/`, and reflect its approved delta in the corresponding live `openspec/specs/` files. Keep both in the same feature PR; do not create a separate archive PR.
+5. If archive reveals a material behavior/design change beyond the approved delta, stop and obtain renewed approval. If the installed tool lacks an implementation verifier, keep an explicit evidence matrix instead of inventing a command.
+
+Archive is a post-implementation, pre-PR closeout in this workflow. Do not defer routine archival until after merge. If tests, tasks or verification are incomplete, keep the change active and report the blocker.
 
 If evidence requires a behavioral or architectural change, stop the affected implementation, update and validate OpenSpec, adjust tasks, then resume. Implementation-only fixes do not create artificial spec churn.
-
-Do not archive a change automatically; follow repository policy, commonly after merge/release.
 
 ## Output
 
