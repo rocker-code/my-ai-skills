@@ -10,6 +10,8 @@ metadata:
 
 Review the system of intent and implementation, not the diff alone.
 
+Use `pr-audit` for the traceability and evidence pass; this skill manages the independent review findings and PR comments. Invoke `architecture-audit` for material boundary changes.
+
 ## Refresh and correlate
 
 Read live PR metadata/diff/commits, issue and all comments, `[DECISION]` entries, active OpenSpec artifacts, repository instructions/architecture, relevant unchanged code, tests, CI and earlier review threads.

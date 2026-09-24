@@ -18,22 +18,22 @@ DISCOVERY → READY → IMPLEMENTING → REVIEW → DONE
 For repositories with OpenSpec:
 
 ```text
-refine issue
+issue-audit → refine issue
 → /opsx-explore (using the issue-explore protocol)
 → [QUESTION] / [DECISION] loop when needed
 → /opsx-explore again after decisions
 → issue-ready
 → /opsx-proposal
-→ proposal review
-→ /opsx-apply
-→ prepare-pr
-→ independent review
+→ explicit human approval of pinned revision
+→ new session: apply-issue (/opsx-apply)
+→ prepare-pr (requirement → code → test)
+→ independent pr-audit + architecture-audit when relevant
 → address-pr-review
-→ final-pr-review + final-review
-→ merge
+→ final-pr-review + post-pr-audit + final-review
+→ merge → kaizen
 ```
 
-For milestone execution, invoke `milestone-orchestrator` with the GitHub milestone URL. It runs one issue at a time by default, pins validated OpenSpec artifacts to a commit, then starts `apply` in a genuinely new session. If isolated sessions are unavailable, it stops with a handoff instead of applying in the planning context.
+The existing `milestone-orchestrator` is scheduled for a separate redesign; use the single-issue flow below until it is aligned with these gates. For milestone execution after that redesign, invoke `milestone-orchestrator` with the GitHub milestone URL. It runs one issue at a time by default, pins validated OpenSpec artifacts to a commit, then starts `apply` in a genuinely new session. If isolated sessions are unavailable, it stops with a handoff instead of applying in the planning context.
 
 Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
@@ -46,9 +46,15 @@ Production implementation does not begin while blocking questions remain or befo
 | `milestone-orchestrator` | Order milestone issues by dependency and hand each issue across isolated OpenSpec planning, apply and verification sessions. |
 | `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
-| `implement-issue` | Resume from completed checkpoints, run OpenSpec-first implementation and leave work ready for a PR. |
+| `issue-audit` | Verify the issue's claims against current code before exploration. |
+| `implement-issue` | Audit, explore and propose; stop at human approval without implementing. |
+| `apply-issue` | Implement an approved OpenSpec revision in a new session. |
 | `openspec-workflow` | Maintain proposal, specs, design and tasks as a pre-code contract. |
 | `prepare-pr` | Self-review, validate and create/prepare a traceable PR. |
+| `pr-audit` | Independently compare requirements, OpenSpec, code and tests. |
+| `architecture-audit` | Check boundaries and new coupling without requiring LikeC4. |
+| `post-pr-audit` | Verify the final PR head, CI and review findings before merge. |
+| `kaizen` | Convert evidenced failures into focused project or process improvements. |
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
 | `final-pr-review` | Executor-side final check before external review. |
 | `pr-status` | Read-only classification of the current PR state and next action. |

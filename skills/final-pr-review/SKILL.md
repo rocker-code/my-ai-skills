@@ -8,7 +8,7 @@ metadata:
 
 # Final PR Review
 
-This is a self-review after fixes, not the independent `final-review` approval.
+This is a self-review after fixes, not the independent `final-review` approval. Run `post-pr-audit` on the final head before the owner's merge decision.
 
 Refresh the entire PR, newer comments/reviews/commits, linked issue decisions, OpenSpec and CI. Compare:
 
