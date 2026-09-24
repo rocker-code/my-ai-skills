@@ -1,6 +1,6 @@
 ---
 name: prepare-pr
-description: Self-review, validate, commit/push when authorized, and prepare or create a traceable GitHub pull request for a completed implementation. Use after apply-issue and before independent pr-audit; reuses an existing PR instead of creating duplicates.
+description: Self-review, validate, and prepare a traceable GitHub pull request for a completed implementation. Invoking this skill authorizes scoped staging, commit, push, and PR creation; it never authorizes merge. Use after apply-issue and before independent pr-audit; reuses an existing PR instead of creating duplicates.
 metadata:
   category: workflow
   stage: review
@@ -33,7 +33,11 @@ Run permitted validations and report skipped checks with reasons. Include a conc
 
 ## Git operations
 
-When authorized, commit only relevant changes following repository conventions and push without force unless explicitly required and safe. If only asked to prepare, do not create/push without authorization.
+Invoking `/prepare-pr` is the owner's standing authorization to complete routine Git operations for the current issue: stage only issue-related files, commit them following repository conventions, push the current feature branch without force, and open the PR against the verified base using the reviewed title and body. Do not ask for a second confirmation for these scoped actions.
+
+Before writing, verify the current branch is not the default branch, confirm the intended base, and identify the exact issue-related files. Inspect the staged diff before committing. Preserve unrelated user changes and never use broad staging such as `git add .`. If file scope, branch, or base cannot be established safely, stop and report the specific blocker rather than asking a generic authorization question.
+
+This authorization does not include merging, releasing, deploying, force-pushing, or changing unrelated files. The owner retains the merge decision. If the user explicitly asks for a prepare-only or review-only run, do not commit, push, or open a PR; return `READY FOR PR` with the prepared title, body, checks, and scope.
 
 ## PR body
 
