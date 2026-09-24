@@ -39,7 +39,7 @@ Invoking `/prepare-pr` authorizes the skill to stage and commit only files for t
 
 After implementation and tests pass, archive the completed OpenSpec change on the feature branch before `/prepare-pr`. The archive and synchronized live specs belong in the same issue PR, avoiding a follow-up archive-only PR. During PR audits, review the approved change under `openspec/changes/archive/` together with live specs.
 
-For milestone execution, invoke `milestone-orchestrator` with a GitHub milestone URL. It builds an evidenced dependency graph, reconstructs issue state from durable artifacts and processes one unblocked issue at a time. Each issue stops for explicit approval of its pinned proposal, then Apply starts in a genuinely new session. A PR proceeds through independent audits and CI on the exact head; the owner decides the merge. The orchestrator runs kaizen after the verified merge. If a fresh implementation session is unavailable, it returns a handoff and stops before Apply.
+For milestone execution, invoke `milestone-orchestrator` **once** with the milestone URL. It inventories all issues, builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It prepares eligible OpenSpec proposals as a batch for one owner approval checkpoint (each exact SHA still needs explicit approval), then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, independent audits and CI. The default is manual merge; an explicit `merge_mode=auto-if-green` opts a specific run into GitHub auto-merge only after all required checks, reviews and branch protections pass. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
 
 Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
@@ -49,7 +49,7 @@ Production implementation does not begin while blocking questions remain or befo
 
 | Skill | Responsibility |
 |---|---|
-| `milestone-orchestrator` | Order milestone issues by evidenced dependencies; coordinate approval, fresh Apply, independent audits, exact-head CI, owner merge and kaizen. |
+| `milestone-orchestrator` | Run one milestone invocation across all eligible issues; batch proposal approvals, dynamically schedule isolated workers, run fresh Apply and independent audits, then manual or explicitly opted-in auto-merge. |
 | `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
 | `issue-audit` | Verify the issue's claims against current code before exploration. |
