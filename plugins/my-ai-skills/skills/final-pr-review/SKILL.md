@@ -10,7 +10,7 @@ metadata:
 
 This is a self-review after fixes, not the independent `final-review` approval. Run `post-pr-audit` on the final head before the owner's merge decision.
 
-Refresh the entire PR, newer comments/reviews/commits, linked issue decisions, OpenSpec and CI. Compare:
+Refresh the entire PR, newer comments/reviews/commits, linked issue decisions, approved OpenSpec artifacts (active or archived), synchronized live specs and CI. Compare:
 
 ```text
 issue + [DECISION] + OpenSpec + final diff + tests + previous findings
