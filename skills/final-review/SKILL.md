@@ -10,7 +10,7 @@ metadata:
 
 Apply Review Freeze. This is not a new implementation review and must not generate feature scope, redesign accepted choices or reopen settled trade-offs.
 
-Refresh the latest PR diff/commits/comments/reviews/CI, linked issue and `[DECISION]` comments, OpenSpec and previous findings. Verify:
+Refresh the latest PR diff/commits/comments/reviews/CI, linked issue and `[DECISION]` comments, approved OpenSpec artifacts (active or archived), synchronized live specs and previous findings. Verify:
 
 - no unresolved valid `[BLOCKER]` or `[MUST FIX]`;
 - prior corrections exist in current code and have appropriate tests;
