@@ -1,6 +1,6 @@
 ---
 name: prepare-pr
-description: Self-review, validate, commit/push when authorized, and prepare or create a traceable GitHub pull request for a completed implementation. Use after apply-issue and before independent pr-audit; reuses an existing PR instead of creating duplicates.
+description: Self-review, validate, and prepare a traceable GitHub pull request for a completed implementation. Invoking this skill authorizes scoped staging, commit, push, and PR creation; it never authorizes merge. Use after apply-issue and before independent pr-audit; reuses an existing PR instead of creating duplicates.
 metadata:
   category: workflow
   stage: review
@@ -12,7 +12,7 @@ Turn completed implementation into a reviewable PR with evidence and no hidden u
 
 ## Establish context
 
-Refresh issue comments/decisions, repository instructions, OpenSpec change, branch status, intended base, unique commits and any existing PR. Do not create from the default branch or duplicate a PR for the same branch.
+Refresh issue comments/decisions, repository instructions, approved OpenSpec artifacts, branch status, intended base, unique commits and any existing PR. OpenSpec closeout must be complete: inspect the archived change and synchronized live specs in the diff. If a completed change is still active, hand back to `apply-issue` for verification/archive before creating the PR. Do not create from the default branch or duplicate a PR for the same branch.
 
 ## Pre-PR self-review
 
@@ -20,7 +20,7 @@ Review the complete diff against:
 
 1. issue acceptance criteria;
 2. latest `[DECISION]` comments;
-3. OpenSpec proposal/spec/design/tasks;
+3. approved OpenSpec proposal/spec/design/tasks, active during implementation or preserved under `openspec/changes/archive/` after closeout, plus synchronized live specs;
 4. project/domain conventions;
 5. backward compatibility and migrations;
 6. public schemas/contracts;
@@ -33,7 +33,11 @@ Run permitted validations and report skipped checks with reasons. Include a conc
 
 ## Git operations
 
-When authorized, commit only relevant changes following repository conventions and push without force unless explicitly required and safe. If only asked to prepare, do not create/push without authorization.
+Invoking `/prepare-pr` is the owner's standing authorization to complete routine Git operations for the current issue: stage only issue-related files, commit them following repository conventions, push the current feature branch without force, and open the PR against the verified base using the reviewed title and body. Do not ask for a second confirmation for these scoped actions.
+
+Before writing, verify the current branch is not the default branch, confirm the intended base, and identify the exact issue-related files. Inspect the staged diff before committing. Preserve unrelated user changes and never use broad staging such as `git add .`. If file scope, branch, or base cannot be established safely, stop and report the specific blocker rather than asking a generic authorization question.
+
+This authorization does not include merging, releasing, deploying, force-pushing, or changing unrelated files. The owner retains the merge decision. If the user explicitly asks for a prepare-only or review-only run, do not commit, push, or open a PR; return `READY FOR PR` with the prepared title, body, checks, and scope.
 
 ## PR body
 

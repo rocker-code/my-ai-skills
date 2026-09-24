@@ -27,7 +27,7 @@ The latest explicit approved decision supersedes older conflicting discussion. D
 7. Run `/opsx-proposal` to create or update OpenSpec proposal/spec/design/tasks.
 8. Record explicit human approval of the exact validated proposal revision. Stop the planning session.
 9. Start a genuinely new implementation session with `apply-issue`; verify approval and durable handoff, then run `/opsx-apply`. ai-memory is supplementary.
-10. Self-review, test and `prepare-pr` with requirement → code → test evidence.
+10. After Apply, complete focused tests and supported OpenSpec implementation verification; strictly validate the active change and archive it on the feature branch after all gates pass. Inspect the archived artifacts and synchronized live specs so they enter the same issue PR. Then self-review and invoke `/prepare-pr` with requirement → code → test evidence. This invocation authorizes staging only issue-scoped files, committing, pushing the feature branch without force, and opening the PR; no second confirmation is needed. Preserve unrelated work. This does not authorize merge, release, deploy or force-push. If the owner explicitly says prepare-only, stop at `READY FOR PR`.
 11. Independently run `pr-audit`, and `architecture-audit` for boundary changes; address valid feedback.
 12. Run `final-pr-review`, `post-pr-audit` and independent `final-review` against the final PR head.
 13. Present READY_TO_MERGE only after required CI on the exact PR head and reviews pass; the owner decides the merge. Verify the merged PR and issue closure, then run `kaizen` before moving to dependent work.

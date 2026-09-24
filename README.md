@@ -26,12 +26,18 @@ issue-audit → refine issue
 → /opsx-proposal
 → explicit human approval of pinned revision
 → new session: apply-issue (/opsx-apply)
-→ prepare-pr (requirement → code → test)
+→ verify implementation, finish tasks, strict validate
+→ archive OpenSpec on feature branch (sync delta specs into live specs)
+→ /prepare-pr (requirement → code → test; scoped commit, push and PR)
 → independent pr-audit + architecture-audit when relevant
 → address-pr-review
 → final-pr-review + post-pr-audit + final-review
 → merge → kaizen
 ```
+
+Invoking `/prepare-pr` authorizes the skill to stage and commit only files for the current issue, push its feature branch without force, and open the PR. It does not authorize merging. Explicitly requesting a prepare-only run keeps the work local.
+
+After implementation and tests pass, archive the completed OpenSpec change on the feature branch before `/prepare-pr`. The archive and synchronized live specs belong in the same issue PR, avoiding a follow-up archive-only PR. During PR audits, review the approved change under `openspec/changes/archive/` together with live specs.
 
 For milestone execution, invoke `milestone-orchestrator` with a GitHub milestone URL. It builds an evidenced dependency graph, reconstructs issue state from durable artifacts and processes one unblocked issue at a time. Each issue stops for explicit approval of its pinned proposal, then Apply starts in a genuinely new session. A PR proceeds through independent audits and CI on the exact head; the owner decides the merge. The orchestrator runs kaizen after the verified merge. If a fresh implementation session is unavailable, it returns a handoff and stops before Apply.
 
