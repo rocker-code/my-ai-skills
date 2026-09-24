@@ -53,7 +53,8 @@ Production implementation does not begin while blocking questions remain or befo
 | `prepare-pr` | Self-review, validate and create/prepare a traceable PR. |
 | `pr-audit` | Independently compare requirements, OpenSpec, code and tests. |
 | `architecture-audit` | Check boundaries and new coupling without requiring LikeC4. |
-| `post-pr-audit` | Verify the final PR head, CI and review findings before merge. |\n| `update-main` | Safely fast-forward the local `main` after merge, preserving uncommitted work. |
+| `post-pr-audit` | Verify the final PR head, CI and review findings before merge. |
+| `update-main` | Safely fast-forward the local `main` after merge, preserving uncommitted work. |
 | `kaizen` | Convert evidenced failures into focused project or process improvements. |
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
 | `final-pr-review` | Executor-side final check before external review. |
