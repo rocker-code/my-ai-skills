@@ -30,7 +30,7 @@ issue-audit → refine issue
 → independent pr-audit + architecture-audit when relevant
 → address-pr-review
 → final-pr-review + post-pr-audit + final-review
-→ merge → kaizen
+→ merge → update-main → kaizen
 ```
 
 For milestone execution, invoke `milestone-orchestrator` with a GitHub milestone URL. It builds an evidenced dependency graph, reconstructs issue state from durable artifacts and processes one unblocked issue at a time. Each issue stops for explicit approval of its pinned proposal, then Apply starts in a genuinely new session. A PR proceeds through independent audits and CI on the exact head; the owner decides the merge. The orchestrator runs kaizen after the verified merge. If a fresh implementation session is unavailable, it returns a handoff and stops before Apply.
@@ -53,7 +53,7 @@ Production implementation does not begin while blocking questions remain or befo
 | `prepare-pr` | Self-review, validate and create/prepare a traceable PR. |
 | `pr-audit` | Independently compare requirements, OpenSpec, code and tests. |
 | `architecture-audit` | Check boundaries and new coupling without requiring LikeC4. |
-| `post-pr-audit` | Verify the final PR head, CI and review findings before merge. |
+| `post-pr-audit` | Verify the final PR head, CI and review findings before merge. |\n| `update-main` | Safely fast-forward the local `main` after merge, preserving uncommitted work. |
 | `kaizen` | Convert evidenced failures into focused project or process improvements. |
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
 | `final-pr-review` | Executor-side final check before external review. |
