@@ -1,48 +1,56 @@
 ---
 name: milestone-orchestrator
-description: Orchestrate a GitHub milestone issue by issue with OpenSpec, separate planning, implementation and verification subagent sessions, durable handoffs, dependency gates and one PR per issue. Use when asked to implement a milestone with subagents.
-metadata:
-  category: workflow
-  methodology: openspec-first
+description: Coordinate a GitHub milestone issue by issue through issue-audit, approved OpenSpec proposals, fresh implementation sessions, independent PR audits, CI and manual merge. Use when asked to execute a milestone with subagents, track dependencies and resume interrupted work.
 ---
 
 # Milestone Orchestrator
 
-Coordinate work; delegate exploration, proposal, implementation and verification. Do not edit production code as the orchestrator. Use the repository's existing `issue-explore`, `issue-ready`, `openspec-workflow`, `implement-issue`, `prepare-pr` and review skills. Read `../../protocol/AI_WORKFLOW.md` and repository instructions before starting.
+Coordinate; do not edit production code as the orchestrator. Read repository instructions and ../../protocol/AI_WORKFLOW.md. Use issue-audit, implement-issue, apply-issue, prepare-pr, pr-audit, architecture-audit when relevant, post-pr-audit, final-review and kaizen. Do not reinterpret a skill's gate.
 
-Input: a GitHub milestone URL (or an unambiguous repository + milestone number). Output: a dependency plan, per-issue state and links to changes/PRs. This skill does not itself grant a runtime the ability to create a fresh session or a subagent. Check those capabilities first. If the runtime cannot create a genuinely isolated implementation session, stop before apply with `BLOCKED — fresh session unavailable` and provide the handoff; never continue in the planner's session or claim isolation.
+Input: a milestone URL or unambiguous repository and milestone number. Output: dependency plan, evidence-backed per-issue ledger, blockers and next action. Calling this skill does not itself create fresh sessions, subagents, worktrees, or GitHub permissions. Check capabilities before making promises. If there is no fresh implementation session, stop before Apply with a durable handoff.
 
-## Inventory and scheduling
+## Inventory and order
 
-1. Fetch the live milestone and all its issues, including open/closed state, comments, linked PRs and latest decisions. Inspect applicable code, OpenSpec changes and repository instructions. Refresh live data at each issue boundary.
-2. Classify each issue: done/merged, existing PR (route to review), in progress (resume), eligible, blocked by decisions, or blocked by dependencies. Identify cross-repository contracts and explicit issue/PR dependencies. Do not infer a business decision from milestone ordering.
-3. Show the execution plan before coding: issue, dependency, existing branch/change/PR, readiness and proposed order. Start with `max_parallel_issues = 1`. Increase concurrency only after explicit user direction and proof of independent code paths/worktrees and dependency safety.
-4. Default to one issue = one OpenSpec change = one branch/worktree = one implementation session = one PR. Reuse existing artifacts and PRs. Do not duplicate them or bundle several issues simply because they share a milestone. If a dependency needs merged code, wait for that merge; an opened PR does not satisfy it.
-5. Check that the worktree's base contains required dependencies. Do not silently stack a dependent PR on an unmerged branch. Surface any base or sequencing decision.
+1. Refresh the milestone, all issues/comments/decisions, linked PRs and their current state, relevant code, repository rules and OpenSpec changes. Reconstruct existing work before starting a new branch or change. Never duplicate a PR.
+2. Build a dependency graph with links to the issue/PR or contract that proves each edge. Classify hard prerequisites (merged backend contract or schema), coordination dependencies and independent work. An open PR does not satisfy a hard prerequisite. Mark undocumented or contradictory edges UNKNOWN; ask for a decision instead of treating issue number or milestone order as a dependency. Detect cycles and block the affected issues.
+3. Show an inventory: issue, evidence for dependencies, current artifact/PR, inferred state, blocker and suggested order. Choose an unblocked issue by approved priority when present; otherwise use impact/risk and a stable issue-number tie-breaker. Recheck the graph when an audit or proposal discovers another dependency. For backend → mobile changes, use contract-handoff before the consumer moves forward.
+4. Start with max_parallel_issues = 1. Each issue has its own OpenSpec change, branch/worktree, planning session, fresh apply session and PR, unless existing compatible artifacts should be resumed. Increase parallelism only with explicit user direction and verified independent dependencies, code paths and isolated worktrees.
 
-GitHub issues, approved comments, OpenSpec artifacts, commits and PRs are durable state. A local progress summary is only a cache. After interruption, reconstruct from these sources before choosing the next transition.
+## Reconstruct state from evidence
 
-## State machine and gates
+GitHub issues/comments, approved decisions, OpenSpec artifacts committed on a branch, PRs, commits and CI on an exact SHA are durable. ai-memory is a useful handoff supplement, never an approval record. Build this ledger afresh after each interruption; a label, conversation summary or the workflow-status helper alone cannot prove a gate.
 
-`PENDING → EXPLORING → PLANNING → READY → IMPLEMENTING → VERIFYING → PR_CREATED → REVIEW → DONE`
+| State | Minimum evidence to enter |
+|---|---|
+| BACKLOG | Open milestone issue with no verified audit. |
+| AUDITED | Current-code issue-audit report linked to issue; unresolved gaps recorded. |
+| EXPLORING | Explore work in progress; latest questions/decisions refreshed. |
+| SPECIFIED | issue-ready passed; proposal/spec/design/tasks validated and pinned to a commit. |
+| AWAITING_APPROVAL | Exact planning SHA and material decisions presented to the owner. |
+| APPROVED | Explicit human approval recorded for that issue and exact planning SHA; no material changes since. |
+| IMPLEMENTING | A genuinely new session verified the approved SHA and started apply-issue. |
+| PR_OPEN | PR at known head SHA with issue/OpenSpec linkage and actual test evidence. |
+| PR_AUDITED | Independent pr-audit findings tied to current PR head; rerun after a material push. |
+| CI_GREEN | Required checks succeeded on the current head SHA, with no pending/failing required jobs. |
+| READY_TO_MERGE | post-pr-audit and final-review pass on current head, feedback resolved, CI green; awaiting owner decision. |
+| MERGED | PR merged and issue closed per repository policy; verify both independently. |
+| KAIZEN_DONE | Merged work reviewed by kaizen; record concrete change or NO PROCESS CHANGE. |
 
-Exceptional states: `NEEDS_INPUT` (blocking question), `NEEDS_REPLAN` (approved contract conflicts with evidence), `BLOCKED` (dependency/tool/permissions), `FAILED` (execution error). A PR is not DONE until repository review/merge rules are satisfied. Do not merge or close issues automatically without the requested workflow's authorization.
+Exceptional states: NEEDS_INPUT (material unresolved decision), NEEDS_REPLAN (approved contract invalidated), BLOCKED (dependency or missing capability), FAILED (execution/check error). Preserve the last verified state and record the exact blocker and next action. A closed issue without evidence of delivered/merged work is not automatically MERGED; an empty or stale check list is not CI_GREEN.
 
-For each eligible issue:
+Maintain a compact ledger after each transition with repository/issue, state, evidence links and SHAs, dependency gate, branch/worktree, spec change/approval, PR head/checks, blocker and next action. Store durable decisions or summaries in existing issue/PR comments or committed artifacts according to repository conventions; do not create a second authoritative database.
 
-1. Allocate or reuse an issue-specific branch/worktree and OpenSpec change. Keep the worktree after planning so its tracked artifacts are available to later sessions.
-2. Spawn a planning subagent. It refreshes the issue and comments, runs the repository's official `/opsx-explore <issue-url>` with `issue-explore`, records material questions as `[QUESTION]`, and stops at `NEEDS_INPUT` if unanswered. After approved `[DECISION]` comments, explore again and pass `issue-ready`. Run `/opsx-proposal` using the repository's OpenSpec version and review the resulting proposal, specs, design and tasks.
-3. Planning gate: verify that `proposal.md`, applicable `specs/`, `design.md` and `tasks.md` exist and agree with the issue, latest decisions, dependency baseline and acceptance criteria. Run `openspec status --change <name>` and the repository's supported OpenSpec validation command; if syntax differs, discover the installed commands and report the actual commands/results. A tooling failure or missing artifact blocks the gate. Obtain proposal approval when required by the user or repository policy.
-4. Commit the planning artifacts to the issue branch so the next session can read the exact version. Capture their commit SHA. End the planning subagent; do not fork its conversation or pass its reasoning.
-5. Spawn a **new implementation session** with no planning conversation. Supply only the handoff fields below. It must read the live issue, repository instructions and the committed OpenSpec artifacts at the pinned commit, then run `/opsx-apply <change-name>` and targeted tests. `implement-issue` governs implementation, but its discovery/proposal checkpoints are already satisfied and must not be repeated without a reason.
-6. End that session. Spawn an independent verification session with the issue, decisions, pinned plan, implementation commit and diff. Run the repository's `/opsx-verify` if supported, review issue ↔ OpenSpec ↔ diff ↔ tests, run relevant checks and report PASS/FAIL/NOT RUN with evidence. Never claim a command ran when unavailable.
-7. On PASS, use `prepare-pr` to create or reuse one PR with issue linkage, OpenSpec change, actual test results and outstanding risks. Then route to independent review. Do not advance a dependent issue past its dependency gate.
+## Per-issue gates
 
-The roles are logical only if the runtime can provide isolated sessions; otherwise stop at the gate. A retry after replan uses a **new** implementation session pinned to the revised artifacts.
+1. Run issue-audit against live code. Route NEEDS REFINEMENT into a question/decision; leave other eligible issues visible. Then run implement-issue: official /opsx-explore, re-explore after material decisions, issue-ready and /opsx-proposal. No production code in the planning session.
+2. Validate the complete OpenSpec change against the issue, architecture and dependency baseline using commands supported by the installed version. Commit the proposal artifacts to the issue branch and capture the planning SHA. Show scope, trade-offs, contracts, risks and verification plan. Stop at AWAITING_APPROVAL until the human explicitly approves this exact revision. Record the approval in a durable issue/PR decision. Changes that materially alter the proposal invalidate that approval.
+3. End planning. Launch a truly separate implementation agent session without its planning transcript (not a fork carrying the same conversation). Supply the compact handoff below. The implementer independently checks the committed SHA, approval and dependency commits, then uses apply-issue and the official /opsx-apply. If the runtime cannot launch that session, return BLOCKED with the handoff; do not implement in the planning session. A replan requires approval and a new apply session.
+4. Run targeted tests and supported OpenSpec verification. prepare-pr creates/reuses a PR with requirement → implementation → test traceability. Use an independent reviewer session for pr-audit, plus architecture-audit when boundaries change. Address valid findings, rerun affected tests and audits on the new head. The implementer's self-review cannot be the sole review.
+5. Run final-pr-review, post-pr-audit and independent final-review on the final head. Require all configured checks green on that same SHA; unknown, skipped when required, stale or pending checks are not green. Move to READY_TO_MERGE and present evidence to the owner. Never merge, enable auto-merge, close the issue or tag/release as a side effect of orchestrating. After the owner merges, verify PR and issue states and run kaizen before scheduling a hard dependent issue.
 
-## Handoff contract
+## Durable handoff
 
-Pass a compact, durable record to the implementation session, without planner transcript, speculative alternatives, or unstated assumptions:
+Use the actual repository paths and commands; do not assume this sample layout:
 
 ```yaml
 repository: owner/name
@@ -52,20 +60,18 @@ branch: issue-123-short-name
 worktree: /absolute/path/to/issue-worktree
 openspec_change: issue-123-short-name
 planning_commit: <sha>
-artifact_paths:
-  - openspec/changes/issue-123-short-name/proposal.md
-  - openspec/changes/issue-123-short-name/specs/
-  - openspec/changes/issue-123-short-name/design.md
-  - openspec/changes/issue-123-short-name/tasks.md
-dependency_commits: [<sha>]
-architecture_constraints: [<document or approved decision link>]
-validation_commands: [<commands established in planning>]
+approved_decision_url: <issue-comment-or-other-durable-record>
+approved_planning_sha: <same-sha>
+artifact_paths: [<actual-proposal-spec-design-task-paths>]
+dependency_commits: [<merged-commit-shas>]
+architecture_constraints: [<AGENTS.md-or-decision-links>]
+validation_commands: [<actual-supported-commands>]
 ```
 
-Paths are examples; resolve the repository's actual OpenSpec layout. Verify that the worktree HEAD contains `planning_commit` and dependency commits before apply. The implementation session must report its implementation SHA, tests and one of `READY FOR VERIFICATION`, `NEEDS_REPLAN`, `BLOCKED`, or `FAILED`.
+Reject a handoff when issue, approval SHA, checked-out tree or merged dependencies disagree. Never pass the planning transcript as the only evidence.
 
-The implementer treats approved artifacts as the contract. If it finds a material issue in behavior, architecture, security, data or scope, it stops affected implementation and returns `NEEDS_REPLAN` with code evidence, affected artifact and proposed change. Send that evidence to a fresh planning pass, revise the issue/decision and artifacts, validate and commit them, then spawn a new implementation session. Small implementation defects can return to an implementation session without changing the contract.
+## Recovery and completion
 
-## Reporting and recovery
+If a session fails, refresh GitHub and Git, inspect partial files and PR state, preserve unrelated changes, then resume at the last verified gate. Rerun only validations invalidated by new changes, but rerun final-head checks after material changes. On a contract conflict, stop affected work, update the issue and spec, request approval again and create a fresh apply session. Never silently skip a blocked issue, start a dependent issue early or claim a failed check passed.
 
-Report a compact ledger after each transition: issue, state, dependency gate, branch/worktree, OpenSpec change and pinned SHA, checks, PR URL, blocker and next action. Never mark a blocked issue as completed or skip it silently. If a session crashes, refresh GitHub and Git before retrying, inspect partial changes, and resume at the last verified gate; do not spawn duplicate PRs or mix unrelated worktrees.
+Return the complete ledger, the issue selected now, dependencies/blocked issues, actual checks and next owner decision. After MERGED, mark KAIZEN_DONE even when kaizen finds no justified process edit. ghpending may inform what needs attention but is optional; GitHub Project remains a product view, not an execution gate.

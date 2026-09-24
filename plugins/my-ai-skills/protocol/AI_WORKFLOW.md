@@ -18,23 +18,27 @@ The latest explicit approved decision supersedes older conflicting discussion. D
 
 ## Required flow
 
-1. Refine the GitHub issue.
+1. Run `issue-audit` against the live issue and current code; refine material gaps.
 2. Run `/opsx-explore` against the issue, all comments, code, tests, docs and current OpenSpec. Do not implement.
 3. Add material ambiguities as `[QUESTION]` and stop.
 4. Record approved answers as `[DECISION]`.
 5. Refresh GitHub and run `/opsx-explore` again after decisions.
 6. Pass `issue-ready`.
 7. Run `/opsx-proposal` to create or update OpenSpec proposal/spec/design/tasks.
-8. Review the proposal before apply for medium or large changes.
-9. Run `/opsx-apply` only after the proposal review gate passes.
-10. Self-review, test and prepare the PR.
-11. Independently review against issue + decisions + OpenSpec + diff + architecture.
-12. Address valid feedback and run `final-pr-review`.
-13. Perform `final-review`; merge after `FINAL REVIEW: APPROVED`.
+8. Record explicit human approval of the exact validated proposal revision. Stop the planning session.
+9. Start a genuinely new implementation session with `apply-issue`; verify approval and durable handoff, then run `/opsx-apply`. ai-memory is supplementary.
+10. Self-review, test and `prepare-pr` with requirement → code → test evidence.
+11. Independently run `pr-audit`, and `architecture-audit` for boundary changes; address valid feedback.
+12. Run `final-pr-review`, `post-pr-audit` and independent `final-review` against the final PR head.
+13. Present READY_TO_MERGE only after required CI on the exact PR head and reviews pass; the owner decides the merge. Verify the merged PR and issue closure, then run `kaizen` before moving to dependent work.
+
+## Milestone execution
+
+Use `milestone-orchestrator` to inventory the live milestone, build evidenced dependency edges and select one unblocked issue. Its ledger is derived from GitHub issues, decisions, committed OpenSpec artifacts, PRs and exact-head CI; ai-memory is supplementary. Default to one issue at a time, with isolated planning, fresh apply and independent review sessions. Unknown dependencies and missing approvals block the affected issue. Manual owner merge is the last gate; release remains a separate request. After merge, verify issue closure and run kaizen before moving to hard dependents. ghpending is optional triage, and GitHub Project is a product view.
 
 ## Checkpoint reuse
 
-Agents resume rather than restart:
+Agents resume rather than restart. An approval gate and a fresh-session gate cannot be waived by checkpoint reuse:
 
 - reuse a matching validated OpenSpec change;
 - treat existing `[DECISION]` comments as authoritative;

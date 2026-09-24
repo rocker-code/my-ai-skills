@@ -18,22 +18,22 @@ DISCOVERY → READY → IMPLEMENTING → REVIEW → DONE
 For repositories with OpenSpec:
 
 ```text
-refine issue
+issue-audit → refine issue
 → /opsx-explore (using the issue-explore protocol)
 → [QUESTION] / [DECISION] loop when needed
 → /opsx-explore again after decisions
 → issue-ready
 → /opsx-proposal
-→ proposal review
-→ /opsx-apply
-→ prepare-pr
-→ independent review
+→ explicit human approval of pinned revision
+→ new session: apply-issue (/opsx-apply)
+→ prepare-pr (requirement → code → test)
+→ independent pr-audit + architecture-audit when relevant
 → address-pr-review
-→ final-pr-review + final-review
-→ merge
+→ final-pr-review + post-pr-audit + final-review
+→ merge → kaizen
 ```
 
-For milestone execution, invoke `milestone-orchestrator` with the GitHub milestone URL. It runs one issue at a time by default, pins validated OpenSpec artifacts to a commit, then starts `apply` in a genuinely new session. If isolated sessions are unavailable, it stops with a handoff instead of applying in the planning context.
+For milestone execution, invoke `milestone-orchestrator` with a GitHub milestone URL. It builds an evidenced dependency graph, reconstructs issue state from durable artifacts and processes one unblocked issue at a time. Each issue stops for explicit approval of its pinned proposal, then Apply starts in a genuinely new session. A PR proceeds through independent audits and CI on the exact head; the owner decides the merge. The orchestrator runs kaizen after the verified merge. If a fresh implementation session is unavailable, it returns a handoff and stops before Apply.
 
 Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
@@ -43,12 +43,18 @@ Production implementation does not begin while blocking questions remain or befo
 
 | Skill | Responsibility |
 |---|---|
-| `milestone-orchestrator` | Order milestone issues by dependency and hand each issue across isolated OpenSpec planning, apply and verification sessions. |
+| `milestone-orchestrator` | Order milestone issues by evidenced dependencies; coordinate approval, fresh Apply, independent audits, exact-head CI, owner merge and kaizen. |
 | `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
-| `implement-issue` | Resume from completed checkpoints, run OpenSpec-first implementation and leave work ready for a PR. |
+| `issue-audit` | Verify the issue's claims against current code before exploration. |
+| `implement-issue` | Audit, explore and propose; stop at human approval without implementing. |
+| `apply-issue` | Implement an approved OpenSpec revision in a new session. |
 | `openspec-workflow` | Maintain proposal, specs, design and tasks as a pre-code contract. |
 | `prepare-pr` | Self-review, validate and create/prepare a traceable PR. |
+| `pr-audit` | Independently compare requirements, OpenSpec, code and tests. |
+| `architecture-audit` | Check boundaries and new coupling without requiring LikeC4. |
+| `post-pr-audit` | Verify the final PR head, CI and review findings before merge. |
+| `kaizen` | Convert evidenced failures into focused project or process improvements. |
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
 | `final-pr-review` | Executor-side final check before external review. |
 | `pr-status` | Read-only classification of the current PR state and next action. |
@@ -122,12 +128,20 @@ Install selected skills:
 
 ```bash
 npx skills add rocker-code/my-ai-skills \
+  --skill milestone-orchestrator \
+  --skill issue-audit \
   --skill issue-explore \
   --skill issue-ready \
   --skill implement-issue \
+  --skill apply-issue \
   --skill prepare-pr \
+  --skill pr-audit \
+  --skill architecture-audit \
   --skill address-pr-review \
   --skill final-pr-review \
+  --skill final-review \
+  --skill post-pr-audit \
+  --skill kaizen \
   -a opencode
 ```
 
@@ -158,6 +172,15 @@ The root `skills/`, `protocol/`, `templates/`, and helper scripts remain the can
 ```bash
 scripts/sync-plugin
 ```
+
+## Milestone operating rules
+
+- Invoke with a milestone URL. The first output is a dependency inventory and the next unblocked issue, including evidence for the proposed order.
+- Status is reconstructed from issue decisions, committed OpenSpec revision, PR head, reviews and CI. A helper's inferred status or ai-memory summary cannot grant an approval.
+- Keep one issue active by default; parallel work needs explicit authorization and verified isolation. Resolve dependency cycles and unclear links before work on affected issues.
+- The owner approves the exact proposal SHA and later decides the merge. The orchestrator does not merge, close issues, release or deploy.
+- If a new implementation session is unavailable, keep the committed plan and return a copyable handoff. A failed or interrupted run resumes at its last verified gate.
+- A merged PR and closed issue are verified before kaizen. ghpending is optional for daily triage; GitHub Project is a product planning view.
 
 ## Recommended cross-repository flow
 
