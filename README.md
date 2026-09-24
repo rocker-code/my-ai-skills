@@ -141,6 +141,7 @@ npx skills add rocker-code/my-ai-skills \
   --skill final-pr-review \
   --skill final-review \
   --skill post-pr-audit \
+  --skill update-main \
   --skill kaizen \
   -a opencode
 ```
