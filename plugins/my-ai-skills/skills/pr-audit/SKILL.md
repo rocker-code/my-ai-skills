@@ -5,7 +5,7 @@ description: Independently audit a GitHub PR against the live issue, approved Op
 
 # PR Audit
 
-Use a separate reviewer session from implementation when available. Fetch live issue and decisions, pinned OpenSpec revision, PR head/base and full diff, relevant unchanged code, CI results, dependencies and review threads. Refresh after each new push. Read `../../protocol/REVIEW_POLICY.md` and applicable domain skills.
+Use a separate reviewer session from implementation when available. Fetch live issue and decisions, pinned OpenSpec revision, PR head/base and full diff, relevant unchanged code, CI results, dependencies and review threads. Locate the approved OpenSpec change at its active path or under `openspec/changes/archive/`; when archived, inspect both preserved artifacts and synchronized live specs. Confirm archive did not alter approved behavior. Refresh after each new push. Read `../../protocol/REVIEW_POLICY.md` and applicable domain skills.
 
 Build a compact matrix for each acceptance criterion and OpenSpec requirement: requirement → code path → proving test/check → status (met, partial, missing, unverified). Verify tests actually cover behavior, including failures, authorization, retries and compatibility where relevant. Check unexpected scope, migrations, data integrity, GraphQL/API contract, concurrency, security, dependency changes, obsolete code and unresolved feedback. Invoke `architecture-audit` when boundaries or dependencies are touched.
 
