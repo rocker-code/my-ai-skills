@@ -14,7 +14,7 @@ Use `pr-audit` for the traceability and evidence pass; this skill manages the in
 
 ## Refresh and correlate
 
-Read live PR metadata/diff/commits, issue and all comments, `[DECISION]` entries, active OpenSpec artifacts, repository instructions/architecture, relevant unchanged code, tests, CI and earlier review threads.
+Read live PR metadata/diff/commits, issue and all comments, `[DECISION]` entries, approved OpenSpec artifacts (active or archived) and synchronized live specs, repository instructions/architecture, relevant unchanged code, tests, CI and earlier review threads.
 
 Load the applicable domain checklist such as `magento-review` or `expo-mobile-review`.
 
