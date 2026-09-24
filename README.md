@@ -33,7 +33,7 @@ issue-audit → refine issue
 → merge → kaizen
 ```
 
-The existing `milestone-orchestrator` is scheduled for a separate redesign; use the single-issue flow below until it is aligned with these gates. For milestone execution after that redesign, invoke `milestone-orchestrator` with the GitHub milestone URL. It runs one issue at a time by default, pins validated OpenSpec artifacts to a commit, then starts `apply` in a genuinely new session. If isolated sessions are unavailable, it stops with a handoff instead of applying in the planning context.
+For milestone execution, invoke `milestone-orchestrator` with a GitHub milestone URL. It builds an evidenced dependency graph, reconstructs issue state from durable artifacts and processes one unblocked issue at a time. Each issue stops for explicit approval of its pinned proposal, then Apply starts in a genuinely new session. A PR proceeds through independent audits and CI on the exact head; the owner decides the merge. The orchestrator runs kaizen after the verified merge. If a fresh implementation session is unavailable, it returns a handoff and stops before Apply.
 
 Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
@@ -43,7 +43,7 @@ Production implementation does not begin while blocking questions remain or befo
 
 | Skill | Responsibility |
 |---|---|
-| `milestone-orchestrator` | Order milestone issues by dependency and hand each issue across isolated OpenSpec planning, apply and verification sessions. |
+| `milestone-orchestrator` | Order milestone issues by evidenced dependencies; coordinate approval, fresh Apply, independent audits, exact-head CI, owner merge and kaizen. |
 | `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
 | `issue-audit` | Verify the issue's claims against current code before exploration. |
@@ -128,12 +128,20 @@ Install selected skills:
 
 ```bash
 npx skills add rocker-code/my-ai-skills \
+  --skill milestone-orchestrator \
+  --skill issue-audit \
   --skill issue-explore \
   --skill issue-ready \
   --skill implement-issue \
+  --skill apply-issue \
   --skill prepare-pr \
+  --skill pr-audit \
+  --skill architecture-audit \
   --skill address-pr-review \
   --skill final-pr-review \
+  --skill final-review \
+  --skill post-pr-audit \
+  --skill kaizen \
   -a opencode
 ```
 
@@ -164,6 +172,15 @@ The root `skills/`, `protocol/`, `templates/`, and helper scripts remain the can
 ```bash
 scripts/sync-plugin
 ```
+
+## Milestone operating rules
+
+- Invoke with a milestone URL. The first output is a dependency inventory and the next unblocked issue, including evidence for the proposed order.
+- Status is reconstructed from issue decisions, committed OpenSpec revision, PR head, reviews and CI. A helper's inferred status or ai-memory summary cannot grant an approval.
+- Keep one issue active by default; parallel work needs explicit authorization and verified isolation. Resolve dependency cycles and unclear links before work on affected issues.
+- The owner approves the exact proposal SHA and later decides the merge. The orchestrator does not merge, close issues, release or deploy.
+- If a new implementation session is unavailable, keep the committed plan and return a copyable handoff. A failed or interrupted run resumes at its last verified gate.
+- A merged PR and closed issue are verified before kaizen. ghpending is optional for daily triage; GitHub Project is a product planning view.
 
 ## Recommended cross-repository flow
 

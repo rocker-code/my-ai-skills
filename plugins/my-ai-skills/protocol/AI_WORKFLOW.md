@@ -30,7 +30,11 @@ The latest explicit approved decision supersedes older conflicting discussion. D
 10. Self-review, test and `prepare-pr` with requirement → code → test evidence.
 11. Independently run `pr-audit`, and `architecture-audit` for boundary changes; address valid feedback.
 12. Run `final-pr-review`, `post-pr-audit` and independent `final-review` against the final PR head.
-13. Merge only after required CI, reviews and owner's decision; run `kaizen` after merge.
+13. Present READY_TO_MERGE only after required CI on the exact PR head and reviews pass; the owner decides the merge. Verify the merged PR and issue closure, then run `kaizen` before moving to dependent work.
+
+## Milestone execution
+
+Use `milestone-orchestrator` to inventory the live milestone, build evidenced dependency edges and select one unblocked issue. Its ledger is derived from GitHub issues, decisions, committed OpenSpec artifacts, PRs and exact-head CI; ai-memory is supplementary. Default to one issue at a time, with isolated planning, fresh apply and independent review sessions. Unknown dependencies and missing approvals block the affected issue. Manual owner merge is the last gate; release remains a separate request. After merge, verify issue closure and run kaizen before moving to hard dependents. ghpending is optional triage, and GitHub Project is a product view.
 
 ## Checkpoint reuse
 
