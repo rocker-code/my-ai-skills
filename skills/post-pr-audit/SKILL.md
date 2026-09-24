@@ -5,7 +5,7 @@ description: Verify the final PR state after review fixes and immediately before
 
 # Post PR Audit
 
-Fetch the current PR head SHA, full final diff, issue and decisions, pinned OpenSpec revision, CI/check conclusions, approvals and unresolved review threads. Recheck after a push or CI rerun; previous audit results do not cover a newer head.
+Fetch the current PR head SHA, full final diff, issue and decisions, pinned OpenSpec revision, CI/check conclusions, approvals and unresolved review threads. Locate OpenSpec artifacts in the active change path or `openspec/changes/archive/`; when archived, also verify synchronized live specs and confirm the preserved change still matches the approved revision. Recheck after a push or CI rerun; previous audit results do not cover a newer head.
 
 Check acceptance criteria and OpenSpec requirement → implementation → test evidence; valid blocker/must-fix findings resolved; required checks green for this head; migration/contract/architecture/documentation obligations satisfied; obsolete code, temporary workarounds and debt assessed. Distinguish missing required evidence from checks that are not configured. Link a follow-up issue for accepted non-blocking debt when appropriate. Never replace repository branch protection or the owner's merge decision.
 
