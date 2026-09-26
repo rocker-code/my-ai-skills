@@ -1,25 +1,30 @@
 ---
 name: milestone-orchestrator
-description: Run a GitHub milestone as one supervised workflow: audit and plan eligible issues, batch proposal approvals, schedule isolated implementation/review agents according to dependencies and conflicts, and continue to ready-to-merge or an explicit blocker. Use when asked to execute or resume a milestone.
+description: Run a GitHub repository work queue or a specific milestone as one supervised workflow: audit eligible issues and PRs, batch OpenSpec proposal approvals, schedule isolated workers by dependencies, and continue through verified merge or an explicit blocker. Use for "cuide da fila deste projeto", "cuide da fila deste projeto, sem merges", or "cuide deste milestone".
 ---
 
-# Milestone Orchestrator
+# Work Queue and Milestone Orchestrator
 
-Run the milestone, not just the next issue. Read repository instructions and ../../protocol/AI_WORKFLOW.md. Coordinate issue-audit, implement-issue, apply-issue, prepare-pr, pr-audit, architecture-audit when relevant, github-resolution and kaizen. Delegate per-PR correction, final independent audit and merge to github-resolution; this skill owns the milestone dependency scheduler. Each worker must follow its skill gates.
+Run the selected queue, not just the next issue. Read repository instructions and ../../protocol/AI_WORKFLOW.md. Coordinate issue-audit, implement-issue, apply-issue, prepare-pr, pr-audit, architecture-audit when relevant, github-resolution and kaizen. Delegate per-PR correction, final independent audit and merge to github-resolution; this skill owns the milestone dependency scheduler. Each worker must follow its skill gates.
 
 ## Invocation and operating modes
 
-Input: a milestone URL (or unambiguous repository and milestone number), plus optional `merge_mode=manual` or `merge_mode=auto-if-green`. A single invocation should carry eligible work through the workflow and resume from durable state after interruption; never ask the owner to invoke a skill separately for each issue.
+Accept these natural requests without requiring a mode parameter:
+- "Cuide da fila deste projeto": use the single repository established by the current checkout/remote or explicit conversation context; inventory all open PRs and open issues in that repository.
+- "Cuide da fila deste projeto, sem merges": use the same queue with `merge_mode=manual` for this run.
+- "Cuide deste milestone": use the supplied milestone URL or a unique milestone identified by the current request/context. Do not guess among multiple candidates; request only the missing milestone identifier when needed.
 
-Default merge mode is `auto-if-green` under the owner's standing instruction for this workflow. A direct "do not merge" or `merge_mode=manual` request overrides it for the selected run. The default authorizes merge only after all configured repository requirements and this workflow's review gates pass. Apply this only to the milestone/run selected by the owner. It never bypasses branch protection, required human reviews, required checks, or repository policy. If the merge method or eligibility cannot be established, stop that PR at `READY_TO_MERGE`. Never force-push, release, deploy, or tag as a side effect.
+A repository URL/name is sufficient if there is no local checkout. Never silently widen a named milestone to the whole repository or another repository's queue. A single invocation carries eligible work through the workflow and resumes from durable state after interruption; never ask the owner to invoke another skill for each issue.
+
+Default merge mode is `auto-if-green` under the owner's standing instruction for this workflow. A direct "do not merge" or `merge_mode=manual` request overrides it for the selected run. The default authorizes merge only after all configured repository requirements and this workflow's review gates pass. Apply this only to the selected repository queue or milestone run. It never bypasses branch protection, required human reviews, required checks, or repository policy. If the merge method or eligibility cannot be established, stop that PR at `READY_TO_MERGE`. Never force-push, release, deploy, or tag as a side effect.
 
 At startup, inspect available orchestration capabilities: ability to create fresh child sessions (OpenCode Task/subagent or equivalent), isolated worktrees, GitHub reads/writes, and repository-local test commands. Do not claim automation that the runtime cannot perform. If child sessions are unavailable, still inventory and prepare a consolidated plan/proposal batch, then report the precise missing capability; do not silently run Apply in the planning context. Use the available number of workers as a resource ceiling, not a fixed issue-count policy.
 
 ## One-run workflow
 
-1. Refresh the live milestone, issues/comments/decisions, linked PRs, current code, OpenSpec changes, repository rules, and CI. Reconstruct existing progress and resume it; never duplicate a branch, OpenSpec change, or PR.
+1. Resolve the unique repository and selected scope. Refresh all open issues and PRs in the project queue, or only the selected milestone's issues and their linked PRs; read comments/decisions, current code, OpenSpec changes, repository rules and CI. Skip drafts from implementation with reasons; audit eligible existing PRs before scheduling new issue work. Reconstruct existing progress and resume it; never duplicate a branch, OpenSpec change, or PR.
 2. Build a dependency DAG with evidence links. Classify hard dependencies, coordination dependencies, likely file/module conflicts, and independent work. An open PR does not satisfy a hard dependency. Unknown edges block only affected issues; detect cycles. For backend-to-mobile work, require contract-handoff before the consumer begins.
-3. Create a ledger for every issue. Preserve existing approvals, branches, proposals, implementations, PRs, reviews, and checks when their SHAs still match.
+3. Create a ledger for every issue and pre-existing PR in scope. Preserve existing approvals, branches, proposals, implementations, PRs, reviews, and checks when their SHAs still match.
 4. Schedule planning for all currently eligible issues. Use fresh planning child sessions and isolated worktrees when available. Independent issues may be planned in parallel, up to runtime capacity. Run issue-audit, then implement-issue (/opsx-explore, issue-ready, /opsx-proposal). Do not implement production code during planning. Record material questions as [QUESTION], mark that issue NEEDS_INPUT, and continue with unrelated eligible issues.
 5. Once the current planning wave is complete, present one consolidated proposal review to the owner: issue, scope, trade-offs, dependencies, verification plan, artifact paths, exact immutable planning SHA, and questions/blockers. This is one approval checkpoint for the batch; approval must still identify each proposal SHA. The owner may approve all listed proposals or a subset. Do not start Apply for an unapproved proposal. Persist each explicit approval as a durable [DECISION] on its issue (or an accepted durable repository record). Any material proposal change invalidates that issue's approval and returns it to planning.
 6. After the batch approval, schedule approved issues automatically. For each issue, start a genuinely fresh implementation child session with a compact durable handoff, verify the exact approved SHA and merged dependency commits, and run apply-issue plus official /opsx-apply. One issue gets one branch/worktree and one PR. Do not send the planning transcript as the only handoff.
@@ -44,7 +49,7 @@ GitHub issues/comments, approved decision records, committed OpenSpec artifacts,
 
 | State | Minimum evidence |
 |---|---|
-| BACKLOG | Open milestone issue with no verified audit. |
+| BACKLOG | Open issue or PR in the selected queue with no verified audit. |
 | AUDITED | Current-code issue-audit report linked to the issue. |
 | EXPLORING | Planning worker is exploring and refreshing questions/decisions. |
 | SPECIFIED | issue-ready passed; proposal/spec/design/tasks validated and pinned to a commit. |
@@ -61,7 +66,7 @@ GitHub issues/comments, approved decision records, committed OpenSpec artifacts,
 
 Exceptional states: NEEDS_INPUT, NEEDS_REPLAN, BLOCKED, FAILED, RESOURCE_QUEUED. Preserve the last verified state, exact blocker, evidence and next automatic action. A closed issue without verified delivered/merged work is not MERGED; empty or stale checks are not CI_GREEN.
 
-Record repository/milestone, issue, state, evidence links and SHAs, dependency gate, branch/worktree, spec approval, PR head/checks, merge mode, blocker and next action. Use existing issue/PR records and committed artifacts; do not create a competing source of truth.
+Record repository and selected scope (milestone when present), issue/PR, state, evidence links and SHAs, dependency gate, branch/worktree, spec approval, PR head/checks, merge mode, blocker and next action. Use existing issue/PR records and committed artifacts; do not create a competing source of truth.
 
 ## Per-issue invariants
 
@@ -79,7 +84,8 @@ Use actual repository paths and commands, not this sample layout:
 
 ```yaml
 repository: owner/name
-milestone_url: https://github.com/owner/name/milestone/27
+scope: milestone
+milestone_url: https://github.com/owner/name/milestone/27 # omit for scope: project_queue
 issue_url: https://github.com/owner/name/issues/123
 base_ref: main
 branch: issue-123-short-name
@@ -101,4 +107,4 @@ Reject a handoff when issue, approval SHA, worktree tree, or merged dependencies
 
 On interruption, refresh GitHub and Git, inspect partial work and PR state, preserve unrelated changes, and resume from the last verified gate. Do not rerun valid work. If a session fails, retry that issue within the configured attempt/resource limits; after repeated failure, mark FAILED and continue unrelated eligible issues. Never silently skip a blocked issue or claim a failed check passed.
 
-Return a compact dashboard of all issues, dependency graph/order, active workers, states, evidence/SHAs, PRs/checks, blockers, merge mode, and the next automatic action. In manual mode, report all `READY_TO_MERGE` items together. In auto-if-green mode, report which PRs are queued for GitHub auto-merge and why any could not be queued. ghpending may aid triage; GitHub Project is a product view, not an execution gate.
+Return a compact dashboard of the selected queue's issues and PRs, dependency graph/order, active workers, states, evidence/SHAs, checks, blockers, merge mode, and the next automatic action. In manual mode, report all `READY_TO_MERGE` items together. In auto-if-green mode, report which PRs are queued for GitHub auto-merge and why any could not be queued. ghpending may aid triage; GitHub Project is a product view, not an execution gate.
