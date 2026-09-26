@@ -1,6 +1,6 @@
 ---
 name: milestone-orchestrator
-description: Run a GitHub repository work queue or a specific milestone as one supervised workflow: audit eligible issues and PRs, batch OpenSpec proposal approvals, schedule isolated workers by dependencies, and continue through verified merge or an explicit blocker. Use for "cuide da fila deste projeto", "cuide da fila deste projeto, sem merges", or "cuide deste milestone".
+description: Run a GitHub repository work queue or a specific milestone as one supervised workflow that audits eligible issues and PRs, batches OpenSpec proposal approvals, schedules isolated workers by dependencies, and continues through verified merge or an explicit blocker. Use for "cuide da fila deste projeto", "cuide da fila deste projeto, sem merges", or "cuide deste milestone".
 ---
 
 # Work Queue and Milestone Orchestrator
