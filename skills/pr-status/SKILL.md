@@ -19,10 +19,10 @@ Classify as one:
 - `CI BLOCKED`;
 - `SPEC BLOCKED`;
 - `READY FOR REVIEW`;
-- `READY FOR FINAL REVIEW`;
+- `READY FOR FINAL AUDIT`;
 - `READY TO MERGE`;
 - `UNKNOWN / INSUFFICIENT EVIDENCE`.
 
 Output PR/title, state, issue, OpenSpec, CI, actionable/obsolete review counts, branch status, concrete blockers and exactly one dominant next action.
 
-This skill is read-only. Do not edit, resolve threads, push, merge or change issue/PR state unless separately and explicitly requested; route to the appropriate workflow.
+This skill is read-only. Do not edit, resolve threads, push, merge or change issue/PR state unless separately and explicitly requested; route correction to `github-resolution` and final eligibility to `post-pr-audit`.
