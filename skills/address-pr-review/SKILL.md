@@ -30,7 +30,7 @@ Fix all valid blockers and must-fix items. Normally fix valid should-fix items w
 
 ## OpenSpec rule
 
-Implementation defects that preserve the contract change only code/tests. Behavioral or architectural review changes must first update and validate the approved OpenSpec contract using the repository's official commands, record a new material decision and obtain approval of the revised revision before continuing `/opsx-apply`; then update code/tests. An archived change must be handled under the repository's documented amendment procedure, without silently rewriting an approved contract.
+Implementation defects that preserve the contract change only code/tests. Behavioral or architectural review changes must follow `openspec-workflow`: record the material decision, revise and validate the approved contract, obtain approval of the new exact revision and only then resume `/opsx-apply` and code/tests. Do not silently rewrite an archived approved contract.
 
 ## Correct and validate
 
