@@ -1,91 +1,24 @@
 ---
 name: openspec-workflow
-description: Operate OpenSpec as the mandatory behavioral and architectural contract before implementation in repositories that use it. Use to create, resume, reconcile, review, validate and apply proposal/spec/design/tasks without replacing issue discovery or retrofitting specs after code.
-metadata:
-  category: workflow
-  methodology: openspec-first
+description: Enforce the required OpenSpec contract across planning, implementation and PR correction. Use from implement-issue, apply-issue and address-pr-review for official proposal, exact-revision approval, Apply, verification, strict validation and archive; do not bypass OpenSpec or replace its CLI commands.
 ---
 
-# OpenSpec Workflow
+# OpenSpec Contract
 
-OpenSpec remains the bridge between approved GitHub intent and implementation reality. This skill orchestrates the repository's actual CLI commands, including `/opsx-explore`; it does not replace or emulate them with a parallel format.
+Own the OpenSpec-specific commands and evidence gates. `implement-issue` owns issue planning, `apply-issue` owns implementation in a fresh session, and `github-resolution` owns PR corrections. This skill defines the contract each of them must enforce, rather than acting as another end-to-end issue orchestrator.
 
-## Required order
+## Locate and plan
 
-```text
-/opsx-explore (with the issue-explore protocol)
-→ questions/decisions when needed
-→ /opsx-explore again after decisions
-→ issue-ready
-→ /opsx-proposal (plus specs/design/tasks as required)
-→ proposal review
-→ /opsx-apply
-→ implementation verification + focused tests
-→ strict validation of the active change
-→ archive on the feature branch (sync approved delta specs)
-→ inspect archived artifacts + live specs
-```
+Read the live issue, approved `[DECISION]` comments and repository instructions. Find an existing OpenSpec change by issue, branch and capability before creating one; do not duplicate it. Run the installed official `/opsx-explore` with `issue-explore` before proposal, and again after material decisions. Require `issue-ready` before the official `/opsx-proposal`.
 
-Never default to requirement → code → retrospective spec.
+Build proposal, specifications/scenarios, design and tasks against the actual repository: behavior and errors, public contracts, authorization, state, data/migrations, concurrency, compatibility, tests, cleanup and boundaries. Validate the proposal with the installed official OpenSpec command. Record its exact revision/commit and obtain explicit human approval for that revision before any production implementation. An approval for an older materially different revision does not carry forward.
 
-## Detect and resume
+## Apply and close out
 
-Read repository instructions and locate an existing change by issue number, branch, capability and domain terminology before creating one. Resume an applicable change. Do not duplicate proposal/spec/design/tasks already present and coherent.
+Run the official `/opsx-apply` only in the fresh implementation session after approval. Verify the approved scenarios against code and proving tests. Complete tasks and run the installed official implementation verifier when available; otherwise record an explicit requirement/scenario → code → test matrix and mark automated verification NOT RUN. Run strict validation on the active change using the installed version's supported command.
 
-If OpenSpec is genuinely absent, do not introduce it automatically; return control to the calling workflow with an explicit implementation plan requirement.
+Archive on the issue feature branch only after implementation, tests, verification and strict validation pass. Use the installed official archive command, sync only the approved delta into live `openspec/specs/`, and inspect both archived artifacts and synchronized live specs in the same PR. Do not create a separate archive-only PR or defer routine archival until after merge.
 
-## Artifacts
+If new evidence or PR feedback requires material behavior, data, authorization, architecture, concurrency or public-contract changes, stop affected implementation, update issue decisions and proposal/spec/design/tasks, validate and obtain approval of the revised exact revision before resuming. Implementation-only fixes that preserve the approved contract need code/tests, not speculative spec edits. Never silently rewrite archived approved behavior.
 
-Use the repository's conventions and official commands.
-
-- **Proposal:** why, outcome, boundaries, dependencies, compatibility.
-- **Specification/scenarios:** observable behavior, validation, errors, state transitions, contracts, invariants, concurrency and edge cases.
-- **Design:** ownership, native mechanisms reused, interfaces, data changes, transactions/locks, migration, compatibility, removals and trade-offs.
-- **Tasks:** traceable production, schema/data, tests, cleanup, docs/config and validation work.
-
-For cross-repository behavior, read and use [the integration contract template](../../templates/github/integration-contract.md) or its project equivalent.
-
-## Proposal checkpoint
-
-Before apply, summarize and review:
-
-- files/modules or capabilities affected;
-- public contract changes and backward compatibility;
-- existing mechanisms reused;
-- data/migration implications;
-- test plan;
-- risks and explicit non-goals.
-
-For medium/large changes, stop for proposal approval when the user or repository workflow requires supervision. Correcting a proposal is cheaper than correcting generated implementation.
-
-## Readiness gate
-
-Before production code:
-
-```text
-[ ] issue-ready passed
-[ ] matching OpenSpec change is selected
-[ ] behavior/scenarios cover acceptance criteria
-[ ] architectural decisions are explicit where material
-[ ] tasks are concrete and traceable
-[ ] contradictions are reconciled
-[ ] official OpenSpec validation passes, or a reported manual review explains why it could not run
-```
-
-## Implementation verification and archive
-
-After `/opsx-apply`, finish every approved task and validate that implementation behavior matches the approved scenarios before PR preparation:
-
-1. Run the installed official OpenSpec implementation verifier (for example, `/opsx-verify <change>`) when available. Also map each acceptance criterion/scenario to code and a proving test; report unavailable automated checks as NOT RUN.
-2. Run strict validation on the active change using the command supported by the installed OpenSpec version.
-3. On the issue feature branch, run the installed official archive command (for example, `/opsx-archive <change>` or its documented CLI equivalent). Archive only after tasks, tests, verification and strict validation pass. Sync only the already approved delta specs.
-4. Inspect the diff: retain the completed change under `openspec/changes/archive/`, and reflect its approved delta in the corresponding live `openspec/specs/` files. Keep both in the same feature PR; do not create a separate archive PR.
-5. If archive reveals a material behavior/design change beyond the approved delta, stop and obtain renewed approval. If the installed tool lacks an implementation verifier, keep an explicit evidence matrix instead of inventing a command.
-
-Archive is a post-implementation, pre-PR closeout in this workflow. Do not defer routine archival until after merge. If tests, tasks or verification are incomplete, keep the change active and report the blocker.
-
-If evidence requires a behavioral or architectural change, stop the affected implementation, update and validate OpenSpec, adjust tasks, then resume. Implementation-only fixes do not create artificial spec churn.
-
-## Output
-
-Report change reused/created, artifacts touched, commands/validation actually run, unresolved discrepancies and either `READY FOR APPLY` or `NOT READY FOR APPLY — <reason>`.
+If OpenSpec is missing or an official command is unavailable, report the precise blocker; do not replace an absent contract with an agent-generated retrospective spec or invent commands. Read the installed CLI's help and repository setup to recover supported usage.
