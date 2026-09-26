@@ -15,7 +15,7 @@ GitHub is the source of truth. Material decisions must end up in an issue, PR, a
 DISCOVERY → READY → IMPLEMENTING → REVIEW → DONE
 ```
 
-For repositories with OpenSpec:
+OpenSpec is required in this workflow:
 
 ```text
 issue-audit → refine issue
@@ -30,16 +30,15 @@ issue-audit → refine issue
 → archive OpenSpec on feature branch (sync delta specs into live specs)
 → /prepare-pr (requirement → code → test; scoped commit, push and PR)
 → independent pr-audit + architecture-audit when relevant
-→ address-pr-review
-→ final-pr-review → independent final-review → post-pr-audit
-→ merge → kaizen
+→ github-resolution (address-pr-review → refreshed audit → independent post-pr-audit)
+→ authorized merge → kaizen
 ```
 
 Invoking `/prepare-pr` authorizes the skill to stage and commit only files for the current issue, push its feature branch without force, and open the PR. It does not authorize merging. Explicitly requesting a prepare-only run keeps the work local.
 
 After implementation and tests pass, archive the completed OpenSpec change on the feature branch before `/prepare-pr`. The archive and synchronized live specs belong in the same issue PR, avoiding a follow-up archive-only PR. During PR audits, review the approved change under `openspec/changes/archive/` together with live specs.
 
-For milestone execution, invoke `milestone-orchestrator` **once** with the milestone URL. It inventories all issues, builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It prepares eligible OpenSpec proposals as a batch for one owner approval checkpoint (each exact SHA still needs explicit approval), then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, independent audits and CI. The default is manual merge; an explicit `merge_mode=auto-if-green` opts a specific run into GitHub auto-merge only after all required checks, reviews and branch protections pass. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
+For milestone execution, invoke `milestone-orchestrator` **once** with the milestone URL. It inventories all issues, builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It prepares eligible OpenSpec proposals as a batch for one owner approval checkpoint (each exact SHA still needs explicit approval), then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, github-resolution, independent audits and CI. The default is manual merge; an explicit `merge_mode=auto-if-green` opts a specific run into GitHub auto-merge only after all required checks, reviews and branch protections pass. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
 
 Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
@@ -55,15 +54,15 @@ Production implementation does not begin while blocking questions remain or befo
 | `issue-audit` | Verify the issue's claims against current code before exploration. |
 | `implement-issue` | Audit, explore and propose; stop at human approval without implementing. |
 | `apply-issue` | Implement an approved OpenSpec revision in a new session. |
-| `openspec-workflow` | Maintain proposal, specs, design and tasks as a pre-code contract. |
+| `openspec-workflow` | Enforce official OpenSpec commands, exact-revision approval, verification, strict validation and archive for planning and implementation. |
 | `prepare-pr` | Self-review, validate and create/prepare a traceable PR. |
-| `pr-audit` | Independently compare requirements, OpenSpec, code and tests. |
+| `pr-audit` | Independently verify PR claims, trust boundary, requirements, OpenSpec, code and tests; publish review findings when authorized. |
 | `architecture-audit` | Check boundaries and new coupling without requiring LikeC4. |
-| `post-pr-audit` | Last merge eligibility gate after independent final-review; optionally merge when explicitly authorized and green. |
+| `github-resolution` | Execute audited issues/PRs, correct valid findings and pass each PR to independent final audit and authorized merge. |
+| `post-pr-audit` | Independent final review and last merge eligibility gate; optionally merge when explicitly authorized and green. |
 | `update-main` | Safely fast-forward the local `main` after merge, preserving uncommitted work. |
 | `kaizen` | Convert evidenced failures into focused project or process improvements. |
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
-| `final-pr-review` | Executor-side final check before external review. |
 | `pr-status` | Read-only classification of the current PR state and next action. |
 | `contract-handoff` | Freeze an implemented backend contract and validate/update the consumer issue. |
 
@@ -73,8 +72,6 @@ Production implementation does not begin while blocking questions remain or befo
 |---|---|
 | `refine-issue` | Convert an idea or draft issue into an implementable specification. |
 | `resolve-questions` | Analyze `[QUESTION]` comments and record evidence-backed `[DECISION]` responses. |
-| `review-pr` | Compare issue, decisions, OpenSpec, architecture, diff and tests with review severities. |
-| `final-review` | Enforce Review Freeze: no scope expansion, only merge-blocking validation. |
 
 ### Domain checks
 
@@ -142,13 +139,13 @@ npx skills add rocker-code/my-ai-skills \
   --skill issue-ready \
   --skill implement-issue \
   --skill apply-issue \
+  --skill openspec-workflow \
   --skill sonar \
   --skill prepare-pr \
   --skill pr-audit \
   --skill architecture-audit \
   --skill address-pr-review \
-  --skill final-pr-review \
-  --skill final-review \
+  --skill github-resolution \
   --skill post-pr-audit \
   --skill update-main \
   --skill kaizen \
