@@ -37,7 +37,7 @@ Invoking `/prepare-pr` is the owner's standing authorization to complete routine
 
 Before writing, verify the current branch is not the default branch, confirm the intended base, and identify the exact issue-related files. Inspect the staged diff before committing. Preserve unrelated user changes and never use broad staging such as `git add .`. If file scope, branch, or base cannot be established safely, stop and report the specific blocker rather than asking a generic authorization question.
 
-This authorization does not include merging, releasing, deploying, force-pushing, or changing unrelated files. The owner retains the merge decision. If the user explicitly asks for a prepare-only or review-only run, do not commit, push, or open a PR; return `READY FOR PR` with the prepared title, body, checks, and scope.
+This authorization does not include merging, releasing, deploying, force-pushing, or changing unrelated files. The audited resolution workflow owns the final merge gate and uses the owner's standing auto-if-green preference unless the direct request opts out. If the user explicitly asks for a prepare-only or review-only run, do not commit, push, or open a PR; return `READY FOR PR` with the prepared title, body, checks, and scope.
 
 ## PR body
 
