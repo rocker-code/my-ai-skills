@@ -13,7 +13,7 @@ For each relevant local or hosted gate, record its run/commit SHA, status and sc
 
 ## Merge mode
 
-Default to `merge_mode=manual` and report `READY TO MERGE` for the owner. Accept merge authorization only from the direct request or a verified handoff from `github-resolution` for the same PR/run. Treat an explicit request to "merge when green" or `merge_mode=auto-if-green` for this PR/run as authorization to complete the merge without another confirmation. Never infer this mode from a green CI result alone. Do not merge a draft, wrong-target PR, unresolved blocking review, unapproved changed scope, failed or unknown required gate. Verify the target branch and permitted merge method from repository policy; do not bypass protections or use administrator privileges to override them.
+Default to `merge_mode=auto-if-green` under the owner's standing instruction for the PR/run being reviewed, whether invoked directly or through a verified `github-resolution` handoff. A direct "do not merge" or `merge_mode=manual` request overrides this default and returns `READY TO MERGE` for the owner. The default authorizes completion without another confirmation only after every gate below passes. Never infer merge eligibility from a green CI result alone. Do not merge a draft, wrong-target PR, unresolved blocking review, unapproved changed scope, failed or unknown required gate. Verify the target branch and permitted merge method from repository policy; do not bypass protections or use administrator privileges to override them.
 
 After this independent final review passes on the exact current head, all non-CI gates clear and the final audit finds no blocker:
 
