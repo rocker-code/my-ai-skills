@@ -30,13 +30,13 @@ Fix all valid blockers and must-fix items. Normally fix valid should-fix items w
 
 ## OpenSpec rule
 
-Implementation defects that preserve the contract change only code/tests. Behavioral or architectural review changes must first update and validate the active OpenSpec change via `openspec-workflow`, then update code/tests.
+Implementation defects that preserve the contract change only code/tests. Behavioral or architectural review changes must first update and validate the approved OpenSpec contract using the repository's official commands, record a new material decision and obtain approval of the revised revision before continuing `/opsx-apply`; then update code/tests. An archived change must be handled under the repository's documented amendment procedure, without silently rewriting an approved contract.
 
 ## Correct and validate
 
 Trace the full affected path, use existing/native mechanisms, implement the smallest coherent correction, remove code made obsolete by the fix and add/update relevant tests. Run targeted checks first, then broader permitted validation.
 
-Review the resulting diff against every finding, issue, decisions and OpenSpec. Do not expand the PR into unrelated improvements.
+Perform the executor's final self-review of the resulting full diff against every finding, issue, decisions, archived/live OpenSpec, tests and CI. Check introduced dead code, weakened assertions, secrets, debug output and unrelated churn. Do not expand the PR into unrelated improvements or reopen accepted trade-offs. This self-review is not the independent `post-pr-audit` approval.
 
 ## Push and respond
 
