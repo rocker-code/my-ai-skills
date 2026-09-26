@@ -1,6 +1,6 @@
 ---
 name: milestone-orchestrator
-description: Run a GitHub repository work queue or a specific milestone as one supervised workflow that audits eligible issues and PRs, batches OpenSpec proposal approvals, schedules isolated workers by dependencies, and continues through verified merge or an explicit blocker. Use for "cuide da fila deste projeto", "cuide da fila deste projeto, sem merges", or "cuide deste milestone".
+description: Run a GitHub repository work queue or a specific milestone as one supervised workflow that audits eligible issues and PRs, batches OpenSpec proposal reviews, schedules isolated workers by dependencies, and continues through verified merge or an explicit blocker. Use for "cuide da fila deste projeto", "cuide da fila deste projeto, sem merges", or "cuide deste milestone".
 ---
 
 # Work Queue and Milestone Orchestrator
@@ -24,12 +24,12 @@ At startup, inspect available orchestration capabilities: ability to create fres
 
 1. Resolve the unique repository and selected scope. Refresh all open issues and PRs in the project queue, or only the selected milestone's issues and their linked PRs; read comments/decisions, current code, OpenSpec changes, repository rules and CI. Skip drafts from implementation with reasons; audit eligible existing PRs before scheduling new issue work. Reconstruct existing progress and resume it; never duplicate a branch, OpenSpec change, or PR.
 2. Build a dependency DAG with evidence links. Classify hard dependencies, coordination dependencies, likely file/module conflicts, and independent work. An open PR does not satisfy a hard dependency. Unknown edges block only affected issues; detect cycles. For backend-to-mobile work, require contract-handoff before the consumer begins.
-3. Create a ledger for every issue and pre-existing PR in scope. Preserve existing approvals, branches, proposals, implementations, PRs, reviews, and checks when their SHAs still match.
+3. Create a ledger for every issue and pre-existing PR in scope. Preserve existing decisions, validated proposal revisions, branches, implementations, PRs, reviews, and checks when their SHAs still match.
 4. Schedule planning for all currently eligible issues. Use fresh planning child sessions and isolated worktrees when available. Independent issues may be planned in parallel, up to runtime capacity. Run issue-audit, then implement-issue (/opsx-explore, issue-ready, /opsx-proposal). Do not implement production code during planning. Record material questions as [QUESTION], mark that issue NEEDS_INPUT, and continue with unrelated eligible issues.
-5. Once the current planning wave is complete, present one consolidated proposal review to the owner: issue, scope, trade-offs, dependencies, verification plan, artifact paths, exact immutable planning SHA, and questions/blockers. This is one approval checkpoint for the batch; approval must still identify each proposal SHA. The owner may approve all listed proposals or a subset. Do not start Apply for an unapproved proposal. Persist each explicit approval as a durable [DECISION] on its issue (or an accepted durable repository record). Any material proposal change invalidates that issue's approval and returns it to planning.
-6. After the batch approval, schedule approved issues automatically. For each issue, start a genuinely fresh implementation child session with a compact durable handoff, verify the exact approved SHA and merged dependency commits, and run apply-issue plus official /opsx-apply. One issue gets one branch/worktree and one PR. Do not send the planning transcript as the only handoff.
+5. Review every proposal against the issue, latest [DECISION] comments, current code, architecture, requirements, tests, dependencies and OpenSpec scenarios. Run official validation; use an independent planning reviewer for material boundaries when available and record the exact immutable proposal SHA plus review evidence. Publish a consolidated progress summary without waiting for a routine owner approval. Questions that require a new product or architecture decision mark only affected issues NEEDS_INPUT; failed validation returns them to planning. A material proposal change invalidates the prior review and must be reviewed again.
+6. Schedule validated, decision-complete proposals automatically. For each issue, start a genuinely fresh implementation child session with a compact durable handoff, verify the exact reviewed proposal SHA, validation evidence and merged dependency commits, and run apply-issue plus official /opsx-apply. One issue gets one branch/worktree and one PR. Do not send the planning transcript as the only handoff.
 7. Parallelize implementation only when all hard dependencies are merged, tasks are independent, expected code paths do not conflict, and each worker has an isolated worktree and fresh session. Determine concurrency from the dependency DAG, overlap risk, available agent/session capacity, CI resources, and repository limits. Serialize likely overlapping edits. Re-evaluate after each audit/diff; if a conflict appears, stop/reschedule the affected work safely. Never exceed runtime capacity or start dependent work early.
-8. Each implementer runs focused tests and supported OpenSpec verification, completes approved tasks, strictly validates and archives the approved change on its feature branch, inspects archived artifacts and synchronized live specs, and invokes prepare-pr. Invoking prepare-pr authorizes only the scoped commit, non-force push, and PR creation described by that skill.
+8. Each implementer runs focused tests and supported OpenSpec verification, completes validated tasks, strictly validates and archives the validated change on its feature branch, inspects archived artifacts and synchronized live specs, and invokes prepare-pr. Invoking prepare-pr authorizes only the scoped commit, non-force push, and PR creation described by that skill.
 9. Run independent pr-audit and architecture-audit when relevant in fresh reviewer sessions. Hand each audited PR to github-resolution with the verified issue/proposal SHA and this run's merge mode. That skill coordinates address-pr-review corrections, refreshed audit, independent post-pr-audit and exact-head CI. While PRs wait for checks/reviews, schedule other eligible issues; do not schedule hard dependents until their prerequisite PR is merged.
 10. With `merge_mode=manual`, collect the per-PR `READY_TO_MERGE` results for the owner. With the default `merge_mode=auto-if-green`, let github-resolution/post-pr-audit perform or queue the eligible merge; verify actual merge and issue closure before running kaizen or scheduling hard dependents. If GitHub cannot enforce applicable gates or any signal is unknown/stale, report that PR's blocker.
 11. Continue the scheduler until all issues are merged/kaizen-complete, blocked on owner input/dependencies, or the runtime reaches an explicit capability/resource limit. Do not stop after one issue merely because it is the first in milestone order.
@@ -45,7 +45,7 @@ At startup, inspect available orchestration capabilities: ability to create fres
 
 ## Evidence ledger
 
-GitHub issues/comments, approved decision records, committed OpenSpec artifacts, PRs, commits, review results, and checks on exact SHAs are durable. ai-memory is useful for handoff but is never an approval record. Build the ledger from live evidence after every interruption; a label, chat summary, or workflow-status heuristic cannot prove a gate.
+GitHub issues/comments, approved product decision records, committed OpenSpec artifacts, PRs, commits, review results, and checks on exact SHAs are durable. ai-memory is useful for handoff but is never a proposal validation or decision record. Build the ledger from live evidence after every interruption; a label, chat summary, or workflow-status heuristic cannot prove a gate.
 
 | State | Minimum evidence |
 |---|---|
@@ -53,9 +53,9 @@ GitHub issues/comments, approved decision records, committed OpenSpec artifacts,
 | AUDITED | Current-code issue-audit report linked to the issue. |
 | EXPLORING | Planning worker is exploring and refreshing questions/decisions. |
 | SPECIFIED | issue-ready passed; proposal/spec/design/tasks validated and pinned to a commit. |
-| AWAITING_APPROVAL | Exact planning SHA and material decisions shown in the batch review. |
-| APPROVED | Explicit durable human approval for that issue and exact planning SHA; no material changes since. |
-| IMPLEMENTING | Fresh child session verified the approved SHA and began apply-issue. |
+| PLAN_REVIEW | Exact proposal SHA undergoing traceability and official validation. |
+| PLAN_VALIDATED | Exact proposal SHA, review evidence and official validation recorded; no unresolved material decision. |
+| IMPLEMENTING | Fresh child session verified the validated proposal SHA and began apply-issue. |
 | PR_OPEN | PR at known head SHA with issue linkage, test evidence, and archived/synchronized OpenSpec when applicable. |
 | PR_AUDITED | Independent audits tied to current PR head; rerun after material push. |
 | CI_GREEN | Required checks succeeded on current head with no pending/failing required jobs. |
@@ -66,16 +66,16 @@ GitHub issues/comments, approved decision records, committed OpenSpec artifacts,
 
 Exceptional states: NEEDS_INPUT, NEEDS_REPLAN, BLOCKED, FAILED, RESOURCE_QUEUED. Preserve the last verified state, exact blocker, evidence and next automatic action. A closed issue without verified delivered/merged work is not MERGED; empty or stale checks are not CI_GREEN.
 
-Record repository and selected scope (milestone when present), issue/PR, state, evidence links and SHAs, dependency gate, branch/worktree, spec approval, PR head/checks, merge mode, blocker and next action. Use existing issue/PR records and committed artifacts; do not create a competing source of truth.
+Record repository and selected scope (milestone when present), issue/PR, state, evidence links and SHAs, dependency gate, branch/worktree, proposal revision/review evidence, PR head/checks, merge mode, blocker and next action. Use existing issue/PR records and committed artifacts; do not create a competing source of truth.
 
 ## Per-issue invariants
 
-- No implementation before the exact OpenSpec proposal revision is approved.
-- Material behavior, data, authorization, architecture, public-contract, concurrency, or compatibility changes require a replan and renewed approval.
-- One issue = one branch/worktree, one approved OpenSpec change, one PR, unless resuming compatible existing artifacts.
+- No implementation before the exact OpenSpec proposal revision is reviewed, officially validated and pinned.
+- Material behavior, data, authorization, architecture, public-contract, concurrency, or compatibility changes require a new plan review and validation; seek the owner when a new decision cannot be derived from existing decisions and project policy.
+- One issue = one branch/worktree, one validated OpenSpec change, one PR, unless resuming compatible existing artifacts.
 - Preserve unrelated local work; never use broad staging such as `git add .`.
 - Re-run only checks invalidated by a change, but always run final-head audits and required checks after a material push.
-- Never merge when the final head is unknown, CI is pending/failing, review findings remain, required human approvals are missing, or repository rules disallow it.
+- Never merge when the final head is unknown, CI is pending/failing, review findings remain, required repository human reviews are missing, or repository rules disallow it.
 - Use the owner's standing auto-if-green instruction by default for the selected run; never merge after an explicit manual-mode or no-merge instruction.
 
 ## Durable handoff
@@ -92,8 +92,10 @@ branch: issue-123-short-name
 worktree: /absolute/path/to/issue-worktree
 openspec_change: issue-123-short-name
 planning_commit: <sha>
-approved_decision_url: <issue-comment-or-other-durable-record>
-approved_planning_sha: <same-sha>
+decision_urls: [<applicable-issue-decisions-if-any>]
+validated_proposal_sha: <planning-commit-sha>
+proposal_review_evidence: <durable-review-record>
+openspec_validation: <exact-command-and-result>
 artifact_paths: [<proposal-spec-design-task-paths>]
 dependency_commits: [<merged-commit-shas>]
 architecture_constraints: [<repository-instructions-or-decision-links>]
@@ -101,7 +103,7 @@ validation_commands: [<actual-supported-commands>]
 merge_mode: auto-if-green
 ```
 
-Reject a handoff when issue, approval SHA, worktree tree, or merged dependencies disagree. Never pass the planning transcript as the only evidence.
+Reject a handoff when issue, validated proposal SHA, review/validation evidence, worktree tree, or merged dependencies disagree. Never pass the planning transcript as the only evidence.
 
 ## Recovery and output
 
