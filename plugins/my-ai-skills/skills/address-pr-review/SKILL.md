@@ -44,4 +44,4 @@ When authorized by the workflow, commit/push to the same branch without force. R
 
 ## Completion
 
-Report counts by classification, changes, OpenSpec impact, actual checks, remaining material items and branch/push state. End with `READY FOR FINAL PR REVIEW` or `NOT READY — <reason>`.
+Report counts by classification, changes, OpenSpec impact, actual checks, remaining material items and branch/push state. End with `READY FOR INDEPENDENT POST PR AUDIT` or `NOT READY — <reason>`.
