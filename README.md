@@ -38,7 +38,7 @@ Invoking `/prepare-pr` authorizes the skill to stage and commit only files for t
 
 After implementation and tests pass, archive the completed OpenSpec change on the feature branch before `/prepare-pr`. The archive and synchronized live specs belong in the same issue PR, avoiding a follow-up archive-only PR. During PR audits, review the approved change under `openspec/changes/archive/` together with live specs.
 
-For milestone execution, invoke `milestone-orchestrator` **once** with the milestone URL. It inventories all issues, builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It prepares eligible OpenSpec proposals as a batch for one owner approval checkpoint (each exact SHA still needs explicit approval), then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, github-resolution, independent audits and CI. The default is merge when green for the selected run, only after all required checks, reviews and branch protections pass; "do not merge" or `merge_mode=manual` overrides it. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
+Start with **"Cuide da fila deste projeto"** for the current repository, **"Cuide da fila deste projeto, sem merges"** to opt out of merging, or **"Cuide deste milestone: URL"** to limit the scope. `milestone-orchestrator` runs once for the selected queue. It inventories all issues, builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It prepares eligible OpenSpec proposals as a batch for one owner approval checkpoint (each exact SHA still needs explicit approval), then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, github-resolution, independent audits and CI. The default is merge when green for the selected run, only after all required checks, reviews and branch protections pass; "do not merge" or `merge_mode=manual` overrides it. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
 
 Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
@@ -48,7 +48,7 @@ Production implementation does not begin while blocking questions remain or befo
 
 | Skill | Responsibility |
 |---|---|
-| `milestone-orchestrator` | Run one milestone invocation across all eligible issues; batch proposal approvals, dynamically schedule isolated workers, run fresh Apply and independent audits, then manual or explicitly opted-in auto-merge. |
+| `milestone-orchestrator` | Run the current repository queue or a selected milestone; batch OpenSpec approvals, schedule isolated workers and resolve eligible PRs with merge when green by default. |
 | `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
 | `issue-audit` | Verify the issue's claims against current code before exploration. |
@@ -182,7 +182,7 @@ scripts/sync-plugin
 
 ## Milestone operating rules
 
-- Invoke with a milestone URL. The first output is a dependency inventory and the next unblocked issue, including evidence for the proposed order.
+- Invoke with the current repository queue or an identifiable milestone. The first output is a dependency inventory and the next unblocked work, including evidence for the proposed order.
 - Status is reconstructed from issue decisions, committed OpenSpec revision, PR head, reviews and CI. A helper's inferred status or ai-memory summary cannot grant an approval.
 - Schedule independent work by dependency and conflict risk, with isolated sessions/worktrees; queue hard dependents until prerequisites merge. Resolve dependency cycles and unclear links before work on affected issues.
 - The owner approves the exact proposal SHA. Merge when green is the default for the selected run after final review and required gates; "do not merge" or `merge_mode=manual` opts out. The orchestrator does not release or deploy.
