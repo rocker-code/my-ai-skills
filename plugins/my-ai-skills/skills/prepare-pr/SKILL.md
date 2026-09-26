@@ -12,7 +12,7 @@ Turn completed implementation into a reviewable PR with evidence and no hidden u
 
 ## Establish context
 
-Refresh issue comments/decisions, repository instructions, approved OpenSpec artifacts, branch status, intended base, unique commits and any existing PR. OpenSpec closeout must be complete: inspect the archived change and synchronized live specs in the diff. If a completed change is still active, hand back to `apply-issue` for verification/archive before creating the PR. Do not create from the default branch or duplicate a PR for the same branch.
+Refresh issue comments/decisions, repository instructions, validated OpenSpec artifacts, branch status, intended base, unique commits and any existing PR. OpenSpec closeout must be complete: inspect the archived change and synchronized live specs in the diff. If a completed change is still active, hand back to `apply-issue` for verification/archive before creating the PR. Do not create from the default branch or duplicate a PR for the same branch.
 
 ## Pre-PR self-review
 
@@ -20,14 +20,14 @@ Review the complete diff against:
 
 1. issue acceptance criteria;
 2. latest `[DECISION]` comments;
-3. approved OpenSpec proposal/spec/design/tasks, active during implementation or preserved under `openspec/changes/archive/` after closeout, plus synchronized live specs;
+3. pinned, validated OpenSpec proposal/spec/design/tasks, active during implementation or preserved under `openspec/changes/archive/` after closeout, plus synchronized live specs;
 4. project/domain conventions;
 5. backward compatibility and migrations;
 6. public schemas/contracts;
 7. requirement → code → test traceability and required tests;
 8. obsolete/dead code from the change.
 
-Detect unrelated files, formatting churn, debug output, secrets, generated/local files, weakened tests and unapproved behavior. Fix in-scope defects before PR creation; preserve unrelated user work.
+Detect unrelated files, formatting churn, debug output, secrets, generated/local files, weakened tests and behavior outside the validated contract. Fix in-scope defects before PR creation; preserve unrelated user work.
 
 Run permitted validations and report skipped checks with reasons. Include a concise requirement → implementation → test matrix in the PR description; mark unverified items explicitly. Hand off the opened PR to an independent pr-audit and architecture-audit where boundaries changed.
 
