@@ -1,6 +1,6 @@
 ---
 name: pr-audit
-description: Independently audit a GitHub PR against the live issue, approved OpenSpec, repository constraints, implementation and tests. Use after a PR opens or changes substantially; verify the trust boundary, exact commit, claims, safe test evidence and actionable findings without editing code; optionally publish precise review comments when requested.
+description: Independently audit a GitHub PR against the live issue, validated OpenSpec, repository constraints, implementation and tests. Use after a PR opens or changes substantially; verify the trust boundary, exact commit, claims, safe test evidence and actionable findings without editing code; optionally publish precise review comments when requested.
 ---
 
 # PR Audit
@@ -9,7 +9,7 @@ Use a separate reviewer session from implementation when available. Read `../../
 
 ## Pin the review
 
-Read the live issue and decisions, approved OpenSpec change (active or under `openspec/changes/archive/`), synchronized live specs, PR metadata, base and head commit SHAs, full diff, relevant unchanged callers, CI, dependencies and review threads. Record both SHAs and the target branch. Inspect the diff against the pinned base before checking out or running the PR. If the head or base changes, identify invalidated evidence and repeat affected checks. Skip drafts or demonstrably unfinished PRs with a reason; a recent commit alone does not make a PR unfinished. Preserve unrelated local work.
+Read the live issue and decisions, validated OpenSpec change (active or under `openspec/changes/archive/`), synchronized live specs, PR metadata, base and head commit SHAs, full diff, relevant unchanged callers, CI, dependencies and review threads. Record both SHAs and the target branch. Inspect the diff against the pinned base before checking out or running the PR. If the head or base changes, identify invalidated evidence and repeat affected checks. Skip drafts or demonstrably unfinished PRs with a reason; a recent commit alone does not make a PR unfinished. Preserve unrelated local work.
 
 Build a concise claim ledger for material statements such as "fixes issue", "backwards compatible", "tests pass" and "no security impact": claim → independent code/spec/test/check evidence → confirmed, partial, unsupported or unverified. A PR body and its linked issue do not independently corroborate each other. When feasible, demonstrate a claimed regression test fails on base and passes on head; otherwise state the narrower evidence actually obtained.
 
