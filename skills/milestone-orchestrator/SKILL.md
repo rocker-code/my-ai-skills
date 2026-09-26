@@ -11,7 +11,7 @@ Run the milestone, not just the next issue. Read repository instructions and ../
 
 Input: a milestone URL (or unambiguous repository and milestone number), plus optional `merge_mode=manual` or `merge_mode=auto-if-green`. A single invocation should carry eligible work through the workflow and resume from durable state after interruption; never ask the owner to invoke a skill separately for each issue.
 
-Default merge mode is `manual`. `auto-if-green` is an explicit per-run authorization to enable GitHub auto-merge only after all configured repository requirements and this workflow's review gates pass. Use it only for the milestone/run named by the owner. It never bypasses branch protection, required human reviews, required checks, or repository policy. If the merge method or eligibility cannot be established, stop that PR at `READY_TO_MERGE`. Never force-push, release, deploy, or tag as a side effect.
+Default merge mode is `auto-if-green` under the owner's standing instruction for this workflow. A direct "do not merge" or `merge_mode=manual` request overrides it for the selected run. The default authorizes merge only after all configured repository requirements and this workflow's review gates pass. Apply this only to the milestone/run selected by the owner. It never bypasses branch protection, required human reviews, required checks, or repository policy. If the merge method or eligibility cannot be established, stop that PR at `READY_TO_MERGE`. Never force-push, release, deploy, or tag as a side effect.
 
 At startup, inspect available orchestration capabilities: ability to create fresh child sessions (OpenCode Task/subagent or equivalent), isolated worktrees, GitHub reads/writes, and repository-local test commands. Do not claim automation that the runtime cannot perform. If child sessions are unavailable, still inventory and prepare a consolidated plan/proposal batch, then report the precise missing capability; do not silently run Apply in the planning context. Use the available number of workers as a resource ceiling, not a fixed issue-count policy.
 
@@ -26,7 +26,7 @@ At startup, inspect available orchestration capabilities: ability to create fres
 7. Parallelize implementation only when all hard dependencies are merged, tasks are independent, expected code paths do not conflict, and each worker has an isolated worktree and fresh session. Determine concurrency from the dependency DAG, overlap risk, available agent/session capacity, CI resources, and repository limits. Serialize likely overlapping edits. Re-evaluate after each audit/diff; if a conflict appears, stop/reschedule the affected work safely. Never exceed runtime capacity or start dependent work early.
 8. Each implementer runs focused tests and supported OpenSpec verification, completes approved tasks, strictly validates and archives the approved change on its feature branch, inspects archived artifacts and synchronized live specs, and invokes prepare-pr. Invoking prepare-pr authorizes only the scoped commit, non-force push, and PR creation described by that skill.
 9. Run independent pr-audit and architecture-audit when relevant in fresh reviewer sessions. Hand each audited PR to github-resolution with the verified issue/proposal SHA and this run's merge mode. That skill coordinates address-pr-review corrections, refreshed audit, independent post-pr-audit and exact-head CI. While PRs wait for checks/reviews, schedule other eligible issues; do not schedule hard dependents until their prerequisite PR is merged.
-10. With `merge_mode=manual`, collect the per-PR `READY_TO_MERGE` results for the owner. With explicit `merge_mode=auto-if-green`, let github-resolution/post-pr-audit perform or queue the eligible merge; verify actual merge and issue closure before running kaizen or scheduling hard dependents. If GitHub cannot enforce applicable gates or any signal is unknown/stale, report that PR's blocker.
+10. With `merge_mode=manual`, collect the per-PR `READY_TO_MERGE` results for the owner. With the default `merge_mode=auto-if-green`, let github-resolution/post-pr-audit perform or queue the eligible merge; verify actual merge and issue closure before running kaizen or scheduling hard dependents. If GitHub cannot enforce applicable gates or any signal is unknown/stale, report that PR's blocker.
 11. Continue the scheduler until all issues are merged/kaizen-complete, blocked on owner input/dependencies, or the runtime reaches an explicit capability/resource limit. Do not stop after one issue merely because it is the first in milestone order.
 
 ## Dynamic scheduling rules
@@ -55,7 +55,7 @@ GitHub issues/comments, approved decision records, committed OpenSpec artifacts,
 | PR_AUDITED | Independent audits tied to current PR head; rerun after material push. |
 | CI_GREEN | Required checks succeeded on current head with no pending/failing required jobs. |
 | READY_TO_MERGE | Final audits pass and CI is green; awaiting owner merge in manual mode. |
-| AUTO_MERGE_ENABLED | Explicit auto-if-green mode was requested and GitHub auto-merge is enabled without bypassing protections. |
+| AUTO_MERGE_ENABLED | Auto-if-green mode applies and GitHub auto-merge is enabled without bypassing protections. |
 | MERGED | PR merged and issue closure verified independently. |
 | KAIZEN_DONE | Merged work reviewed by kaizen; record a concrete improvement or NO PROCESS CHANGE. |
 
@@ -71,7 +71,7 @@ Record repository/milestone, issue, state, evidence links and SHAs, dependency g
 - Preserve unrelated local work; never use broad staging such as `git add .`.
 - Re-run only checks invalidated by a change, but always run final-head audits and required checks after a material push.
 - Never merge when the final head is unknown, CI is pending/failing, review findings remain, required human approvals are missing, or repository rules disallow it.
-- Never auto-merge unless the owner explicitly selected `merge_mode=auto-if-green` for this run.
+- Use the owner's standing auto-if-green instruction by default for the selected run; never merge after an explicit manual-mode or no-merge instruction.
 
 ## Durable handoff
 
@@ -92,7 +92,7 @@ artifact_paths: [<proposal-spec-design-task-paths>]
 dependency_commits: [<merged-commit-shas>]
 architecture_constraints: [<repository-instructions-or-decision-links>]
 validation_commands: [<actual-supported-commands>]
-merge_mode: manual
+merge_mode: auto-if-green
 ```
 
 Reject a handoff when issue, approval SHA, worktree tree, or merged dependencies disagree. Never pass the planning transcript as the only evidence.
