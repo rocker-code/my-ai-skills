@@ -24,7 +24,8 @@ issue-audit → refine issue
 → /opsx-explore again after decisions
 → issue-ready
 → /opsx-proposal
-→ explicit human approval of pinned revision
+→ agent review + official validation of pinned revision
+→ owner decision only for unresolved material questions
 → new session: apply-issue (/opsx-apply)
 → verify implementation, finish tasks, strict validate
 → archive OpenSpec on feature branch (sync delta specs into live specs)
@@ -36,9 +37,9 @@ issue-audit → refine issue
 
 Invoking `/prepare-pr` authorizes the skill to stage and commit only files for the current issue, push its feature branch without force, and open the PR. It does not authorize merging. Explicitly requesting a prepare-only run keeps the work local.
 
-After implementation and tests pass, archive the completed OpenSpec change on the feature branch before `/prepare-pr`. The archive and synchronized live specs belong in the same issue PR, avoiding a follow-up archive-only PR. During PR audits, review the approved change under `openspec/changes/archive/` together with live specs.
+After implementation and tests pass, archive the completed OpenSpec change on the feature branch before `/prepare-pr`. The archive and synchronized live specs belong in the same issue PR, avoiding a follow-up archive-only PR. During PR audits, review the validated change under `openspec/changes/archive/` together with live specs.
 
-Start with **"Cuide da fila deste projeto"** for the current repository, **"Cuide da fila deste projeto, sem merges"** to opt out of merging, or **"Cuide deste milestone: URL"** to limit the scope. `milestone-orchestrator` runs once for the selected queue. It inventories all issues, builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It prepares eligible OpenSpec proposals as a batch for one owner approval checkpoint (each exact SHA still needs explicit approval), then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, github-resolution, independent audits and CI. The default is merge when green for the selected run, only after all required checks, reviews and branch protections pass; "do not merge" or `merge_mode=manual` overrides it. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
+Start with **"Cuide da fila deste projeto"** for the current repository, **"Cuide da fila deste projeto, sem merges"** to opt out of merging, or **"Cuide deste milestone: URL"** to limit the scope. `milestone-orchestrator` runs once for the selected queue. It inventories all issues, builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It reviews each eligible OpenSpec proposal against the issue and current code, validates its exact SHA without a routine owner approval checkpoint, then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, github-resolution, independent audits and CI. The default is merge when green for the selected run, only after all required checks, reviews and branch protections pass; "do not merge" or `merge_mode=manual` overrides it. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
 
 Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
@@ -48,18 +49,18 @@ Production implementation does not begin while blocking questions remain or befo
 
 | Skill | Responsibility |
 |---|---|
-| `milestone-orchestrator` | Run the current repository queue or a selected milestone; batch OpenSpec approvals, schedule isolated workers and resolve eligible PRs with merge when green by default. |
+| `milestone-orchestrator` | Run the current repository queue or a selected milestone; review and validate pinned OpenSpec proposals, schedule isolated workers and merge eligible PRs when green by default. |
 | `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
 | `issue-audit` | Verify the issue's claims against current code before exploration. |
-| `implement-issue` | Audit, explore and propose; stop at human approval without implementing. |
-| `apply-issue` | Implement an approved OpenSpec revision in a new session. |
-| `openspec-workflow` | Enforce official OpenSpec commands, exact-revision approval, verification, strict validation and archive for planning and implementation. |
+| `implement-issue` | Audit, explore, propose and validate the exact OpenSpec revision; hand off automatically unless a material decision is unresolved. |
+| `apply-issue` | Implement the pinned validated OpenSpec revision in a new session. |
+| `openspec-workflow` | Enforce official OpenSpec commands, exact-revision review and validation, verification, strict validation and archive. |
 | `prepare-pr` | Self-review, validate and create/prepare a traceable PR. |
 | `pr-audit` | Independently verify PR claims, trust boundary, requirements, OpenSpec, code and tests; publish review findings when authorized. |
 | `architecture-audit` | Check boundaries and new coupling without requiring LikeC4. |
 | `github-resolution` | Execute audited issues/PRs, correct valid findings and pass each PR to independent final audit and authorized merge. |
-| `post-pr-audit` | Independent final review and last merge eligibility gate; optionally merge when explicitly authorized and green. |
+| `post-pr-audit` | Independent final review and merge gate; merge when green by default, unless the direct request opts out. |
 | `update-main` | Safely fast-forward the local `main` after merge, preserving uncommitted work. |
 | `kaizen` | Convert evidenced failures into focused project or process improvements. |
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
@@ -183,9 +184,9 @@ scripts/sync-plugin
 ## Milestone operating rules
 
 - Invoke with the current repository queue or an identifiable milestone. The first output is a dependency inventory and the next unblocked work, including evidence for the proposed order.
-- Status is reconstructed from issue decisions, committed OpenSpec revision, PR head, reviews and CI. A helper's inferred status or ai-memory summary cannot grant an approval.
+- Status is reconstructed from issue decisions, committed OpenSpec revision, PR head, reviews and CI. A helper's inferred status or ai-memory summary cannot prove proposal validation or a product decision.
 - Schedule independent work by dependency and conflict risk, with isolated sessions/worktrees; queue hard dependents until prerequisites merge. Resolve dependency cycles and unclear links before work on affected issues.
-- The owner approves the exact proposal SHA. Merge when green is the default for the selected run after final review and required gates; "do not merge" or `merge_mode=manual` opts out. The orchestrator does not release or deploy.
+- The agent reviews and validates the pinned proposal SHA; owner input is reserved for unresolved material decisions. Merge when green is the default for the selected run after final review and required gates; "do not merge" or `merge_mode=manual` opts out. The orchestrator does not release or deploy.
 - If a new implementation session is unavailable, keep the committed plan and return a copyable handoff. A failed or interrupted run resumes at its last verified gate.
 - A merged PR and closed issue are verified before kaizen. ghpending is optional for daily triage; GitHub Project is a product planning view.
 
