@@ -1,6 +1,6 @@
 ---
 name: implement-issue
-description: Plan a GitHub issue through issue-audit, OpenSpec explore and proposal, then stop at an explicit human approval gate. Use to prepare implementation; a separate fresh session uses apply-issue for production code.
+description: Plan a GitHub issue through issue-audit, OpenSpec explore and proposal, validate the exact contract and hand it to a fresh implementation session without a routine human approval checkpoint. Use before apply-issue; stop only for unresolved material decisions.
 ---
 
 # Implement Issue: planning
@@ -9,9 +9,9 @@ Fetch the live issue, comments, linked PRs and repository instructions. Resume a
 
 1. Run `issue-audit`. Resolve evidence gaps through issue refinement or `[QUESTION]` and approved `[DECISION]`.
 2. Apply `openspec-workflow` for the official `/opsx-explore` with `issue-explore`; re-explore after material decisions. Pass `issue-ready`.
-3. Apply `openspec-workflow` for `/opsx-proposal`, validation and exact revision/commit approval. Review its contract against issue, current code, tests, dependencies and repository instructions.
-4. Present scope, architecture, trade-offs, acceptance tests, risks and handoff. Stop for an explicit human approval of this proposal revision.
+3. Apply `openspec-workflow` for `/opsx-proposal`, exact revision/commit pinning, independent review when warranted and official validation. Review its contract against the issue, decisions, current code, tests, dependencies and repository instructions.
+4. Record scope, architecture, trade-offs, acceptance tests, risks and the durable review evidence in the handoff. Continue automatically when the proposal is validated and no material question remains. Escalate only a product/architecture decision the available evidence cannot settle.
 
-Do not modify production code or run `/opsx-apply` in this session, even if the proposal is approved here. After approval, start a fresh implementation session and invoke `apply-issue`. ai-memory can carry context but approval and artifacts must be durable and independently verifiable.
+Do not modify production code or run `/opsx-apply` in the planning session. Start a fresh implementation session and invoke `apply-issue` on the pinned validated revision. ai-memory can carry context but the review and validation record must be durable and independently verifiable.
 
-End with `AWAITING PROPOSAL APPROVAL`, `NEEDS REFINEMENT — <reason>` or `HAND OFF TO EXISTING PR`.
+End with `READY FOR APPLY — <proposal SHA>`, `NEEDS DECISION — <reason>`, `NEEDS REFINEMENT — <reason>` or `HAND OFF TO EXISTING PR`.
