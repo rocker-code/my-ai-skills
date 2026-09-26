@@ -31,7 +31,7 @@ issue-audit → refine issue
 → /prepare-pr (requirement → code → test; scoped commit, push and PR)
 → independent pr-audit + architecture-audit when relevant
 → address-pr-review
-→ final-pr-review + post-pr-audit + final-review
+→ final-pr-review → independent final-review → post-pr-audit
 → merge → kaizen
 ```
 
@@ -59,7 +59,7 @@ Production implementation does not begin while blocking questions remain or befo
 | `prepare-pr` | Self-review, validate and create/prepare a traceable PR. |
 | `pr-audit` | Independently compare requirements, OpenSpec, code and tests. |
 | `architecture-audit` | Check boundaries and new coupling without requiring LikeC4. |
-| `post-pr-audit` | Verify the final PR head, CI and review findings before merge. |
+| `post-pr-audit` | Last merge eligibility gate after independent final-review; optionally merge when explicitly authorized and green. |
 | `update-main` | Safely fast-forward the local `main` after merge, preserving uncommitted work. |
 | `kaizen` | Convert evidenced failures into focused project or process improvements. |
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
@@ -187,8 +187,8 @@ scripts/sync-plugin
 
 - Invoke with a milestone URL. The first output is a dependency inventory and the next unblocked issue, including evidence for the proposed order.
 - Status is reconstructed from issue decisions, committed OpenSpec revision, PR head, reviews and CI. A helper's inferred status or ai-memory summary cannot grant an approval.
-- Keep one issue active by default; parallel work needs explicit authorization and verified isolation. Resolve dependency cycles and unclear links before work on affected issues.
-- The owner approves the exact proposal SHA and later decides the merge. The orchestrator does not merge, close issues, release or deploy.
+- Schedule independent work by dependency and conflict risk, with isolated sessions/worktrees; queue hard dependents until prerequisites merge. Resolve dependency cycles and unclear links before work on affected issues.
+- The owner approves the exact proposal SHA. Manual merge is the default; an explicit `merge_mode=auto-if-green` authorizes verified merge after final review and required gates. The orchestrator does not release or deploy.
 - If a new implementation session is unavailable, keep the committed plan and return a copyable handoff. A failed or interrupted run resumes at its last verified gate.
 - A merged PR and closed issue are verified before kaizen. ghpending is optional for daily triage; GitHub Project is a product planning view.
 
