@@ -44,7 +44,7 @@ Load a relevant domain skill such as `magento-review` or `expo-mobile-review` wh
 
 ## Question gate
 
-Do not infer a decision when alternatives materially change behavior, public contracts, data, authorization, concurrency, compatibility or scope. Add a GitHub comment using `[QUESTION]` and [the question template](../../templates/github/question.md) when authorized to comment; otherwise provide the exact proposed comment.
+Do not infer a decision when alternatives materially change behavior, public contracts, data, authorization, concurrency, compatibility or scope. Add a GitHub comment using `[QUESTION]` and [the question template](references/question.md) when authorized to comment; otherwise provide the exact proposed comment.
 
 Group related questions, include evidence and trade-offs, and stop. Recommendations are allowed but are not decisions.
 

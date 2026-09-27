@@ -7,9 +7,11 @@ description: Enforce the required OpenSpec contract across planning, implementat
 
 Own the OpenSpec-specific commands and evidence gates. `implement-issue` owns issue planning, `apply-issue` owns implementation in a fresh session, and `github-resolution` owns PR corrections. This skill defines the contract each of them must enforce, rather than acting as another end-to-end issue orchestrator.
 
+Command names follow OpenSpec's per-agent convention: `/opsx-explore`, `/opsx-propose`, `/opsx-apply` and `/opsx-archive` in Codex and OpenCode; `/opsx:explore`, `/opsx:propose`, `/opsx:apply` and `/opsx:archive` in Claude Code. Use the form installed for the current agent.
+
 ## Locate and plan
 
-Read the live issue, approved `[DECISION]` comments and repository instructions. Find an existing OpenSpec change by issue, branch and capability before creating one; do not duplicate it. Run the installed official `/opsx-explore` with `issue-explore` before proposal, and again after material decisions. Require `issue-ready` before the official `/opsx-proposal`.
+Read the live issue, approved `[DECISION]` comments and repository instructions. Find an existing OpenSpec change by issue, branch and capability before creating one; do not duplicate it. Run the installed official `/opsx-explore` with `issue-explore` before proposal, and again after material decisions. Require `issue-ready` before the official `/opsx-propose`.
 
 Build proposal, specifications/scenarios, design and tasks against the actual repository: behavior and errors, public contracts, authorization, state, data/migrations, concurrency, compatibility, tests, cleanup and boundaries. Validate the proposal with the installed official OpenSpec command. Pin its exact revision/commit and record a requirement/scenario → implementation plan → proving test matrix, plus a review of architecture, data, contracts and risk. Request an independent reviewer for material boundary changes when available; otherwise record the inline review. If validation and review pass with no unresolved material decision, hand off automatically to a fresh Apply session. Do not treat an older revision's review as evidence for a materially changed proposal.
 
