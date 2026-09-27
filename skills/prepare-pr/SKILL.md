@@ -41,7 +41,7 @@ This authorization does not include merging, releasing, deploying, force-pushing
 
 ## PR body
 
-Follow the repository template, otherwise use [the pull request template](../../templates/pull-request.md). Include issue linkage (`Closes #...` when correct), OpenSpec change, what changed, contract changes, material decisions, tests actually run, risk/migration/compatibility and non-goals.
+Follow the repository template, otherwise use [the pull request template](references/pull-request.md). Include issue linkage (`Closes #...` when correct), OpenSpec change, what changed, contract changes, material decisions, tests actually run, risk/migration/compatibility and non-goals.
 
 Do not provide a noisy file-by-file changelog. Use an outcome-oriented title.
 

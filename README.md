@@ -23,7 +23,7 @@ issue-audit → refine issue
 → [QUESTION] / [DECISION] loop when needed
 → /opsx-explore again after decisions
 → issue-ready
-→ /opsx-proposal
+→ /opsx-propose
 → agent review + official validation of pinned revision
 → owner decision only for unresolved material questions
 → new session: apply-issue (/opsx-apply)
@@ -175,7 +175,7 @@ In the ChatGPT desktop app, restart the app, open the Plugins Directory, select 
 
 The plugin is personal and does not need to be submitted to the public directory. Publishing it to a ChatGPT workspace is a separate administrative action.
 
-The root `skills/`, `protocol/`, `templates/`, and helper scripts remain the canonical source used by `skills.sh`. Their copies inside `plugins/my-ai-skills/` form the self-contained plugin package. After changing canonical files, synchronize the package with:
+The root `skills/`, `protocol/`, `templates/`, and helper scripts remain the canonical source used by `skills.sh`. Their copies inside `plugins/my-ai-skills/` form the self-contained plugin package. Skills that link to shared protocol or templates carry a generated copy in their own `references/` directory, because `skills.sh` installs only each skill directory. After changing canonical files, regenerate those copies and synchronize the package with:
 
 ```bash
 scripts/sync-plugin

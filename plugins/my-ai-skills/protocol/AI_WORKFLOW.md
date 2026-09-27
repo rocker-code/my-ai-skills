@@ -18,13 +18,15 @@ The latest explicit approved decision supersedes older conflicting discussion. D
 
 ## Required flow
 
+Command names follow OpenSpec's per-agent convention: `/opsx-explore`, `/opsx-propose`, `/opsx-apply` and `/opsx-archive` in Codex and OpenCode; `/opsx:explore`, `/opsx:propose`, `/opsx:apply` and `/opsx:archive` in Claude Code. Use the form installed for the current agent.
+
 1. Run `issue-audit` against the live issue and current code; refine material gaps.
 2. Run `/opsx-explore` against the issue, all comments, code, tests, docs and current OpenSpec. Do not implement.
 3. Add material ambiguities as `[QUESTION]` and stop.
 4. Record approved answers as `[DECISION]`.
 5. Refresh GitHub and run `/opsx-explore` again after decisions.
 6. Pass `issue-ready`.
-7. Run `/opsx-proposal` to create or update OpenSpec proposal/spec/design/tasks.
+7. Run `/opsx-propose` to create or update OpenSpec proposal/spec/design/tasks.
 8. Validate each proposal with the official OpenSpec command and a traceability review against the issue, decisions, current code, architecture and tests. Use an independent planning reviewer when available for material boundary changes; record the exact immutable proposal revision and review evidence. Show a consolidated progress summary without pausing for blanket owner approval. Stop only on a material decision that evidence and project policy cannot resolve, or if validation fails.
 9. Use `openspec-workflow` as the canonical proposal and closeout procedure. Start a genuinely new child session per issue with `apply-issue`; verify the pinned validated revision, review evidence and durable handoff, then run `/opsx-apply`. For milestones, schedule these sessions dynamically by dependency and conflict risk. ai-memory is supplementary.
 10. After Apply, complete focused tests and supported OpenSpec implementation verification; strictly validate the active change and archive it on the feature branch after all gates pass. Inspect the archived artifacts and synchronized live specs so they enter the same issue PR. Then self-review and invoke `/prepare-pr` with requirement → code → test evidence. This invocation authorizes staging only issue-scoped files, committing, pushing the feature branch without force, and opening the PR; no second confirmation is needed. Preserve unrelated work. This does not authorize merge, release, deploy or force-push. If the owner explicitly says prepare-only, stop at `READY FOR PR`.

@@ -18,7 +18,7 @@ Accept one or more producer issues/PRs/commits and a consumer issue. Resolve and
 
 Inspect final schemas, resolvers/controllers, service contracts, types, enums, nullability, serialization, errors, authorization, state behavior and producer tests. Distinguish public contract from internal implementation.
 
-Build the contract using [the integration contract template](../../templates/github/integration-contract.md):
+Build the contract using [the integration contract template](references/integration-contract.md):
 
 - operations;
 - inputs/outputs;
