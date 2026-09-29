@@ -62,6 +62,7 @@ Production implementation does not begin while blocking questions remain or befo
 | `github-resolution` | Execute audited issues/PRs, correct valid findings and pass each PR to independent final audit and authorized merge. |
 | `post-pr-audit` | Independent final review and merge gate; merge when green by default, unless the direct request opts out. |
 | `update-main` | Safely fast-forward the local `main` after merge, preserving uncommitted work. |
+| `release` | Publish a verified version from the repository's documented changelog and versioning policy, only after CI is green on the exact release commit. |
 | `kaizen` | Convert evidenced failures into focused project or process improvements. |
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
 | `pr-status` | Read-only classification of the current PR state and next action. |
