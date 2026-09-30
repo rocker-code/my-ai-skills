@@ -17,9 +17,9 @@ The lifecycle moves through discovery, readiness, implementation, review and com
 
 Every diagram node is an installed skill. Solid arrows show the main coordination or handoff; dotted arrows show conditional calls or a supporting skill. An arrow does not bypass validation, authorization or independent-session gates. These are skill maps, not a list of commands to invoke manually.
 
-#### Queue or milestone coordination
+#### Single issue, queue or milestone coordination
 
-`milestone-orchestrator` schedules the following flow for each eligible issue. The detailed planning and review maps below expand its workers. Independent work can run concurrently; hard dependencies wait for confirmed merges.
+`milestone-orchestrator` schedules the following flow for one selected issue or for each eligible issue in a queue/milestone. The detailed planning and review maps below expand its workers. Independent work can run concurrently; hard dependencies wait for confirmed merges.
 
 ```mermaid
 flowchart TD
@@ -111,7 +111,7 @@ Invoking `/prepare-pr` authorizes the skill to stage and commit only files for t
 
 After implementation and tests pass, archive the completed OpenSpec change on the feature branch before `/prepare-pr`. The archive and synchronized live specs belong in the same issue PR, avoiding a follow-up archive-only PR. During PR audits, review the validated change under `openspec/changes/archive/` together with live specs.
 
-Start with **"Cuide da fila deste projeto"** for the current repository, **"Cuide da fila deste projeto, sem merges"** to opt out of merging, or **"Cuide deste milestone: URL"** to limit the scope. `milestone-orchestrator` runs once for the selected queue. It inventories all issues, builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It reviews each eligible OpenSpec proposal against the issue and current code, validates its exact SHA without a routine owner approval checkpoint, then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, github-resolution, independent audits and CI. The default is merge when green for the selected run, only after all required checks, reviews and branch protections pass; "do not merge" or `merge_mode=manual` overrides it. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
+Start with **"Cuide da issue: URL"** for one issue, **"Cuide da issue: URL, sem merge"** to keep its merge manual, **"Cuide da fila deste projeto"** for the current repository, **"Cuide da fila deste projeto, sem merges"** to opt out of merging, or **"Cuide deste milestone: URL"** to limit the scope. `milestone-orchestrator` runs once for the selected scope. For one issue, it inventories that issue and its verified linked PR; for a queue or milestone, it inventories all selected issues. It builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It reviews each eligible OpenSpec proposal against the issue and current code, validates its exact SHA without a routine owner approval checkpoint, then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, github-resolution, independent audits and CI. The default is merge when green for the selected run, only after all required checks, reviews and branch protections pass; "do not merge" or `merge_mode=manual` overrides it. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
 
 Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
 
@@ -121,7 +121,7 @@ Production implementation does not begin while blocking questions remain or befo
 
 | Skill | Responsibility |
 |---|---|
-| `milestone-orchestrator` | Run the current repository queue or a selected milestone; review and validate pinned OpenSpec proposals, schedule isolated workers and merge eligible PRs when green by default. |
+| `milestone-orchestrator` | Run one selected issue, the current repository queue or a selected milestone; review and validate pinned OpenSpec proposals, schedule isolated workers and merge eligible PRs when green by default. |
 | `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
 | `issue-audit` | Verify the issue's claims against current code before exploration. |
@@ -319,7 +319,7 @@ test -x .ai-workflow/scripts/workflow-status
 
 Replace the example URL with an issue you can access. For global skills, also check `npx skills list -g`. Restart the agent or start a new session so it discovers the installed skills.
 
-Start with **"Cuide da fila deste projeto"** or **"Cuide deste milestone: URL"**. The entry workflow routes the supporting skills automatically under their documented conditions; you do not need to invoke each diagram node. Loading skills does not create a background scheduler: a selected workflow still needs to be started, and its runtime must support the required tools and isolated sessions.
+Start with **"Cuide da issue: URL"**, **"Cuide da fila deste projeto"** or **"Cuide deste milestone: URL"**. The entry workflow routes the supporting skills automatically under their documented conditions; you do not need to invoke each diagram node. Loading skills does not create a background scheduler: a selected workflow still needs to be started, and its runtime must support the required tools and isolated sessions.
 
 ### 8. Keep the installation current
 
@@ -356,6 +356,19 @@ The root `skills/`, `protocol/`, `templates/`, and helper scripts remain the can
 ```bash
 scripts/sync-plugin
 ```
+
+## Taking care of one issue
+
+Use either request:
+
+```text
+Cuide da issue: https://github.com/owner/repo/issues/123
+Cuide da issue: https://github.com/owner/repo/issues/123, sem merge
+```
+
+The same `milestone-orchestrator` handles this entry point with `scope=single_issue`; no new skill name or manual sequence is needed. It audits, plans/validates OpenSpec, implements in a fresh session, verifies/archives, prepares the PR, independently reviews, fixes findings and reaches merge/closure/kaizen when all gates pass. The second request stops at `READY_TO_MERGE`.
+
+An existing plan or linked implementation PR is resumed from current evidence. Related issues are inspected for dependencies but are not executed automatically. An unmerged hard dependency, missing material decision or runtime capability is reported as a blocker. A closed issue is inspected and reported without reopening it. The automatic CI-performance routing applies here too.
 
 ## Milestone operating rules
 
