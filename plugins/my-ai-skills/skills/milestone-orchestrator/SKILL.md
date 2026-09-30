@@ -1,11 +1,11 @@
 ---
 name: milestone-orchestrator
-description: Run a GitHub repository work queue or a specific milestone as one supervised workflow that audits eligible issues and PRs, batches OpenSpec proposal reviews, schedules isolated workers by dependencies, and continues through verified merge or an explicit blocker. Use for "cuide da fila deste projeto", "cuide da fila deste projeto, sem merges", or "cuide deste milestone".
+description: Run one GitHub issue, a repository work queue or a specific milestone as one supervised workflow that audits eligible issues and PRs, batches OpenSpec proposal reviews, schedules isolated workers by dependencies, and continues through verified merge or an explicit blocker. Use for "cuide da fila deste projeto", "cuide da fila deste projeto, sem merges", "cuide deste milestone", or "cuide da issue <issue URL>".
 ---
 
-# Work Queue and Milestone Orchestrator
+# Issue, Work Queue and Milestone Orchestrator
 
-Run the selected queue, not just the next issue. Read repository instructions and [the AI workflow protocol](references/AI_WORKFLOW.md). Coordinate issue-audit, implement-issue, apply-issue, prepare-pr, pr-audit, architecture-audit when relevant, github-resolution and kaizen. Delegate per-PR correction, final independent audit and merge to github-resolution; this skill owns the milestone dependency scheduler. Each worker must follow its skill gates.
+Run the entire selected scope: one issue, a project queue or a milestone. Read repository instructions and [the AI workflow protocol](references/AI_WORKFLOW.md). Coordinate issue-audit, implement-issue, apply-issue, prepare-pr, pr-audit, architecture-audit when relevant, github-resolution and kaizen. Delegate per-PR correction, final independent audit and merge to github-resolution; this skill owns the milestone dependency scheduler. Each worker must follow its skill gates.
 
 ## Invocation and operating modes
 
@@ -14,15 +14,28 @@ Accept these natural requests without requiring a mode parameter:
 - "Cuide da fila deste projeto, sem merges": use the same queue with `merge_mode=manual` for this run.
 - "Cuide deste milestone": use the supplied milestone URL or a unique milestone identified by the current request/context. Do not guess among multiple candidates; request only the missing milestone identifier when needed.
 
+- "Cuide da issue: <GitHub issue URL>" or "Cuide desta issue: <GitHub issue URL>": use `scope=single_issue`, selecting exactly that issue and its verified linked implementation PR. A number is sufficient only when the repository is uniquely established; ask only for a missing/ambiguous identifier.
+- "Cuide da issue: <GitHub issue URL>, sem merge" or "sem merges": use the same single-issue scope with `merge_mode=manual`.
+
 A repository URL/name is sufficient if there is no local checkout. Never silently widen a named milestone to the whole repository or another repository's queue. A single invocation carries eligible work through the workflow and resumes from durable state after interruption; never ask the owner to invoke another skill for each issue.
 
-Default merge mode is `auto-if-green` under the owner's standing instruction for this workflow. A direct "do not merge" or `merge_mode=manual` request overrides it for the selected run. The default authorizes merge only after all configured repository requirements and this workflow's review gates pass. Apply this only to the selected repository queue or milestone run. It never bypasses branch protection, required human reviews, required checks, or repository policy. If the merge method or eligibility cannot be established, stop that PR at `READY_TO_MERGE`. Never force-push, release, deploy, or tag as a side effect.
+Default merge mode is `auto-if-green` under the owner's standing instruction for this workflow. A direct "do not merge" or `merge_mode=manual` request overrides it for the selected run. The default authorizes merge only after all configured repository requirements and this workflow's review gates pass. Apply this only to the selected single issue, repository queue or milestone run. It never bypasses branch protection, required human reviews, required checks, or repository policy. If the merge method or eligibility cannot be established, stop that PR at `READY_TO_MERGE`. Never force-push, release, deploy, or tag as a side effect.
 
 At startup, inspect available orchestration capabilities: ability to create fresh child sessions (OpenCode Task/subagent or equivalent), isolated worktrees, GitHub reads/writes, and repository-local test commands. Do not claim automation that the runtime cannot perform. If child sessions are unavailable, still inventory and prepare a consolidated plan/proposal batch, then report the precise missing capability; do not silently run Apply in the planning context. Use the available number of workers as a resource ceiling, not a fixed issue-count policy.
 
+## Single-issue scope
+
+For `scope=single_issue`, run the same gates and workers below with a one-ticket ledger. Refresh the issue, comments, decisions, code, existing OpenSpec artifacts, linked PRs and current checks. Verify repository identity before any write; an explicit issue URL determines the target repository, so a different checkout requires the correct checkout/worktree or a capability blocker. A PR URL is not an issue identifier.
+
+Read related issues and prerequisite PRs only to establish dependency/contract evidence. Do not implement, modify or merge prerequisites, siblings, other milestone issues or unrelated PRs without an explicit scope expansion. If a hard prerequisite is unmerged or its contract is unfrozen, report `BLOCKED` with evidence and the exact prerequisite; do not start dependent implementation.
+
+Resume the last verified gate. For an existing implementation PR, independently audit its current head and hand it to `github-resolution`; do not recreate the plan, branch or PR when their evidence remains valid. If multiple candidate PRs exist, verify which delivers this issue and report unresolved ambiguity instead of selecting or merging every linked PR. A closed issue does not authorize reopening or new work: verify existing delivery and report its state; if closed without delivered work, report that fact and request a scope decision.
+
+For a new eligible issue, run issue-audit, implement-issue, exact-revision proposal review/validation, fresh-session apply-issue, tests/verification/archive, prepare-pr, independent pr-audit (architecture-audit when relevant), then github-resolution and independent post-pr-audit. Continue automatically through confirmed merge/closure and kaizen in auto-if-green mode, or `READY_TO_MERGE` in manual mode. Do not ask the owner to invoke each skill. Material unanswered questions and missing runtime capabilities remain explicit blockers. Carry the existing automatic CI performance hooks.
+
 ## One-run workflow
 
-1. Resolve the unique repository and selected scope. Refresh all open issues and PRs in the project queue, or only the selected milestone's issues and their linked PRs; read comments/decisions, current code, OpenSpec changes, repository rules and CI. Skip drafts from implementation with reasons; audit eligible existing PRs before scheduling new issue work. Reconstruct existing progress and resume it; never duplicate a branch, OpenSpec change, or PR.
+1. Resolve the unique repository and selected scope. Refresh all open issues and PRs in the project queue, the selected milestone's issues and their linked PRs, or exactly the selected issue and its verified linked PR; read comments/decisions, current code, OpenSpec changes, repository rules and CI. Skip drafts from implementation with reasons; audit eligible existing PRs before scheduling new issue work. Reconstruct existing progress and resume it; never duplicate a branch, OpenSpec change, or PR.
 2. Build a dependency DAG with evidence links. Classify hard dependencies, coordination dependencies, likely file/module conflicts, and independent work. An open PR does not satisfy a hard dependency. Unknown edges block only affected issues; detect cycles. For backend-to-mobile work, require contract-handoff before the consumer begins.
 3. Create a ledger for every issue and pre-existing PR in scope. Preserve existing decisions, validated proposal revisions, branches, implementations, PRs, reviews, and checks when their SHAs still match.
 4. Schedule planning for all currently eligible issues. Use fresh planning child sessions and isolated worktrees when available. Independent issues may be planned in parallel, up to runtime capacity. Run issue-audit, then implement-issue (/opsx-explore, issue-ready, /opsx-propose). Do not implement production code during planning. Record material questions as [QUESTION], mark that issue NEEDS_INPUT, and continue with unrelated eligible issues.
@@ -66,7 +79,7 @@ GitHub issues/comments, approved product decision records, committed OpenSpec ar
 
 Exceptional states: NEEDS_INPUT, NEEDS_REPLAN, BLOCKED, FAILED, RESOURCE_QUEUED. Preserve the last verified state, exact blocker, evidence and next automatic action. A closed issue without verified delivered/merged work is not MERGED; empty or stale checks are not CI_GREEN.
 
-Record repository and selected scope (milestone when present), issue/PR, state, evidence links and SHAs, dependency gate, branch/worktree, proposal revision/review evidence, PR head/checks, merge mode, blocker and next action. Use existing issue/PR records and committed artifacts; do not create a competing source of truth.
+Record repository and selected scope (`single_issue`, `project_queue` or `milestone`), issue/PR, state, evidence links and SHAs, dependency gate, branch/worktree, proposal revision/review evidence, PR head/checks, merge mode, blocker and next action. Use existing issue/PR records and committed artifacts; do not create a competing source of truth.
 
 ## Per-issue invariants
 
@@ -84,8 +97,8 @@ Use actual repository paths and commands, not this sample layout:
 
 ```yaml
 repository: owner/name
-scope: milestone
-milestone_url: https://github.com/owner/name/milestone/27 # omit for scope: project_queue
+scope: single_issue # or project_queue / milestone
+# Include milestone_url only for scope: milestone.
 issue_url: https://github.com/owner/name/issues/123
 base_ref: main
 branch: issue-123-short-name
@@ -109,7 +122,7 @@ Reject a handoff when issue, validated proposal SHA, review/validation evidence,
 
 On interruption, refresh GitHub and Git, inspect partial work and PR state, preserve unrelated changes, and resume from the last verified gate. Do not rerun valid work. If a session fails, retry that issue within the configured attempt/resource limits; after repeated failure, mark FAILED and continue unrelated eligible issues. Never silently skip a blocked issue or claim a failed check passed.
 
-Return a compact dashboard of the selected queue's issues and PRs, dependency graph/order, active workers, states, evidence/SHAs, checks, blockers, merge mode, and the next automatic action. In manual mode, report all `READY_TO_MERGE` items together. In auto-if-green mode, report which PRs are queued for GitHub auto-merge and why any could not be queued. ghpending may aid triage; GitHub Project is a product view, not an execution gate.
+Return a compact dashboard of the selected scope's issues and PRs, dependency graph/order, active workers, states, evidence/SHAs, checks, blockers, merge mode, and the next automatic action. In manual mode, report all `READY_TO_MERGE` items together. In auto-if-green mode, report which PRs are queued for GitHub auto-merge and why any could not be queued. ghpending may aid triage; GitHub Project is a product view, not an execution gate.
 
 ## Automatic CI performance routing
 

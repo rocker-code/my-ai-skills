@@ -5,7 +5,7 @@ description: Execute actionable audited outcomes from issue-audit or pr-audit by
 
 # GitHub Resolution
 
-Turn audited decisions into delivered work. This skill owns execution and sequencing for one issue/PR or an explicitly selected batch; `issue-audit`/`pr-audit` establish findings, `address-pr-review` implements PR corrections, and an independent `post-pr-audit` makes the final merge decision. The `milestone-orchestrator` owns dependency planning across a milestone and invokes this skill for each eligible PR; do not build a competing milestone scheduler here.
+Turn audited decisions into delivered work. This skill owns execution and sequencing for one issue/PR or an explicitly selected batch; `issue-audit`/`pr-audit` establish findings, `address-pr-review` implements PR corrections, and an independent `post-pr-audit` makes the final merge decision. Natural requests such as "Cuide da issue: <issue URL>" enter through `milestone-orchestrator` in `scope=single_issue`; it owns the complete lifecycle and delegates this audited resolution stage here. Preserve the selected issue boundary and merge mode; reading dependency evidence does not authorize implementing or merging another ticket. The `milestone-orchestrator` owns dependency planning across a milestone and invokes this skill for each eligible PR; do not build a competing milestone scheduler here.
 
 ## Entry and trust gate
 
