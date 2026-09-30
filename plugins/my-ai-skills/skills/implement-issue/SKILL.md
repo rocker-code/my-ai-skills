@@ -15,3 +15,7 @@ Fetch the live issue, comments, linked PRs and repository instructions. Resume a
 Do not modify production code or run `/opsx-apply` in the planning session. Start a fresh implementation session and invoke `apply-issue` on the pinned validated revision. ai-memory can carry context but the review and validation record must be durable and independently verifiable.
 
 End with `READY FOR APPLY — <proposal SHA>`, `NEEDS DECISION — <reason>`, `NEEDS REFINEMENT — <reason>` or `HAND OFF TO EXISTING PR`.
+
+## Automatic CI performance routing
+
+Read [the CI performance protocol](references/CI_PERFORMANCE.md). For CI/test-performance issues, automatically apply `optimize-ci` as a planning lens after the diagnosis from `issue-audit`. Put the preservation contract and benchmark plan into the normal OpenSpec proposal; do not introduce a second planner or approval checkpoint.

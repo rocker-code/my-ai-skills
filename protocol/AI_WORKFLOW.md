@@ -65,3 +65,7 @@ Agents resume rather than restart. The proposal validation gate and fresh-sessio
 Stop and record a `[QUESTION]` when ambiguity materially changes behavior, data, public contract, authorization, concurrency, compatibility or scope. Do not use assumptions to bypass the READY gate.
 
 During implementation, if new evidence changes the validated contract, stop the affected work, update the issue/OpenSpec, rerun proposal review and validation, and resume in the required fresh implementation context. Seek the owner only for an unresolved material product/architecture decision.
+
+## Automatic CI performance expertise
+
+Apply [CI_PERFORMANCE.md](CI_PERFORMANCE.md) in the existing stages. issue-audit diagnoses relevant issues; implement-issue and apply-issue use optimize-ci; prepare-pr self-reviews and pr-audit independently verifies relevant CI/test-infrastructure changes. post-pr-audit checks current evidence and kaizen diagnoses recurring slowdown. The orchestrator carries these hooks automatically and isolates comparable experiments. No new user command, lifecycle, routine approval or unconditional hosted benchmark is required.

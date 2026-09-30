@@ -42,6 +42,20 @@ bundle_reference pr-audit protocol/REVIEW_POLICY.md
 bundle_reference prepare-pr templates/pull-request.md
 bundle_reference resolve-questions templates/github/decision.md
 
+bundle_reference issue-audit protocol/CI_PERFORMANCE.md
+bundle_reference implement-issue protocol/CI_PERFORMANCE.md
+bundle_reference apply-issue protocol/CI_PERFORMANCE.md
+bundle_reference prepare-pr protocol/CI_PERFORMANCE.md
+bundle_reference pr-audit protocol/CI_PERFORMANCE.md
+bundle_reference post-pr-audit protocol/CI_PERFORMANCE.md
+bundle_reference kaizen protocol/CI_PERFORMANCE.md
+bundle_reference milestone-orchestrator protocol/CI_PERFORMANCE.md
+bundle_reference github-resolution protocol/CI_PERFORMANCE.md
+bundle_reference ci-performance-audit protocol/CI_PERFORMANCE.md
+bundle_reference optimize-ci protocol/CI_PERFORMANCE.md
+
+bundle_reference optimize-ci skills/ci-performance-audit/references/magento.md
+
 sync_directory "$repo_root/skills" "$plugin_root/skills"
 sync_directory "$repo_root/protocol" "$plugin_root/protocol"
 sync_directory "$repo_root/templates" "$plugin_root/templates"

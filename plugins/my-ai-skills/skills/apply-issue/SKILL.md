@@ -16,3 +16,7 @@ Run the repository's official `/opsx-apply` command; do not invent a substitute 
 Run focused tests and relevant static checks; record actual PASS/FAIL/NOT RUN with reasons. Apply `openspec-workflow` for the mandatory post-Apply closeout: complete validated tasks, verify scenarios against implementation and tests, use the official verifier when available, strictly validate, archive on this feature branch, synchronize validated live specs and inspect both archived artifacts and live specs. If verification or archive fails or changes the validated behavior, stop and follow its revision review and validation gate. Do not hand an active incomplete change to `prepare-pr`.
 
 Then inspect the complete diff for unrelated changes, preserve unrelated user work, and pass to `prepare-pr`. End with `READY FOR PR` only when implementation, verification, archive and validation gates pass; otherwise end with `NOT READY FOR PR — <reason>`.
+
+## Automatic CI performance routing
+
+Read [the CI performance protocol](references/CI_PERFORMANCE.md). Automatically apply `optimize-ci` inside this fresh session for validated performance experiments. For ordinary feature changes to expensive fixtures, test discovery or CI setup, use its lightweight preservation checklist without expanding scope. Record before/after only when the validated work requires it; retain normal verification and archive gates.

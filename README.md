@@ -143,6 +143,8 @@ npx skills add rocker-code/my-ai-skills \
   --skill apply-issue \
   --skill openspec-workflow \
   --skill sonar \
+  --skill ci-performance-audit \
+  --skill optimize-ci \
   --skill prepare-pr \
   --skill pr-audit \
   --skill architecture-audit \
@@ -202,3 +204,15 @@ For backend → mobile work:
 5. only then implement the consumer.
 
 If the producer contract changes after the freeze, explicitly revise the consumer issue and repeat the handoff.
+## Automatic CI performance improvement
+
+The existing queue and milestone commands automatically route relevant work to two domain skills:
+
+| Skill | Responsibility |
+|---|---|
+| `ci-performance-audit` | Diagnose measured bottlenecks and independently review optimization evidence and preserved CI obligations. |
+| `optimize-ci` | Guide bounded experiments through the existing OpenSpec planning, fresh Apply session and review workflow. |
+
+No manual skill invocation is required. Performance issues trigger diagnosis/planning; material workflow, fixture, setup or test-selection changes trigger proportional review; kaizen diagnoses evidenced recurring slowdown. Ordinary test additions receive a lightweight check, not a mandatory hosted benchmark. Scheduling and merge authority remain with the existing orchestrator and review skills.
+
+Read [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md). Compare elapsed time, runner-minutes and behavioral proof; a faster green pipeline alone does not prove improvement. Magento-specific guidance is bundled with ci-performance-audit. Source changes are synchronized to the plugin by `scripts/sync-plugin`.

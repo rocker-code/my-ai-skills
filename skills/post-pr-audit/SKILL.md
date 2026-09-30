@@ -24,3 +24,7 @@ After this independent final review passes on the exact current head, all non-CI
 After a confirmed merge, verify the merge SHA and linked issue state. Check merge-commit CI when the repository requires it; a green PR head does not establish the result of a different merged tree. If GitHub queued auto-merge and the run ends before landing, do not claim verification of a future merge.
 
 Report base/head SHA, trust gate, CI and review state, evidence matrix summary, reused/not-run validations with reasons, unresolved findings and accepted follow-ups. End with the precise state: `READY TO MERGE`, `AUTO-MERGE ENABLED`, `MERGED — <sha>`, `AWAITING CHECKS`, `CHANGES REQUIRED — <reason>` or `UNVERIFIED — <missing evidence>`. Do not merge or close issues in manual mode.
+
+## Automatic CI performance routing
+
+Read [the CI performance protocol](references/CI_PERFORMANCE.md). For relevant CI/test-performance changes, verify that the current-head independent `ci-performance-audit` evidence establishes preserved obligations and the applicable performance acceptance criteria. Re-audit invalidated inputs through the normal review path; do not start a new benchmark or reopen settled optimization decisions at this final gate.

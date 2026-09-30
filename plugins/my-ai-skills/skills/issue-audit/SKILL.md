@@ -14,3 +14,7 @@ Read the live issue, every comment and linked PR; inspect repository instruction
 5. Do not invoke `/opsx-propose` or `/opsx-apply`. Hand off to `issue-explore` and the official `/opsx-explore` after the audit.
 
 Output: issue/ref, observed facts with evidence, assumptions, current implementation, dependencies, architectural impact, missing decisions, suggested scope/tests and one decision: `READY FOR EXPLORE` or `NEEDS REFINEMENT — <reason>`. A ready audit means exploration can begin, not that the issue is ready for proposal.
+
+## Automatic CI performance routing
+
+Read [the CI performance protocol](references/CI_PERFORMANCE.md). For CI/test-performance or cost issues, automatically invoke `ci-performance-audit` in diagnosis mode before declaring readiness. Include its measured baseline, obligations and experiment gaps in this audit; do not require a manual invocation.
