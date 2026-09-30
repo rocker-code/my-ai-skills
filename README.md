@@ -11,29 +11,101 @@ GitHub is the source of truth. Material decisions must end up in an issue, PR, a
 
 ## Lifecycle
 
-```text
-DISCOVERY → READY → IMPLEMENTING → REVIEW → DONE
+The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
+
+### Skills called in each flow
+
+Every diagram node is an installed skill. Solid arrows show the main coordination or handoff; dotted arrows show conditional calls or a supporting skill. An arrow does not bypass validation, authorization or independent-session gates. These are skill maps, not a list of commands to invoke manually.
+
+#### Queue or milestone coordination
+
+`milestone-orchestrator` schedules the following flow for each eligible issue. The detailed planning and review maps below expand its workers. Independent work can run concurrently; hard dependencies wait for confirmed merges.
+
+```mermaid
+flowchart TD
+    MO["milestone-orchestrator"] --> IA["issue-audit"]
+    IA --> II["implement-issue"]
+    II --> AI["apply-issue"]
+    AI --> PP["prepare-pr"]
+    PP --> PA["pr-audit"]
+    PA --> GR["github-resolution"]
+    GR --> PO["post-pr-audit"]
+    GR -->|after confirmed merge| K["kaizen"]
+    PA -.->|boundary changes| AA["architecture-audit"]
 ```
 
-OpenSpec is required in this workflow:
+#### Issue planning and questions
 
-```text
-issue-audit → refine issue
-→ /opsx-explore (using the issue-explore protocol)
-→ [QUESTION] / [DECISION] loop when needed
-→ /opsx-explore again after decisions
-→ issue-ready
-→ /opsx-propose
-→ agent review + official validation of pinned revision
-→ owner decision only for unresolved material questions
-→ new session: apply-issue (/opsx-apply)
-→ verify implementation, finish tasks, strict validate
-→ archive OpenSpec on feature branch (sync delta specs into live specs)
-→ /prepare-pr (requirement → code → test; scoped commit, push and PR)
-→ independent pr-audit + architecture-audit when relevant
-→ github-resolution (address-pr-review → refreshed audit → independent post-pr-audit)
-→ authorized merge → kaizen
+`implement-issue` coordinates the audit, exploration, readiness and proposal. Refinement and question resolution are used when evidence or material decisions are missing. After material decisions, exploration repeats before readiness. The proposal is reviewed and validated at its pinned revision before the fresh implementation session.
+
+```mermaid
+flowchart TD
+    II["implement-issue"] --> IA["issue-audit"]
+    IA --> IE["issue-explore"]
+    II --> OW["openspec-workflow"]
+    OW --> IE
+    IE --> IR["issue-ready"]
+    IA -.->|issue needs refinement| RI["refine-issue"]
+    IE -.->|material questions| RQ["resolve-questions"]
+    RI -.-> IE
+    RQ -.->|re-explore after decisions| IE
+    IE -.->|Magento repository| MR["magento-review"]
+    IE -.->|Expo mobile repository| ER["expo-mobile-review"]
+    IR -->|validated proposal handoff| AI["apply-issue"]
 ```
+
+#### Implementation and PR preparation
+
+`apply-issue` runs in a fresh session against the pinned validated proposal. Verification, strict validation, task completion and archive happen before `prepare-pr`. Applicable quality analysis can use `sonar`; it is not an extra mandatory phase for every issue. Repository-specific domain skills are loaded during exploration as shown above.
+
+```mermaid
+flowchart TD
+    AI["apply-issue"] --> OW["openspec-workflow"]
+    AI -->|after verification and archive| PP["prepare-pr"]
+    AI -.->|applicable quality analysis| S["sonar"]
+```
+
+#### Independent review, corrections and merge
+
+A standalone `pr-audit` reports findings; it does not start fixes or merge on its own. In an authorized resolution run, `github-resolution` coordinates corrections, refreshed audits and the independent final gate. Merge remains subject to current-head checks and the selected merge mode.
+
+```mermaid
+flowchart TD
+    PA["pr-audit"] -->|authorized resolution| GR["github-resolution"]
+    PA -.->|boundary changes| AA["architecture-audit"]
+    GR -.->|valid findings| AR["address-pr-review"]
+    AR -->|changed head| PA
+    GR --> PO["post-pr-audit"]
+    GR -->|after confirmed merge| K["kaizen"]
+```
+
+#### Automatic CI performance routing
+
+The existing workflow calls these skills automatically when the issue or diff triggers the performance rules. `optimize-ci` works inside planning and implementation; `ci-performance-audit` supplies diagnosis or an independent review lens. Ordinary test additions get a lightweight check. `post-pr-audit` consumes current-head audit evidence; it does not automatically start another benchmark.
+
+```mermaid
+flowchart TD
+    IA["issue-audit"] -.->|performance issue: diagnosis| CPA["ci-performance-audit"]
+    II["implement-issue"] -.->|performance plan| OC["optimize-ci"]
+    AI["apply-issue"] -.->|validated experiment| OC
+    PP["prepare-pr"] -.->|relevant CI or test changes| CPA
+    PA["pr-audit"] -.->|independent performance review| CPA
+    K["kaizen"] -.->|evidenced recurring slowdown| CPA
+```
+
+#### Cross-repository contract handoff
+
+After the producer's implementation is merged, `contract-handoff` verifies the implemented contract and the consumer issue. Missing consumer requirements go through refinement; consumer planning starts only after the contract is frozen.
+
+```mermaid
+flowchart TD
+    CH["contract-handoff"] -->|contract frozen| II["implement-issue"]
+    CH -.->|consumer issue needs updates| RI["refine-issue"]
+    RI -->|recheck updated issue| CH
+    II -->|validated consumer proposal| AI["apply-issue"]
+```
+
+`pr-status` is a read-only status utility. `update-main` and `release` are available for explicitly requested maintenance/release work; the milestone flow does not automatically release or deploy.
 
 Invoking `/prepare-pr` authorizes the skill to stage and commit only files for the current issue, push its feature branch without force, and open the PR. It does not authorize merging. Explicitly requesting a prepare-only run keeps the work local.
 
@@ -103,7 +175,7 @@ Review severities:
 [NICE TO HAVE]
 ```
 
-Read [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol/GITHUB_CONVENTIONS.md) and [REVIEW_POLICY.md](protocol/REVIEW_POLICY.md) for the canonical rules.
+Read [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol/GITHUB_CONVENTIONS.md) [REVIEW_POLICY.md](protocol/REVIEW_POLICY.md) and [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md) for the canonical rules.
 
 ## Helper scripts
 
@@ -117,46 +189,147 @@ scripts/workflow-status https://github.com/owner/repo/issues/123
 
 They normalize live GitHub context so agents refresh comments, decisions, reviews and CI instead of relying on stale chat context.
 
-## Install with skills.sh
+## Step-by-step installation
 
-Install everything for OpenCode:
+Use the terminal in the application repository you want the agents to work on. The examples use Bash (Linux, macOS or Git Bash) and OpenCode; replace `opencode` with `codex` or `claude-code` for your agent.
 
-```bash
-npx skills add rocker-code/my-ai-skills --all -a opencode
-```
+### 1. Check prerequisites and GitHub access
 
-Install globally:
+Install Git, Node.js/npm compatible with the current [OpenSpec requirements](https://github.com/Fission-AI/OpenSpec), GitHub CLI, jq and your chosen agent. Then check:
 
 ```bash
-npx skills add rocker-code/my-ai-skills --all -a opencode -g
+git --version
+node --version
+npm --version
+gh --version
+jq --version
+gh auth status
 ```
 
-Install selected skills:
+If GitHub CLI is not authenticated, run `gh auth login` in this environment. Access to private repositories must be available to both the installer and the execution agent. The helpers use GitHub CLI authentication; web agents need their own GitHub connection.
+
+### 2. Install the skills for your agent
+
+From the application repository root:
 
 ```bash
-npx skills add rocker-code/my-ai-skills \
-  --skill milestone-orchestrator \
-  --skill issue-audit \
-  --skill issue-explore \
-  --skill issue-ready \
-  --skill implement-issue \
-  --skill apply-issue \
-  --skill openspec-workflow \
-  --skill sonar \
-  --skill ci-performance-audit \
-  --skill optimize-ci \
-  --skill prepare-pr \
-  --skill pr-audit \
-  --skill architecture-audit \
-  --skill address-pr-review \
-  --skill github-resolution \
-  --skill post-pr-audit \
-  --skill update-main \
-  --skill kaizen \
-  -a opencode
+cd /path/to/your-project
+npx skills add rocker-code/my-ai-skills --skill '*' -a opencode -y
 ```
 
-For a private repository, configure GitHub authentication in the environment used by `skills.sh`.
+This installs all skills for the selected agent at project scope. For a personal installation shared across projects, use:
+
+```bash
+npx skills add rocker-code/my-ai-skills --skill '*' -a opencode -g -y
+```
+
+Choose one scope deliberately. For multiple agents, pass `-a opencode -a codex -a claude-code`. Use `--skill '*'` to select all skills for these agents; `--all` selects all skills **and all agents**. See the [skills CLI documentation](https://github.com/vercel-labs/skills).
+
+For a partial installation, use repeated `--skill <name>` options. Install the skills called by your selected flow as well as its entry skill; installing only `milestone-orchestrator` does not install all its workers automatically.
+
+### 3. Initialize OpenSpec in the application repository
+
+The skills enforce OpenSpec but do not install its CLI or initialize the project:
+
+```bash
+npm install -g @fission-ai/openspec@latest
+openspec --version
+openspec init
+```
+
+Select your execution agent in the initializer. If the project is already initialized, inspect its existing configuration and use `openspec update` to refresh the generated integrations instead of recreating the setup. Preserve repository instructions and project-specific configuration.
+
+Use the commands generated for your agent: their syntax can differ between agents and OpenSpec versions. This repository's `openspec-workflow` verifies the official commands available in the installed version. See the [OpenSpec getting-started guide](https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md).
+
+### 4. Obtain the complementary files
+
+The skills installer copies skill directories and their bundled references. It does **not** copy the repository-root `protocol/`, `templates/` or `scripts/` into your application.
+
+Clone the source once into a separate location. Keep your terminal in the application repository:
+
+```bash
+MY_AI_SKILLS_SOURCE="$HOME/.local/share/my-ai-skills"
+mkdir -p "$(dirname "$MY_AI_SKILLS_SOURCE")"
+gh repo clone rocker-code/my-ai-skills "$MY_AI_SKILLS_SOURCE"
+```
+
+If you already have a clone, set `MY_AI_SKILLS_SOURCE` to its absolute path and skip the clone command.
+
+### 5. Copy protocols, templates and runtime helpers into the project
+
+This guide uses `.ai-workflow/` for project-visible copies. It is a documented installation convention, not a path automatically created by the skills installer.
+
+```bash
+mkdir -p .ai-workflow/protocol .ai-workflow/templates .ai-workflow/scripts
+cp "$MY_AI_SKILLS_SOURCE"/protocol/*.md .ai-workflow/protocol/
+cp -R "$MY_AI_SKILLS_SOURCE"/templates/. .ai-workflow/templates/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/issue-context .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/pr-context .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-status .ai-workflow/scripts/
+chmod +x .ai-workflow/scripts/issue-context \
+  .ai-workflow/scripts/pr-context \
+  .ai-workflow/scripts/workflow-status
+```
+
+| Installed files | Purpose |
+|---|---|
+| `protocol/AI_WORKFLOW.md` | Lifecycle, readiness and implementation gates. |
+| `protocol/GITHUB_CONVENTIONS.md` | Durable issue, decision and PR conventions. |
+| `protocol/REVIEW_POLICY.md` | Review severity and evidence rules. |
+| `protocol/CI_PERFORMANCE.md` | Measured optimization and preserved CI obligations. |
+| `templates/pull-request.md`, `templates/github/*.md` | PR, question, decision, review and integration-contract formats. |
+| `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Read-only live GitHub context helpers, requiring `gh` and `jq`. |
+
+`scripts/sync-plugin` is a package-maintenance tool for this repository. Do not install it as an application runtime helper.
+
+The bundled skill references already contain the applicable protocols/templates. These project copies make the shared rules and helpers accessible to the team; copying them alone does not register skills with an agent.
+
+### 6. Connect the project instructions to the installed files
+
+Append the following guidance to the existing `AGENTS.md` (or the instruction file your agent actually reads), adapting it to project policy. Preserve existing instructions; do not replace the file:
+
+```markdown
+## AI development workflow
+
+Use the installed my-ai-skills workflow for issue-driven work.
+Read .ai-workflow/protocol/AI_WORKFLOW.md,
+.ai-workflow/protocol/GITHUB_CONVENTIONS.md and
+.ai-workflow/protocol/REVIEW_POLICY.md before executing that workflow.
+For CI or test-performance work, also read
+.ai-workflow/protocol/CI_PERFORMANCE.md.
+
+Use .ai-workflow/templates/ for the shared output formats.
+Refresh live GitHub evidence with .ai-workflow/scripts/issue-context,
+.ai-workflow/scripts/pr-context and .ai-workflow/scripts/workflow-status.
+Keep project-specific constraints and the user's selected scope and merge mode.
+```
+
+For Claude Code, place the guidance in `CLAUDE.md` or reference your shared instruction file from it. Commit the project instructions, protocols, templates and helpers if the installation is intended for the team.
+
+### 7. Verify and start the existing flow
+
+```bash
+npx skills list
+test -f .ai-workflow/protocol/CI_PERFORMANCE.md
+test -x .ai-workflow/scripts/issue-context
+test -x .ai-workflow/scripts/pr-context
+test -x .ai-workflow/scripts/workflow-status
+.ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
+```
+
+Replace the example URL with an issue you can access. For global skills, also check `npx skills list -g`. Restart the agent or start a new session so it discovers the installed skills.
+
+Start with **"Cuide da fila deste projeto"** or **"Cuide deste milestone: URL"**. The entry workflow routes the supporting skills automatically under their documented conditions; you do not need to invoke each diagram node. Loading skills does not create a background scheduler: a selected workflow still needs to be started, and its runtime must support the required tools and isolated sessions.
+
+### 8. Keep the installation current
+
+Refresh the complementary source clone:
+
+```bash
+git -C "$MY_AI_SKILLS_SOURCE" pull --ff-only
+```
+
+Then repeat step 2 for the chosen agent/scope and step 5 for the copied files. Review the diff before committing updates: copying overwrites those managed copies, so keep project-specific additions in separate files. Review protocol changes and their bundled skill references together. In a new terminal, set `MY_AI_SKILLS_SOURCE` again to your existing clone path.
 
 ## Install as a personal ChatGPT/Codex plugin
 
