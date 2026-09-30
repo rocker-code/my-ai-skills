@@ -28,3 +28,7 @@ Invoke `post-pr-audit` in an independent reviewer session on the final head, pas
 After landing, verify the merge SHA and linked issue closure from GitHub. Close a delivered issue only with evidence of its merged fix; do not mark an unmerged/pending fix done. Run `kaizen` after confirmed merge when part of the supervised workflow. Do not tag, release or deploy unless separately requested. For a batch, refresh the next PR against the changed base; check cross-PR integration before treating the batch as complete.
 
 Report each ticket's audited scope, changes and evidence, final PR SHA/checks, review findings, merge or queue state, issue state, and every ticket left unresolved with its reason. End with the exact next action when blocked.
+
+## Automatic CI performance routing
+
+Read [the CI performance protocol](references/CI_PERFORMANCE.md). Preserve the CI performance obligations and benchmark evidence in optimization handoffs and corrections. Route materially changed workflow/test-infrastructure inputs back through `pr-audit` and its automatic `ci-performance-audit` lens; do not replace the scheduler or final merge gate.

@@ -48,3 +48,7 @@ Do not provide a noisy file-by-file changelog. Use an outcome-oriented title.
 ## Completion
 
 Return exactly one readiness state: `READY FOR PR`, `PR CREATED`, `PR ALREADY EXISTS`, or `NOT READY FOR PR — <reason>`, plus issue, OpenSpec validation, actual checks, PR URL when available and material remaining concerns.
+
+## Automatic CI performance routing
+
+Read [the CI performance protocol](references/CI_PERFORMANCE.md). For performance or material workflow/test-infrastructure changes, automatically use `ci-performance-audit` in review mode as self-review. Include baseline/candidate inputs, measured versus provisional benefit, runner-minute cost, retained obligations and rollback in the PR. Ordinary test additions need only a lightweight check; self-review does not replace independent `pr-audit`.

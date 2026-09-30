@@ -110,3 +110,7 @@ Reject a handoff when issue, validated proposal SHA, review/validation evidence,
 On interruption, refresh GitHub and Git, inspect partial work and PR state, preserve unrelated changes, and resume from the last verified gate. Do not rerun valid work. If a session fails, retry that issue within the configured attempt/resource limits; after repeated failure, mark FAILED and continue unrelated eligible issues. Never silently skip a blocked issue or claim a failed check passed.
 
 Return a compact dashboard of the selected queue's issues and PRs, dependency graph/order, active workers, states, evidence/SHAs, checks, blockers, merge mode, and the next automatic action. In manual mode, report all `READY_TO_MERGE` items together. In auto-if-green mode, report which PRs are queued for GitHub auto-merge and why any could not be queued. ghpending may aid triage; GitHub Project is a product view, not an execution gate.
+
+## Automatic CI performance routing
+
+Read [the CI performance protocol](references/CI_PERFORMANCE.md). Carry automatic `ci-performance-audit`/`optimize-ci` routing in relevant worker handoffs. Permit independent planning, but serialize optimization experiments sharing workflows, databases/sandboxes, runner resources or measured workload unless isolation and contention are explicitly accounted for. Reconstruct baseline/candidate evidence from the ledger; do not require the owner to invoke another skill or add an unconditional benchmark job.
