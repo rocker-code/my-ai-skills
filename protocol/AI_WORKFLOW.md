@@ -6,6 +6,14 @@ GitHub is the shared memory for people and agents. OpenSpec is the validated beh
 
 The latest explicit approved decision supersedes older conflicting discussion. Do not silently infer a material product or architectural decision.
 
+## Proposal approval without owner checkpoints
+
+OpenSpec proposal approval is an agent-owned quality gate, not a request for owner authorization. The planning agent must analyze, review, revise, and approve a proposal when it is supported by the issue, recorded decisions, current code, repository rules, and established project patterns. Do not pause to ask the owner to approve a proposal just because it was created or reached the validation step.
+
+Before marking a proposal `PLAN_VALIDATED` / `READY FOR APPLY`, confirm that every acceptance criterion maps to proposed behavior and tests; scope and non-goals match the issue; contracts and architecture follow existing decisions and patterns; risks and trade-offs are recorded; the exact proposal revision passes official OpenSpec validation; and required independent review is complete. Record the review and validation evidence, then continue automatically.
+
+Resolve routine questions from current code, native platform behavior, existing approved decisions, repository conventions, and tests. Ask the owner only when a material product or architecture choice remains genuinely unresolved, or when the proposal would add unrequested scope, break a public contract, change authorization or sensitive data handling, introduce an irreversible migration/destructive action, or create a material external cost or commitment. Explain the specific choice and impact. A missing fact that can be researched is not an owner decision. Block only the affected issue and continue independent work.
+
 ## States
 
 | State | Predominant role | Exit condition |
@@ -22,13 +30,13 @@ Command names follow OpenSpec's per-agent convention: `/opsx-explore`, `/opsx-pr
 
 1. Run `issue-audit` against the live issue and current code; refine material gaps.
 2. Run `/opsx-explore` against the issue, all comments, code, tests, docs and current OpenSpec. Do not implement.
-3. Add material ambiguities as `[QUESTION]` and stop.
+3. Investigate ambiguities against approved decisions, current code, native mechanisms, repository policy and tests. Resolve those supported by evidence and record the rationale. Record a `[QUESTION]` and stop only when a material product/architecture decision remains unresolved; block only affected work.
 4. Record approved answers as `[DECISION]`.
 5. Refresh GitHub and run `/opsx-explore` again after decisions.
 6. For cross-repository producer-consumer work, run `contract-handoff` in design-review mode before releasing the consumer proposal. Trace each relevant requirement/wireframe scenario to public operations, fields, states/errors, and the producer's enforcement point. Record linked producer/consumer issues and a hard dependency. A missing or implicit producer capability blocks only that consumer proposal/implementation; continue eligible producer and unrelated work.
 7. Pass `issue-ready`.
 8. Run `/opsx-propose` to create or update OpenSpec proposal/spec/design/tasks.
-9. Validate each proposal with the official OpenSpec command and a traceability review against the issue, decisions, current code, architecture and tests. Use an independent planning reviewer when available for material boundary changes; record the exact immutable proposal revision and review evidence. Show a consolidated progress summary without pausing for blanket owner approval. Stop only on a material decision that evidence and project policy cannot resolve, or if validation fails.
+9. Validate each proposal with the official OpenSpec command and the approval checklist above. Use an independent planning reviewer when available for material boundary changes; record the exact immutable proposal revision and review evidence. The agent approves the proposal internally when the checklist passes, reports the decision and evidence, and continues without asking for owner approval. Stop only for a genuinely unresolved material decision or failed validation.
 10. Use `openspec-workflow` as the canonical proposal and closeout procedure. Start a genuinely new child session per issue with `apply-issue`; verify the pinned validated revision, review evidence and durable handoff, then run `/opsx-apply`. For dependent consumers, first rerun `contract-handoff` in final-freeze mode against merged producer code/schema and require `CONTRACT FROZEN`. For milestones, schedule these sessions dynamically by dependency and conflict risk. ai-memory is supplementary.
 11. After Apply, complete focused tests and supported OpenSpec implementation verification; strictly validate the active change and archive it on the feature branch after all gates pass. Inspect the archived artifacts and synchronized live specs so they enter the same issue PR. Then self-review and invoke `/prepare-pr` with requirement → code → test evidence. This invocation authorizes staging only issue-scoped files, committing, pushing the feature branch without force, and opening the PR; no second confirmation is needed. Preserve unrelated work. This does not authorize merge, release, deploy or force-push. If the owner explicitly says prepare-only, stop at `READY FOR PR`.
 12. Independently run `pr-audit`, with `architecture-audit` for boundary changes. Route valid findings to `github-resolution`, which invokes `address-pr-review` for corrections on the same PR branch.
@@ -67,7 +75,7 @@ Agents resume rather than restart. The proposal validation gate and fresh-sessio
 
 ## Stop conditions
 
-Stop and record a `[QUESTION]` when ambiguity materially changes behavior, data, public contract, authorization, concurrency, compatibility or scope. Do not use assumptions to bypass the READY gate.
+Do not turn every ambiguity into an owner question. First investigate it using available project evidence and resolve it when that evidence supports one answer; record the rationale. Stop and record a `[QUESTION]` only when a material product/architecture choice still has multiple plausible outcomes, or a change would add scope, break a public contract, alter authorization/sensitive data handling, introduce an irreversible migration/destructive action, or create a material external cost/commitment. Do not invent a decision to bypass the READY gate. Block only the affected issue and continue unrelated eligible work.
 
 During implementation, if new evidence changes the validated contract, stop the affected work, update the issue/OpenSpec, rerun proposal review and validation, and resume in the required fresh implementation context. Seek the owner only for an unresolved material product/architecture decision.
 
