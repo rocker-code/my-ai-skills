@@ -71,6 +71,14 @@ Stop and record a `[QUESTION]` when ambiguity materially changes behavior, data,
 
 During implementation, if new evidence changes the validated contract, stop the affected work, update the issue/OpenSpec, rerun proposal review and validation, and resume in the required fresh implementation context. Seek the owner only for an unresolved material product/architecture decision.
 
+## Workflow timing and Kaizen metrics
+
+For a run managed by `milestone-orchestrator`, use the optional `workflow-event` and `workflow-report` helpers when installed and GitHub write access is available. Create one stable run ID, reuse it across issues/workers, and record a run comment for each issue in scope. Record timestamps at actual stage boundaries and explicitly mark blocking waits; do not derive timings from labels, status text or chat history. The orchestrator is the single writer for each issue/run record. If timing instrumentation fails, report metrics as unavailable and continue the workflow.
+
+The report separates issue/milestone calendar duration, registered stage work, declared waits, rework and CI/review evidence. Registered work is measured wall-clock time in marked stage windows minus declared waits; it is not model-internal thinking time. Parallel workers may make summed work exceed calendar duration. Use milestone medians and show P90 only with at least five samples. Missing model/token/cost data stays unavailable.
+
+After an issue or milestone completes, kaizen may use the report as additional evidence. Consider timings together with sample size, repeated work, CI failures and review findings. A single slow step is not sufficient to change the process. Never change gates automatically from timing metrics; if no recurring, evidence-backed improvement is justified, report `NO PROCESS CHANGE`.
+
 ## Automatic CI performance expertise
 
 Apply [CI_PERFORMANCE.md](CI_PERFORMANCE.md) in the existing stages. issue-audit diagnoses relevant issues; implement-issue and apply-issue use optimize-ci; prepare-pr self-reviews and pr-audit independently verifies relevant CI/test-infrastructure changes. post-pr-audit checks current evidence and kaizen diagnoses recurring slowdown. The orchestrator carries these hooks automatically and isolates comparable experiments. No new user command, lifecycle, routine approval or unconditional hosted benchmark is required.

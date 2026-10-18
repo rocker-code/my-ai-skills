@@ -179,15 +179,45 @@ Read [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol
 
 ## Helper scripts
 
-The scripts require `gh` and `jq` and are read-only:
+The context scripts require `gh` and `jq`; the timing scripts require Python 3.10+ and GitHub CLI access. `workflow-event` updates one hidden structured comment per issue/run; `workflow-report` is read-only:
 
 ```bash
 scripts/issue-context https://github.com/owner/repo/issues/123
 scripts/pr-context https://github.com/owner/repo/pull/124
 scripts/workflow-status https://github.com/owner/repo/issues/123
+scripts/workflow-event new-run-id
+scripts/workflow-report https://github.com/owner/repo/issues/123
 ```
 
-They normalize live GitHub context so agents refresh comments, decisions, reviews and CI instead of relying on stale chat context.
+### Workflow timing metrics
+
+The orchestrator creates a shared run ID, then uses `workflow-event` at real gate boundaries. A single hidden, structured GitHub issue comment is maintained per issue/run; each event updates that comment instead of adding a comment per transition. For a milestone, initialize every issue in the selected scope with the same run ID, including blocked or queued issues. Record stage start/end and explicit wait start/end events. Rework is recorded only when a completed gate must be revisited because of a review finding, failed check, replan or reopening.
+
+```bash
+RUN_ID=$(scripts/workflow-event new-run-id)
+scripts/workflow-event run-start --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --scope single_issue --agent codex
+scripts/workflow-event stage-start --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --agent codex
+scripts/workflow-event stage-end --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --status completed
+scripts/workflow-event run-end --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --status completed
+
+scripts/workflow-report https://github.com/owner/repo/issues/123
+scripts/workflow-report https://github.com/owner/repo/milestone/7 --run-id "$RUN_ID"
+scripts/workflow-report https://github.com/owner/repo/milestone/7 --format json
+scripts/workflow-report https://github.com/owner/repo/milestone/7 --format csv
+```
+
+For wait events, pass a stage and one reason: `owner_input`, `dependency`, `ci`, `review`, `runtime_capacity`, `external` or `other`. For rework, use `--reason review|ci|replan|reopened|other` and link evidence with `--evidence` (a GitHub URL or commit SHA). Optional agent/model values are recorded only when the runtime exposes them. Do not include prompts or sensitive text.
+
+The report shows issue cycle time, recorded work, explicit waits, stages, rework, PR review findings and failed/pending checks. A milestone report includes state counts and per-stage medians; it shows P90 only when there are at least five samples. Use `--run-id` to get a common milestone execution. The total registered work can exceed calendar time when workers ran in parallel. Recorded work is wall-clock time within stage windows minus explicitly marked waits, not model-internal thinking time. Missing data is reported as unavailable, never inferred from issue labels or conversation text.
+
+Timing metrics support `kaizen`: after completion, compare recurring bottlenecks with rework and quality evidence before suggesting a process change. A single slow run does not justify changing a gate. Tokens and cost are not estimated when the runtime does not expose them.
+
+
+The context helpers normalize live GitHub context so agents refresh comments, decisions, reviews and CI instead of relying on stale chat context.
 
 ## Step-by-step installation
 
@@ -195,7 +225,7 @@ Use the terminal in the application repository you want the agents to work on. T
 
 ### 1. Check prerequisites and GitHub access
 
-Install Git, Node.js/npm compatible with the current [OpenSpec requirements](https://github.com/Fission-AI/OpenSpec), GitHub CLI, jq and your chosen agent. Then check:
+Install Git, Node.js/npm compatible with the current [OpenSpec requirements](https://github.com/Fission-AI/OpenSpec), GitHub CLI, jq, Python 3.10+ and your chosen agent. Then check:
 
 ```bash
 git --version
@@ -266,9 +296,14 @@ cp -R "$MY_AI_SKILLS_SOURCE"/templates/. .ai-workflow/templates/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/issue-context .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/pr-context .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-status .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-event .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
-  .ai-workflow/scripts/workflow-status
+  .ai-workflow/scripts/workflow-status \
+  .ai-workflow/scripts/workflow-event \
+  .ai-workflow/scripts/workflow-report
 ```
 
 | Installed files | Purpose |
@@ -279,6 +314,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `protocol/CI_PERFORMANCE.md` | Measured optimization and preserved CI obligations. |
 | `templates/pull-request.md`, `templates/github/*.md` | PR, question, decision, review and integration-contract formats. |
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Read-only live GitHub context helpers, requiring `gh` and `jq`. |
+| `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Optional workflow timing capture and issue/milestone reports; require `gh` and Python 3.10+. |
 
 `scripts/sync-plugin` is a package-maintenance tool for this repository. Do not install it as an application runtime helper.
 
@@ -314,6 +350,10 @@ test -f .ai-workflow/protocol/CI_PERFORMANCE.md
 test -x .ai-workflow/scripts/issue-context
 test -x .ai-workflow/scripts/pr-context
 test -x .ai-workflow/scripts/workflow-status
+test -x .ai-workflow/scripts/workflow-event
+test -x .ai-workflow/scripts/workflow-report
+test -f .ai-workflow/scripts/workflow_metrics.py
+python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```
 
