@@ -29,7 +29,7 @@ Review the complete diff against:
 
 Detect unrelated files, formatting churn, debug output, secrets, generated/local files, weakened tests and behavior outside the validated contract. Fix in-scope defects before PR creation; preserve unrelated user work.
 
-Run permitted validations and report skipped checks with reasons. Include a concise requirement → implementation → test matrix in the PR description; mark unverified items explicitly. Hand off the opened PR to an independent pr-audit and architecture-audit where boundaries changed.
+Run permitted validations and report skipped checks with reasons. For integration or API-functional coverage, verify the final required local suites ran on the exact source checkout being committed, distinguish narrow development runs from the final suite, and list unresolved environment/fixture failures. A repository-mandated pre-commit suite that is missing or failing means `NOT READY FOR PR`; do not replace it with a previous CI result. Include a concise requirement → implementation → test matrix in the PR description; mark unverified items explicitly. Hand off the opened PR to an independent pr-audit and architecture-audit where boundaries changed.
 
 ## Git operations
 
