@@ -138,7 +138,7 @@ Production implementation does not begin while blocking questions remain or befo
 | `kaizen` | Convert evidenced failures into focused project or process improvements. |
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
 | `pr-status` | Read-only classification of the current PR state and next action. |
-| `contract-handoff` | Freeze an implemented backend contract and validate/update the consumer issue. |
+| `contract-handoff` | Trace consumer scenarios to producer contracts during planning, record hard dependencies for gaps, then freeze the final implemented contract before consumer work. |
 
 ### Web supervision
 
