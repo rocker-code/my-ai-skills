@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""Record workflow timing events in one durable GitHub issue comment per run."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import secrets
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from workflow_metrics import RUN_MARKER, iso_time, parse_run_comment  # noqa: E402
+
+URL_PATTERN = re.compile(r"^https://github\.com/([^/]+/[^/]+)/(issues|milestone)/(\d+)/?$")
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+REASONS = {"owner_input", "dependency", "ci", "review", "runtime_capacity", "external", "other"}
+REWORK_REASONS = {"review", "ci", "replan", "reopened", "other"}
+SCOPES = {"single_issue", "project_queue", "milestone"}
+
+
+def gh(*args: str, input_text: str | None = None) -> str:
+    result = subprocess.run(["gh", *args], input=input_text, text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or f"gh exited with status {result.returncode}")
+    return result.stdout
+
+
+def parse_issue_url(value: str) -> tuple[str, int]:
+    match = URL_PATTERN.fullmatch(value)
+    if not match or match.group(2) != "issues":
+        raise ValueError("--issue must be a GitHub issue URL")
+    return match.group(1), int(match.group(3))
+
+
+def read_comments(repo: str, number: int) -> list[dict]:
+    pages = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/comments"))
+    return [item for page in pages for item in page]
+
+
+def comment_body(record: dict) -> str:
+    latest = record["events"][-1]
+    line = f"My AI Skills workflow run {record['run_id']} — {record['status']}"
+    if latest.get("stage"):
+        line += f" — etapa: {latest['stage']}"
+    payload = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+    return (
+        f"{line}\n\n{RUN_MARKER}\n"
+        f"<!-- my-ai-skills-workflow-data:start -->\n{payload}\n"
+        "<!-- my-ai-skills-workflow-data:end -->"
+    )
+
+
+def save_record(repo: str, issue: int, record: dict, existing_comment_id: int | None) -> None:
+    body = comment_body(record)
+    if existing_comment_id is None:
+        gh("api", f"repos/{repo}/issues/{issue}/comments", "-f", f"body={body}")
+    else:
+        gh("api", "--method", "PATCH", f"repos/{repo}/issues/comments/{existing_comment_id}", "-f", f"body={body}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("event", choices={"new-run-id", "run-start", "stage-start", "stage-end", "wait-start", "wait-end", "run-end", "rework"})
+    parser.add_argument("--issue")
+    parser.add_argument("--run-id")
+    parser.add_argument("--scope", choices=sorted(SCOPES), default="single_issue")
+    parser.add_argument("--milestone-url")
+    parser.add_argument("--worker-id", default="orchestrator")
+    parser.add_argument("--stage")
+    parser.add_argument("--agent")
+    parser.add_argument("--model")
+    parser.add_argument("--reason", choices=sorted(REASONS | REWORK_REASONS))
+    parser.add_argument("--status", choices={"completed", "failed"})
+    parser.add_argument("--evidence", action="append", default=[])
+    args = parser.parse_args()
+
+    if args.event == "new-run-id":
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        print(f"wf-{stamp}-{secrets.token_hex(4)}")
+        return 0
+
+    if not args.issue:
+        parser.error("--issue is required")
+    repo, issue_number = parse_issue_url(args.issue)
+    if not args.run_id and args.event != "run-start":
+        parser.error("--run-id is required for this event")
+    run_id = args.run_id
+    if args.event == "run-start" and not run_id:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        run_id = f"wf-{stamp}-{secrets.token_hex(4)}"
+    if not SAFE_ID.fullmatch(run_id or ""):
+        parser.error("--run-id contains unsupported characters")
+    if args.event in {"stage-start", "stage-end", "wait-start", "wait-end", "rework"}:
+        if not args.stage or not SAFE_ID.fullmatch(args.stage):
+            parser.error("a safe --stage identifier is required for stage/wait events")
+    if args.event in {"wait-start", "wait-end"} and args.reason not in REASONS:
+        parser.error("--reason is required for wait events")
+    if args.event == "stage-end" and args.status not in {"completed", "failed"}:
+        parser.error("--status completed|failed is required for stage-end")
+    if args.event == "run-end" and args.status not in {"completed", "failed"}:
+        parser.error("--status completed|failed is required for run-end")
+    if args.scope == "milestone" and not args.milestone_url:
+        parser.error("--milestone-url is required when --scope=milestone")
+    if args.milestone_url:
+        milestone_match = re.fullmatch(r"https://github\.com/([^/]+/[^/]+)/milestone/\d+/?", args.milestone_url)
+        if not milestone_match or milestone_match.group(1) != repo:
+            parser.error("--milestone-url must belong to the issue repository")
+
+    for evidence in args.evidence:
+        if not (evidence.startswith("https://github.com/") or re.fullmatch(r"[a-fA-F0-9]{7,64}", evidence)):
+            parser.error("--evidence must be a GitHub URL or commit SHA")
+
+    comments = read_comments(repo, issue_number)
+    matches = [(item, parse_run_comment(item.get("body", ""))) for item in comments]
+    matches = [(item, data) for item, data in matches if data and data.get("run_id") == run_id]
+    if len(matches) > 1:
+        raise RuntimeError(f"run {run_id} has duplicate records on issue #{issue_number}; refusing to overwrite")
+    if args.event == "run-start":
+        if matches:
+            raise RuntimeError(f"run {run_id} already exists on issue #{issue_number}")
+        at = iso_time()
+        record = {
+            "schema_version": 1, "run_id": run_id, "repository": repo,
+            "scope": args.scope, "milestone_url": args.milestone_url,
+            "issue": {"number": issue_number, "url": args.issue},
+            "status": "running", "created_at": at, "finished_at": None,
+            "events": [], "evidence": [],
+        }
+        existing_id = None
+        event = {"type": "run_started", "at": at, "worker_id": args.worker_id, "agent": args.agent, "model": args.model}
+    else:
+        if not matches:
+            raise RuntimeError(f"run {run_id} was not found on issue #{issue_number}; start it first")
+        comment, record = matches[-1]
+        existing_id = comment["id"]
+        at = iso_time()
+        event = {"type": None, "at": at, "worker_id": args.worker_id}
+        if args.agent:
+            event["agent"] = args.agent
+        if args.model:
+            event["model"] = args.model
+        if args.stage:
+            event["stage"] = args.stage
+        if args.reason:
+            event["reason"] = args.reason
+        if args.status:
+            event["status"] = args.status
+        if args.evidence:
+            event["evidence"] = args.evidence
+
+    if args.event == "rework" and not args.reason:
+        parser.error("--reason is required for rework")
+    event_types = {
+        "stage-start": "stage_started", "stage-end": "stage_finished" if args.status == "completed" else "stage_failed",
+        "wait-start": "wait_started", "wait-end": "wait_finished",
+        "run-end": "run_finished", "rework": "rework",
+    }
+    if args.event != "run-start":
+        event["type"] = event_types[args.event]
+    record["events"].append(event)
+    if args.evidence:
+        record["evidence"].extend(args.evidence)
+    if args.event == "run-end":
+        record["status"] = args.status
+        record["finished_at"] = at
+    elif args.event == "run-start":
+        record["status"] = "running"
+    record["updated_at"] = at
+    save_record(repo, issue_number, record, existing_id)
+    print(json.dumps({"run_id": run_id, "issue": args.issue, "event": event["type"], "at": at}, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (RuntimeError, ValueError) as error:
+        print(f"workflow-event: error: {error}", file=sys.stderr)
+        raise SystemExit(1)

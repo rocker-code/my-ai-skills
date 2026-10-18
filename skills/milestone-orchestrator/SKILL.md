@@ -124,6 +124,19 @@ On interruption, refresh GitHub and Git, inspect partial work and PR state, pres
 
 Return a compact dashboard of the selected scope's issues and PRs, dependency graph/order, active workers, states, evidence/SHAs, checks, blockers, merge mode, and the next automatic action. In manual mode, report all `READY_TO_MERGE` items together. In auto-if-green mode, report which PRs are queued for GitHub auto-merge and why any could not be queued. ghpending may aid triage; GitHub Project is a product view, not an execution gate.
 
+## Workflow timing instrumentation
+
+When the helper scripts are installed and GitHub access is available, record timing events for every orchestrated issue. Instrumentation is evidence collection; if it is unavailable or fails, report that fact and continue the development workflow.
+
+1. At invocation start, create one run ID with `scripts/workflow-event new-run-id`. Pass that same ID to all issues and child sessions in the selected milestone/queue run. Record `run-start` once for every issue in scope, including blocked and not-yet-eligible issues, with the scope and milestone URL.
+2. Surround the actual workflow gates with `stage-start` / `stage-end`: `issue_audit`, `explore`, `resolve_questions`, `proposal`, `proposal_review`, `apply`, `tests`, `verify_archive`, `prepare_pr`, `pr_audit`, `ci`, `merge`, and `kaizen`. Use the gate names consistently. Add evidence URLs or commit SHAs when available.
+3. Mark only explicit blocking intervals with `wait-start` / `wait-end` and one reason: `owner_input`, `dependency`, `ci`, `review`, `runtime_capacity`, `external`, or `other`. Do not infer waiting from elapsed time.
+4. Record a `rework` event when work returns to a completed gate because of a review finding, failed check, replan, or issue reopening. Link the evidence; do not label normal first-pass work as rework.
+5. The orchestrator is the single writer for a run comment on an issue. Workers return their gate start/end timestamps and evidence to it; they do not concurrently patch the same comment. On resume, reuse the same run ID, close any wait that actually ended, and continue appending events.
+6. At the end of the selected run, record `run-end` with `completed` or `failed`. A missing permission, missing helper, or GitHub API failure must never block implementation or be presented as valid timing data.
+
+The logger maintains one machine-readable comment per issue/run. Use `scripts/workflow-report <issue-or-milestone-URL>` to report the latest runs, or add `--run-id <id>` for a milestone-wide run. The report separates calendar duration, registered stage work, explicit waits, and quality evidence. Registered work is wall-clock time inside recorded stage windows minus declared waits; it is not model-internal thinking time. Never add parallel worker durations and call the result calendar time.
+
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). Carry automatic `ci-performance-audit`/`optimize-ci` routing in relevant worker handoffs. Permit independent planning, but serialize optimization experiments sharing workflows, databases/sandboxes, runner resources or measured workload unless isolation and contention are explicitly accounted for. Reconstruct baseline/candidate evidence from the ledger; do not require the owner to invoke another skill or add an unconditional benchmark job.

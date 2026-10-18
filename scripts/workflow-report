@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""Report measured My AI Skills workflow timings for a GitHub issue or milestone."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import io
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from workflow_metrics import parse_run_comment, percentile, summarize_run, utc_now  # noqa: E402
+
+URL_PATTERN = re.compile(r"^https://github\.com/([^/]+/[^/]+)/(issues|milestone)/(\d+)/?$")
+
+
+def gh_json(*args: str) -> Any:
+    result = subprocess.run(["gh", *args], text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or f"gh exited with status {result.returncode}")
+    return json.loads(result.stdout)
+
+
+def issue_runs(repo: str, number: int) -> list[dict[str, Any]]:
+    pages = gh_json("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/comments")
+    comments = [item for page in pages for item in page]
+    runs = []
+    for comment in comments:
+        record = parse_run_comment(comment.get("body", ""))
+        if record:
+            runs.append(record)
+    return runs
+
+
+def selected_issues(url: str) -> tuple[str, str, list[dict[str, Any]]]:
+    match = URL_PATTERN.fullmatch(url)
+    if not match:
+        raise ValueError("target must be a GitHub issue or milestone URL")
+    repo, kind, number = match.group(1), match.group(2), int(match.group(3))
+    if kind == "issues":
+        issue = gh_json("issue", "view", url, "--json", "number,title,state,url")
+        return repo, "issue", [issue]
+    milestone = gh_json("api", f"repos/{repo}/milestones/{number}")
+    issues = gh_json(
+        "issue", "list", "--repo", repo, "--milestone", milestone["title"],
+        "--state", "all", "--limit", "500", "--json", "number,title,state,url",
+    )
+    return repo, f"milestone:{milestone['title']}", issues
+
+
+def quality_snapshot(repo: str, issue_number: int) -> dict[str, Any]:
+    prs = gh_json(
+        "pr", "list", "--repo", repo, "--state", "all", "--search", f"#{issue_number}",
+        "--json", "number,title,state,url,reviewDecision,statusCheckRollup,closingIssuesReferences", "--limit", "20",
+    )
+    relevant = [pr for pr in prs if any(int(linked.get("number", -1)) == issue_number for linked in pr.get("closingIssuesReferences", []))]
+    failures = []
+    pending = []
+    review_findings = {"blocker": 0, "must_fix": 0, "should_fix": 0, "nice_to_have": 0}
+    marker_pattern = re.compile(r"(?m)^\[(BLOCKER|MUST FIX|SHOULD FIX|NICE TO HAVE)\]")
+    for pr in relevant:
+        for check in pr.get("statusCheckRollup") or []:
+            status = (check.get("conclusion") or check.get("state") or "").lower()
+            if status in {"failure", "timed_out", "cancelled", "action_required", "error"}:
+                failures.append({"pr": pr["url"], "check": check.get("name") or check.get("context"), "status": status})
+            elif status not in {"success", "neutral", "skipped"}:
+                pending.append({"pr": pr["url"], "check": check.get("name") or check.get("context"), "status": status or "unknown"})
+        details = gh_json("pr", "view", pr["url"], "--json", "reviews,comments")
+        texts = [item.get("body", "") for item in details.get("reviews", []) + details.get("comments", [])]
+        for review_text in texts:
+            for finding in marker_pattern.findall(review_text):
+                review_findings[finding.lower().replace(" ", "_")] += 1
+    return {
+        "pull_requests": [{"number": pr["number"], "url": pr["url"], "state": pr["state"], "review_decision": pr.get("reviewDecision")} for pr in relevant],
+        "failed_checks": failures,
+        "pending_checks": pending,
+        "review_findings": review_findings,
+    }
+
+def build_report(url: str, run_id: str | None = None) -> dict[str, Any]:
+    repo, scope_name, issues = selected_issues(url)
+    now = utc_now()
+    rows = []
+    for issue in issues:
+        all_runs = issue_runs(repo, int(issue["number"]))
+        if run_id:
+            all_runs = [run for run in all_runs if run.get("run_id") == run_id]
+        else:
+            all_runs.sort(key=lambda run: run.get("created_at", ""))
+            all_runs = all_runs[-1:]
+        for run in all_runs:
+            summary = summarize_run(run, now)
+            summary["issue"].update({"title": issue["title"], "state": issue["state"]})
+            summary["quality"] = quality_snapshot(repo, int(issue["number"]))
+            rows.append(summary)
+
+    run_ids = {row["run_id"] for row in rows}
+    common_run = run_id if run_id else (next(iter(run_ids)) if len(run_ids) == 1 else None)
+    cycle_values = [row["cycle_elapsed_seconds"] for row in rows if row["cycle_elapsed_seconds"] is not None]
+    stage_samples: dict[str, dict[str, list[float]]] = {}
+    for row in rows:
+        for stage in row["stages"]:
+            sample = stage_samples.setdefault(stage["stage"], {"elapsed": [], "work": []})
+            sample["elapsed"].append(stage["elapsed_seconds"])
+            sample["work"].append(stage["recorded_work_seconds"])
+    milestone_stage_summary = []
+    for stage_name, sample in sorted(stage_samples.items()):
+        milestone_stage_summary.append({
+            "stage": stage_name, "sample_count": len(sample["elapsed"]),
+            "elapsed_median_seconds": percentile(sample["elapsed"], 0.5),
+            "elapsed_p90_seconds": percentile(sample["elapsed"], 0.9) if len(sample["elapsed"]) >= 5 else None,
+            "recorded_work_median_seconds": percentile(sample["work"], 0.5),
+            "recorded_work_p90_seconds": percentile(sample["work"], 0.9) if len(sample["work"]) >= 5 else None,
+        })
+    same_run_covers_milestone = (
+        scope_name.startswith("milestone:") and common_run and rows
+        and len({row["issue"]["number"] for row in rows}) == len(issues)
+    )
+    return {
+        "target": url, "repository": repo, "scope": scope_name,
+        "generated_at": now.isoformat().replace("+00:00", "Z"),
+        "run_filter": run_id,
+        "milestone_cycle_seconds": (
+            max((parse_time_value(row["finished_at"] or now.isoformat()) for row in rows), default=0)
+            - min((parse_time_value(row["created_at"]) for row in rows), default=0)
+            if same_run_covers_milestone else None
+        ),
+        "milestone_cycle_run_id": common_run if same_run_covers_milestone else None,
+        "issue_count": len(issues),
+        "tracked_issue_count": len({row["issue"]["number"] for row in rows}),
+        "github_issue_states": {
+            state: sum(1 for issue in issues if issue.get("state", "").lower() == state)
+            for state in ("open", "closed")
+        },
+        "cycle_elapsed_median_seconds": percentile(cycle_values, 0.5),
+        "cycle_elapsed_p90_seconds": percentile(cycle_values, 0.9) if len(cycle_values) >= 5 else None,
+        "milestone_stage_summary": milestone_stage_summary,
+        "runs": rows,
+        "note": "Recorded work is the sum of measured stage windows minus explicitly marked waits; parallel workers can make it exceed calendar time. This is wall-clock execution time, not model thinking time. Uninstrumented intervals are unavailable, not inferred.",
+    }
+
+def parse_time_value(value: str | None) -> float:
+    from datetime import datetime, timezone
+    if not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def duration(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    seconds = max(0, int(value))
+    hours, rem = divmod(seconds, 3600)
+    minutes, seconds = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def render_markdown(report: dict[str, Any]) -> str:
+    lines = [
+        f"# Workflow metrics — {report['scope']}", "",
+        f"Repository: {report['repository']}  ",
+        f"Gerado em: {report['generated_at']}  ",
+        f"Issues com dados: {report['tracked_issue_count']} de {report['issue_count']}",
+        "",
+    ]
+    if report["scope"].startswith("milestone:"):
+        lines.append(f"Issues GitHub: {report['github_issue_states']['closed']} fechadas, {report['github_issue_states']['open']} abertas")
+        lines.append(f"Ciclo do milestone: {duration(report['milestone_cycle_seconds'])} (run: {report['milestone_cycle_run_id'] or 'não há uma execução completa comum'})")
+        lines.append("")
+        if report["milestone_stage_summary"]:
+            lines.extend(["## Duração por etapa (mediana)", "", "| Etapa | Amostra | Decorrido | Trabalho registrado | P90 decorrido |", "|---|---:|---:|---:|---:|"])
+            for item in report["milestone_stage_summary"]:
+                p90 = duration(item["elapsed_p90_seconds"]) if item["elapsed_p90_seconds"] is not None else "n/a (<5)"
+                lines.append(f"| {item['stage']} | {item['sample_count']} | {duration(item['elapsed_median_seconds'])} | {duration(item['recorded_work_median_seconds'])} | {p90} |")
+            lines.append("")
+    lines.extend([
+        "| Issue | Estado | Execução | Run ID | Etapa atual | Aguardando | Ciclo | Trabalho registrado | Espera | Retrabalho / qualidade |",
+        "|---:|---|---|---|---|---|---:|---:|---:|---|",
+    ])
+    for row in report["runs"]:
+        wait = sum(row["wait_seconds_by_reason"].values())
+        findings = sum(row["quality"]["review_findings"].values())
+        quality = f"{len(row['quality']['failed_checks'])} checks falhos, {len(row['quality']['pending_checks'])} pendentes; {findings} achados de revisão; retrabalho {row['rework_count']}"
+        current_wait = ", ".join(f"{item['reason']} ({item['stage']})" for item in row["current_waits"]) or "—"
+        lines.append(
+            f"| [#{row['issue']['number']}]({row['issue']['url']}) {row['issue']['title']} "
+            f"| {row['issue']['state']} | {row['status']} | {row['run_id']} | {row['current_stage'] or '—'} | {current_wait} "
+            f"| {duration(row['cycle_elapsed_seconds'])} | {duration(row['recorded_work_seconds'])} | {duration(wait)} | {quality} |"
+        )
+        lines.extend(["", f"**Etapas da issue #{row['issue']['number']}**", "", "| Etapa | Decorrido | Trabalho registrado | Esperas |", "|---|---:|---:|---:|"])
+        for stage in row["stages"]:
+            stage_wait = sum(stage["wait_seconds_by_reason"].values())
+            lines.append(f"| {stage['stage']} | {duration(stage['elapsed_seconds'])} | {duration(stage['recorded_work_seconds'])} | {duration(stage_wait)} |")
+        if row["wait_seconds_by_reason"]:
+            lines.extend(["", "Esperas por motivo: " + ", ".join(f"{key}: {duration(value)}" for key, value in row["wait_seconds_by_reason"].items())])
+        if row["evidence"]:
+            lines.extend(["", "Evidências: " + ", ".join(row["evidence"])])
+        lines.append("")
+    if not report["runs"]:
+        lines.extend(["Nenhuma execução instrumentada foi encontrada. Os tempos ausentes não foram estimados.", ""])
+    lines.extend([report["note"], ""])
+    return "\n".join(lines)
+
+
+def render_csv(report: dict[str, Any]) -> str:
+    output = io.StringIO()
+    fields = ["repository", "scope", "issue_number", "issue_title", "issue_state", "run_id", "run_status", "cycle_elapsed_seconds", "recorded_work_seconds", "stage", "stage_elapsed_seconds", "stage_recorded_work_seconds", "wait_reason", "wait_seconds"]
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    for row in report["runs"]:
+        waits = row["wait_seconds_by_reason"] or {"": 0}
+        stages = row["stages"] or [{"stage": "", "elapsed_seconds": "", "recorded_work_seconds": ""}]
+        for stage in stages:
+            for reason, seconds in waits.items():
+                writer.writerow({
+                    "repository": row["repository"], "scope": row["scope"],
+                    "issue_number": row["issue"]["number"], "issue_title": row["issue"]["title"],
+                    "issue_state": row["issue"]["state"], "run_id": row["run_id"], "run_status": row["status"],
+                    "cycle_elapsed_seconds": row["cycle_elapsed_seconds"], "recorded_work_seconds": row["recorded_work_seconds"],
+                    "stage": stage["stage"], "stage_elapsed_seconds": stage["elapsed_seconds"],
+                    "stage_recorded_work_seconds": stage["recorded_work_seconds"],
+                    "wait_reason": reason, "wait_seconds": seconds,
+                })
+    return output.getvalue()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("target", help="GitHub issue or milestone URL")
+    parser.add_argument("--run-id", help="Limit results to one workflow run")
+    parser.add_argument("--format", choices={"markdown", "json", "csv"}, default="markdown")
+    args = parser.parse_args()
+    report = build_report(args.target, args.run_id)
+    if args.format == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif args.format == "csv":
+        print(render_csv(report), end="")
+    else:
+        print(render_markdown(report))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (RuntimeError, ValueError, KeyError, json.JSONDecodeError) as error:
+        print(f"workflow-report: error: {error}", file=sys.stderr)
+        raise SystemExit(1)
