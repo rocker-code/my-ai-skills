@@ -22,12 +22,12 @@ Command names follow OpenSpec's per-agent convention: `/opsx-explore`, `/opsx-pr
 
 1. Run `issue-audit` against the live issue and current code; refine material gaps.
 2. Run `/opsx-explore` against the issue, all comments, code, tests, docs and current OpenSpec. Do not implement.
-3. Add material ambiguities as `[QUESTION]` and stop.
+3. Investigate ambiguities against approved decisions, current code, native mechanisms, repository policy and tests. Resolve evidence-backed questions and record the rationale. Add a `[QUESTION]` and stop only for an unresolved material product/architecture decision; block only affected work.
 4. Record approved answers as `[DECISION]`.
 5. Refresh GitHub and run `/opsx-explore` again after decisions.
 6. Pass `issue-ready`.
 7. Run `/opsx-propose` to create or update OpenSpec proposal/spec/design/tasks.
-8. Validate each proposal with the official OpenSpec command and a traceability review against the issue, decisions, current code, architecture and tests. Use an independent planning reviewer when available for material boundary changes; record the exact immutable proposal revision and review evidence. Show a consolidated progress summary without pausing for blanket owner approval. Stop only on a material decision that evidence and project policy cannot resolve, or if validation fails.
+8. Validate each proposal with the official OpenSpec command and the proposal approval checklist in the shared protocol. Use an independent planning reviewer when available for material boundary changes; record the exact immutable proposal revision and review evidence. The agent approves a proposal internally when the checklist passes, reports its decision and evidence, then continues without asking the owner for approval. Stop only for a genuinely unresolved material decision or failed validation.
 9. Use `openspec-workflow` as the canonical proposal and closeout procedure. Start a genuinely new child session per issue with `apply-issue`; verify the pinned validated revision, review evidence and durable handoff, then run `/opsx-apply`. For milestones, schedule these sessions dynamically by dependency and conflict risk. ai-memory is supplementary.
 10. After Apply, complete focused tests and supported OpenSpec implementation verification; strictly validate the active change and archive it on the feature branch after all gates pass. Inspect the archived artifacts and synchronized live specs so they enter the same issue PR. Then self-review and invoke `/prepare-pr` with requirement → code → test evidence. This invocation authorizes staging only issue-scoped files, committing, pushing the feature branch without force, and opening the PR; no second confirmation is needed. Preserve unrelated work. This does not authorize merge, release, deploy or force-push. If the owner explicitly says prepare-only, stop at `READY FOR PR`.
 11. Independently run `pr-audit`, with `architecture-audit` for boundary changes. Route valid findings to `github-resolution`, which invokes `address-pr-review` for corrections on the same PR branch.
@@ -66,7 +66,7 @@ Agents resume rather than restart. The proposal validation gate and fresh-sessio
 
 ## Stop conditions
 
-Stop and record a `[QUESTION]` when ambiguity materially changes behavior, data, public contract, authorization, concurrency, compatibility or scope. Do not use assumptions to bypass the READY gate.
+Do not turn every ambiguity into an owner question. First investigate it using project evidence and resolve it when one answer is supported; record the rationale. Ask only when a material product/architecture choice remains unresolved, or a change would add scope, break a public contract, alter authorization/sensitive data handling, introduce an irreversible migration/destructive action, or create material external cost/commitment. Do not invent a decision to bypass READY. Block only affected work.
 
 During implementation, if new evidence changes the validated contract, stop the affected work, update the issue/OpenSpec, rerun proposal review and validation, and resume in the required fresh implementation context. Seek the owner only for an unresolved material product/architecture decision.
 
