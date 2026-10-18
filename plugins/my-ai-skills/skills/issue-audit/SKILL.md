@@ -10,8 +10,10 @@ Read the live issue, every comment and linked PR; inspect repository instruction
 1. Separate observed behavior, reported behavior, assumptions and approved `[DECISION]` comments. Check whether the problem still exists or has already been solved.
 2. Map affected boundaries, native framework mechanisms, contracts, authorization, state, persistence, compatibility and cross-repository dependencies. Mark unknowns explicitly.
 3. Identify reproducer or evidence of the current behavior, acceptance gaps and tests needed. Avoid guessing a product decision.
-4. Report contradictions with evidence and propose the smallest issue refinement or `[QUESTION]`; do not change issue text without authorization.
-5. Do not invoke `/opsx-propose` or `/opsx-apply`. Hand off to `issue-explore` and the official `/opsx-explore` after the audit.
+4. For cross-repository or producer-consumer work, run contract-handoff in design-review mode before declaring the consumer issue READY FOR EXPLORE. Trace consumer scenarios from requirements/wireframes/decisions to public operations, fields, states, domain errors and producer enforcement points. If any required producer capability is absent or implicit, record the exact hard dependency and return NEEDS REFINEMENT — CONTRACT GAP; do not let a consumer proposal be treated as ready.
+5. Identify security and correctness boundaries at the interface: authentication/authorization and ownership, sensitive data, stale state, retries/idempotency, concurrency, partial failure, and authoritative validation at the command/commit boundary when relevant.
+6. Report contradictions with evidence and propose the smallest issue refinement or `[QUESTION]`; do not change issue text without authorization.
+7. Do not invoke `/opsx-propose` or `/opsx-apply`. Hand off to `issue-explore` and the official `/opsx-explore` after the audit.
 
 Output: issue/ref, observed facts with evidence, assumptions, current implementation, dependencies, architectural impact, missing decisions, suggested scope/tests and one decision: `READY FOR EXPLORE` or `NEEDS REFINEMENT — <reason>`. A ready audit means exploration can begin, not that the issue is ready for proposal.
 
