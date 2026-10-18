@@ -56,7 +56,7 @@ flowchart TD
 
 #### Implementation and PR preparation
 
-`apply-issue` runs in a fresh session against the pinned validated proposal. Verification, strict validation, task completion and archive happen before `prepare-pr`. Applicable quality analysis can use `sonar`; it is not an extra mandatory phase for every issue. Repository-specific domain skills are loaded during exploration as shown above.
+`apply-issue` runs in a fresh session against the pinned validated proposal. For integration-heavy changes, planning records the proving scenarios and local environment, while Apply checks fixtures and setup before an expensive run, tests a narrow scenario, diagnoses each failure, then runs the repository's full required local suite against the commit candidate. Verification, strict validation, task completion and archive happen before `prepare-pr`. Applicable quality analysis can use `sonar`; it is not an extra mandatory phase for every issue. Repository-specific domain skills are loaded during exploration as shown above.
 
 ```mermaid
 flowchart TD
