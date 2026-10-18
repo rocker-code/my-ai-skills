@@ -40,6 +40,10 @@ Identify:
 - expected unit/integration/E2E evidence;
 - contradictions among issue, decisions, code, tests and OpenSpec.
 
+For work that crosses repositories or consumes another system's behavior, invoke contract-handoff in design-review mode. Map each consumer scenario (including wireframes and approved decisions) to the producer's public operation, fields, state/error, and authoritative enforcement point. Record producer and consumer issue links and a hard dependency in the OpenSpec exploration. If a required signal or behavior is absent, implicit, or unimplemented, identify the exact producer follow-up and do not release the dependent proposal. Do not require unrelated issues to wait.
+
+Check security/correctness at the boundary when relevant: authorization and ownership, sensitive-data exposure, stale reads, retry/idempotency, concurrency, partial failure, and revalidation at commit.
+
 Load a relevant domain skill such as `magento-review` or `expo-mobile-review` when the repository matches it.
 
 ## Question gate
