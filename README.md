@@ -13,6 +13,8 @@ GitHub is the source of truth. Material decisions must end up in an issue, PR, a
 
 The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
 
+![Fluxo do my-ai-skills: do milestone ao merge, com planejamento, implementação, validação e integração.](docs/images/fluxo-my-ai-skills.png)
+
 ### Skills called in each flow
 
 Every diagram node is an installed skill. Solid arrows show the main coordination or handoff; dotted arrows show conditional calls or a supporting skill. An arrow does not bypass validation, authorization or independent-session gates. These are skill maps, not a list of commands to invoke manually.
