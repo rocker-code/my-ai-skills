@@ -29,7 +29,7 @@ Review the complete diff against:
 
 Detect unrelated files, formatting churn, debug output, secrets, generated/local files, weakened tests and behavior outside the validated contract. Fix in-scope defects before PR creation; preserve unrelated user work.
 
-Run permitted validations and report skipped checks with reasons. Include a concise requirement → implementation → test matrix in the PR description; mark unverified items explicitly. Hand off the opened PR to an independent pr-audit and architecture-audit where boundaries changed.
+Run permitted validations and report skipped checks with reasons. For integration or API-functional coverage, verify the final required local suites ran on the exact source checkout being committed, distinguish narrow development runs from the final suite, and list unresolved environment/fixture failures. A repository-mandated pre-commit suite that is missing or failing means `NOT READY FOR PR`; do not replace it with a previous CI result. Include a concise requirement → implementation → test matrix in the PR description; mark unverified items explicitly. Hand off the opened PR to an independent pr-audit and architecture-audit where boundaries changed.
 
 ## Git operations
 
@@ -52,3 +52,9 @@ Return exactly one readiness state: `READY FOR PR`, `PR CREATED`, `PR ALREADY EX
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). For performance or material workflow/test-infrastructure changes, automatically use `ci-performance-audit` in review mode as self-review. Include baseline/candidate inputs, measured versus provisional benefit, runner-minute cost, retained obligations and rollback in the PR. Ordinary test additions need only a lightweight check; self-review does not replace independent `pr-audit`.
+
+## Proportionate test coverage
+
+Read [the test strategy](references/TEST_STRATEGY.md). Self-review test sufficiency and duplication against the planned evidence matrix. Include the proving layer, reused/new tests and material residual uncertainty in the existing PR evidence. Add coverage only for a concrete missing obligation; preserve required checks.
+
+Inspect existing tests for the affected behavior for redundant cases or obsolete expectations under the test strategy. Keep ordinary cleanup small and scope-bound; for a wider suite audit use a dedicated issue. Any consolidation, migration or removal needs a current-obligation → retained/replacement proof (or authoritative obsolescence evidence) map and applicable validation.

@@ -24,3 +24,7 @@ Archive on the issue feature branch only after implementation, tests, verificati
 If new evidence or PR feedback requires material behavior, data, authorization, architecture, concurrency or public-contract changes, stop affected implementation, update the issue and proposal/spec/design/tasks, review and validate the revised exact revision before resuming. Ask the owner when the new decision cannot be derived from existing approved decisions and project policy. Implementation-only fixes that preserve the validated contract need code/tests, not speculative spec edits. Never silently rewrite archived validated behavior.
 
 If OpenSpec is missing or an official command is unavailable, report the precise blocker; do not replace an absent contract with an agent-generated retrospective spec or invent commands. Read the installed CLI's help and repository setup to recover supported usage.
+
+## Proportionate test coverage
+
+Read [the test strategy](references/TEST_STRATEGY.md). Use the existing requirement/scenario matrix to record concrete risks, proving layers and existing/new tests. Plan representative scenarios with deeper coverage for affected high-risk behavior. A proving test can satisfy multiple rows; do not require a separate integrated and GraphQL matrix for the same rule. Retain every explicit validated obligation.
