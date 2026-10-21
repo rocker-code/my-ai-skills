@@ -36,6 +36,20 @@ Check environment readiness and fixture assumptions before an expensive run. Reu
 
 After two attempts without progress on the same failure, stop blind retries and diagnose: application defect, assertion/fixture defect or environment/setup defect. Record the failure evidence, what changed between attempts and the next hypothesis. Resume when there is a concrete corrective action or new evidence; the retry threshold is a diagnosis trigger, not permission to skip a test, weaken an assertion or declare success. Isolate out-of-scope infrastructure problems and report the precise blocker through the existing workflow.
 
+## Review existing tests proportionately
+
+During ordinary feature work, inspect existing tests in the affected behavior and nearby fixtures for redundancy or obsolete expectations. Record evidence-backed candidates in the same matrix. Make only small, in-scope changes with clear preservation proof; leave wider suite cleanup to a dedicated issue. Do not make every feature audit the entire repository or require a new benchmark.
+
+For an explicitly requested suite audit, apply the existing CI performance workflow and preservation contract:
+
+1. Reuse available timings and reports, then inventory integrated and GraphQL suites, proving behaviors, fixtures and actual runner/local commands. Separate service/dependency setup, Magento bootstrap, fixtures, test execution and teardown. Prioritize measured expensive groups; test count alone is not cost evidence.
+2. Classify candidates as retain, consolidate equivalent cases, migrate isolated rules to unit tests, remove obsolete behavior, or optimize setup/fixtures. Record test/class, current obligation, current proof, replacement proof or authoritative obsolescence evidence, distinct boundary risks and expected/measured cost. A test failure or overlap in method names is not redundancy evidence.
+3. Preserve unique API authorization, framework wiring, persistence, transaction, stock, concurrency and other relevant boundary assertions. Move only pure-rule variations to units and keep representative real-boundary proof. Remove obsolete tests only after checking current code, consumers and validated decisions/specs; absence of documentation is not obsolescence.
+4. Change small, reviewable batches. Verify replacement behavioral assertions, isolated affected tests and the required complete suites. Check ordering/cleanup when shared fixtures change. Reuse equivalent baseline results; gather only the measurements needed to resolve uncertainty. Prefer available comparable runs and label small samples provisional rather than spending repeated hosted runs to satisfy a quota.
+5. Report baseline/candidate revisions, commands, equivalent environment/cache/workload, elapsed times by phase and total, runner-minutes when available, counts/assertions/skips and the obligation-preservation map. Include new unit-test cost when moving coverage. Separate measured savings from estimates and explain remaining fixed overhead; do not claim fewer tests guarantee lower runtime.
+
+Require an explicit, reviewed preservation map for every consolidation, migration or removal. If approved requirements still demand an obsolete scenario, reconcile those requirements through the normal validated revision process first. The policy permits evidenced suite simplification, not silent coverage reduction, test disabling, discovery exclusions or weakened quality gates. Existing CI_PERFORMANCE.md rules continue to govern optimization acceptance.
+
 ## Review and stop
 
 Review sufficiency as well as missing coverage. For any requested additional test, identify the acceptance criterion, observed regression or concrete failure that existing evidence would miss, and the smallest appropriate proving layer. A hypothetical permutation without that explanation is not a test requirement or merge blocker. Apply the existing review severity policy; do not demand every layer or reopen accepted scope at final audit.

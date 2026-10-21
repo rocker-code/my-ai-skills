@@ -49,3 +49,5 @@ Report counts by classification, changes, OpenSpec impact, actual checks, remain
 ## Proportionate test coverage
 
 Read [the test strategy](references/TEST_STRATEGY.md). Evaluate test requests against a concrete missing acceptance criterion, affected risk or regression. Implement valid coverage in the smallest proving layer, reuse fixtures and diagnose repeated failures before another run. Explain speculative or duplicate requests using the existing finding classification rather than adding tests merely to close threads.
+
+Inspect existing tests for the affected behavior for redundant cases or obsolete expectations under the test strategy. Keep ordinary cleanup small and scope-bound; for a wider suite audit use a dedicated issue. Any consolidation, migration or removal needs a current-obligation → retained/replacement proof (or authoritative obsolescence evidence) map and applicable validation.
