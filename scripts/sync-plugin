@@ -54,6 +54,10 @@ bundle_reference github-resolution protocol/CI_PERFORMANCE.md
 bundle_reference ci-performance-audit protocol/CI_PERFORMANCE.md
 bundle_reference optimize-ci protocol/CI_PERFORMANCE.md
 
+for skill in implement-issue openspec-workflow apply-issue prepare-pr pr-audit post-pr-audit address-pr-review milestone-orchestrator; do
+  bundle_reference "$skill" protocol/TEST_STRATEGY.md
+done
+
 bundle_reference optimize-ci skills/ci-performance-audit/references/magento.md
 
 sync_directory "$repo_root/skills" "$plugin_root/skills"

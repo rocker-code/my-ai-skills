@@ -34,3 +34,7 @@ Lead with current-head findings in `REVIEW_POLICY.md` severity order, giving fil
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). When the diff materially changes workflows, test discovery/selection, setup, caching, sharding or expensive fixtures, automatically invoke `ci-performance-audit` in review mode as this independent review's domain lens. For ordinary test additions, use only its lightweight cost/coverage check. Apply the existing severity policy; no new blanket benchmark gate.
+
+## Proportionate test coverage
+
+Read [the test strategy](references/TEST_STRATEGY.md). Audit coverage against acceptance criteria and concrete affected risks. For a requested new test, identify the failure existing evidence would miss and the smallest proving layer. Do not demand exhaustive permutations, fixed counts or the same rule matrix in unit, integration and GraphQL tests. Preserve distinct real-boundary proof and existing required checks.

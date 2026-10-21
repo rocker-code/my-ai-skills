@@ -52,3 +52,7 @@ Return exactly one readiness state: `READY FOR PR`, `PR CREATED`, `PR ALREADY EX
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). For performance or material workflow/test-infrastructure changes, automatically use `ci-performance-audit` in review mode as self-review. Include baseline/candidate inputs, measured versus provisional benefit, runner-minute cost, retained obligations and rollback in the PR. Ordinary test additions need only a lightweight check; self-review does not replace independent `pr-audit`.
+
+## Proportionate test coverage
+
+Read [the test strategy](references/TEST_STRATEGY.md). Self-review test sufficiency and duplication against the planned evidence matrix. Include the proving layer, reused/new tests and material residual uncertainty in the existing PR evidence. Add coverage only for a concrete missing obligation; preserve required checks.

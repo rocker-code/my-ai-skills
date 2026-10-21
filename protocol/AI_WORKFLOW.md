@@ -87,6 +87,10 @@ The report separates issue/milestone calendar duration, registered stage work, d
 
 After an issue or milestone completes, kaizen may use the report as additional evidence. Consider timings together with sample size, repeated work, CI failures and review findings. A single slow step is not sufficient to change the process. Never change gates automatically from timing metrics; if no recurring, evidence-backed improvement is justified, report `NO PROCESS CHANGE`.
 
+## Proportionate test coverage
+
+Apply [TEST_STRATEGY.md](TEST_STRATEGY.md) automatically in planning, Apply and review. Extend the existing OpenSpec evidence matrix with scenario, acceptance criterion/concrete risk, proving layer and existing/new test. Choose representative coverage and deepen it for affected high-risk behavior; avoid exhaustive combinations and duplicated rule matrices between unit, integrated and GraphQL tests. Reuse fixtures, diagnose after two attempts without progress on the same failure, and preserve final required checks. Reviewers requesting extra tests must identify the concrete failure current evidence would miss. Stop expanding scenarios when the agreed criteria and identified risks are proven and applicable checks pass. No extra owner approval or workflow stage is required.
+
 ## Automatic CI performance expertise
 
 Apply [CI_PERFORMANCE.md](CI_PERFORMANCE.md) in the existing stages. issue-audit diagnoses relevant issues; implement-issue and apply-issue use optimize-ci; prepare-pr self-reviews and pr-audit independently verifies relevant CI/test-infrastructure changes. post-pr-audit checks current evidence and kaizen diagnoses recurring slowdown. The orchestrator carries these hooks automatically and isolates comparable experiments. No new user command, lifecycle, routine approval or unconditional hosted benchmark is required.

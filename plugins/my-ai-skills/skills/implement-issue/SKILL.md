@@ -21,3 +21,7 @@ End with `READY FOR APPLY — <proposal SHA>`, `NEEDS DECISION — <reason>`, `N
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). For CI/test-performance issues, automatically apply `optimize-ci` as a planning lens after the diagnosis from `issue-audit`. Put the preservation contract and benchmark plan into the normal OpenSpec proposal; do not introduce a second planner or approval checkpoint.
+
+## Proportionate test coverage
+
+Read [the test strategy](references/TEST_STRATEGY.md). During proposal planning, extend the existing evidence matrix with scenario, acceptance criterion/concrete risk, proving layer and existing/new test. Reuse current tests and select sufficient coverage before handoff; do not generate exhaustive combinations or duplicate obligations across layers.

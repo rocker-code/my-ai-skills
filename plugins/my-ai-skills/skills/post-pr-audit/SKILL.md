@@ -28,3 +28,7 @@ Report base/head SHA, trust gate, CI and review state, evidence matrix summary, 
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). For relevant CI/test-performance changes, verify that the current-head independent `ci-performance-audit` evidence establishes preserved obligations and the applicable performance acceptance criteria. Re-audit invalidated inputs through the normal review path; do not start a new benchmark or reopen settled optimization decisions at this final gate.
+
+## Proportionate test coverage
+
+Read [the test strategy](references/TEST_STRATEGY.md). Consume the planned matrix and current-head test evidence. Require extra coverage only for a substantiated missing obligation or regression under the existing Review Freeze/severity policy. Do not reopen coverage with speculative permutations or duplicate layers; missing required proof still blocks completion.

@@ -140,3 +140,7 @@ The logger maintains one machine-readable comment per issue/run. Use `scripts/wo
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). Carry automatic `ci-performance-audit`/`optimize-ci` routing in relevant worker handoffs. Permit independent planning, but serialize optimization experiments sharing workflows, databases/sandboxes, runner resources or measured workload unless isolation and contention are explicitly accounted for. Reconstruct baseline/candidate evidence from the ledger; do not require the owner to invoke another skill or add an unconditional benchmark job.
+
+## Proportionate test coverage
+
+Read [the test strategy](references/TEST_STRATEGY.md). Carry each issue's risk-based scenario matrix through planning, Apply and review handoffs. Use the existing matrix and gates; do not introduce a test-planning approval checkpoint, fixed test quota or per-issue benchmark.

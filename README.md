@@ -177,6 +177,8 @@ Review severities:
 [NICE TO HAVE]
 ```
 
+Test coverage follows [TEST_STRATEGY.md](protocol/TEST_STRATEGY.md) automatically in planning, implementation and review. Agents select representative scenarios from acceptance criteria and concrete risks, reuse fixtures, and avoid duplicating the full rule matrix across unit, integrated and GraphQL tests. Reviewers must justify extra tests by the failure existing evidence would miss. Required checks remain mandatory; repeated failures trigger diagnosis rather than blind retries. No new skill installation or approval step is needed.
+
 Read [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol/GITHUB_CONVENTIONS.md) [REVIEW_POLICY.md](protocol/REVIEW_POLICY.md) and [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md) for the canonical rules.
 
 ## Helper scripts
@@ -314,6 +316,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `protocol/GITHUB_CONVENTIONS.md` | Durable issue, decision and PR conventions. |
 | `protocol/REVIEW_POLICY.md` | Review severity and evidence rules. |
 | `protocol/CI_PERFORMANCE.md` | Measured optimization and preserved CI obligations. |
+| `protocol/TEST_STRATEGY.md` | Risk-based coverage, proving layers, diagnosis and stopping criteria. |
 | `templates/pull-request.md`, `templates/github/*.md` | PR, question, decision, review and integration-contract formats. |
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Read-only live GitHub context helpers, requiring `gh` and `jq`. |
 | `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Optional workflow timing capture and issue/milestone reports; require `gh` and Python 3.10+. |
@@ -332,7 +335,8 @@ Append the following guidance to the existing `AGENTS.md` (or the instruction fi
 Use the installed my-ai-skills workflow for issue-driven work.
 Read .ai-workflow/protocol/AI_WORKFLOW.md,
 .ai-workflow/protocol/GITHUB_CONVENTIONS.md and
-.ai-workflow/protocol/REVIEW_POLICY.md before executing that workflow.
+.ai-workflow/protocol/REVIEW_POLICY.md and
+.ai-workflow/protocol/TEST_STRATEGY.md before executing that workflow.
 For CI or test-performance work, also read
 .ai-workflow/protocol/CI_PERFORMANCE.md.
 
@@ -349,6 +353,7 @@ For Claude Code, place the guidance in `CLAUDE.md` or reference your shared inst
 ```bash
 npx skills list
 test -f .ai-workflow/protocol/CI_PERFORMANCE.md
+test -f .ai-workflow/protocol/TEST_STRATEGY.md
 test -x .ai-workflow/scripts/issue-context
 test -x .ai-workflow/scripts/pr-context
 test -x .ai-workflow/scripts/workflow-status

@@ -30,3 +30,7 @@ Then inspect the complete diff for unrelated changes, preserve unrelated user wo
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). Automatically apply `optimize-ci` inside this fresh session for validated performance experiments. For ordinary feature changes to expensive fixtures, test discovery or CI setup, use its lightweight preservation checklist without expanding scope. Record before/after only when the validated work requires it; retain normal verification and archive gates.
+
+## Proportionate test coverage
+
+Read [the test strategy](references/TEST_STRATEGY.md). Implement the planned scenarios using existing fixtures and the smallest proving layer. Record the concrete reason for added coverage. Run narrow checks while correcting failures, diagnose after two attempts without progress on the same failure, and retain the final repository-required gates. Stop expanding scenarios once the agreed criteria and identified risks are proven.
