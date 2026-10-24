@@ -15,7 +15,22 @@ The lifecycle moves through discovery, readiness, implementation, review and com
 
 ![Fluxo do my-ai-skills: do milestone ao merge, com planejamento, implementação, validação e integração.](docs/images/fluxo-my-ai-skills.png)
 
-### Workflow at a glance
+### O fluxo em um olhar
+
+![Planejamento: entender a issue, resolver dúvidas, escrever o OpenSpec e validar o plano.](docs/images/fluxo-planejamento.svg)
+
+![Implementação: codar, testar, validar e arquivar o OpenSpec, depois abrir a PR.](docs/images/fluxo-implementacao.svg)
+
+![Revisão: revisar de forma independente, corrigir achados, passar revisão final e CI, integrar.](docs/images/fluxo-revisao.svg)
+
+![Performance: detectar lentidão, medir o gargalo, otimizar e comparar tempo e cobertura.](docs/images/fluxo-performance-ci.svg)
+
+![Contrato: backend integrado, conferir API, congelar contrato e implementar o app com plano validado.](docs/images/fluxo-contrato.svg)
+
+<details>
+<summary>Detalhes técnicos, skills e regras de cada etapa</summary>
+
+### Technical flow reference
 
 Read each diagram from top to bottom. Boxes describe what happens; diamonds show a decision. Skill names are listed below each flow so the sequence can be understood without knowing the installed commands. These views summarize the existing workflow; validation, independent sessions and repository gates still apply.
 
@@ -150,6 +165,8 @@ flowchart TD
 | Implement only after the final freeze and proposal gate | `apply-issue` |
 
 Missing producer capabilities become hard dependencies. If only the consumer issue needs clarification, update it and repeat the comparison; no producer change is needed. A contract change after the freeze requires a revised consumer issue and another handoff.
+
+</details>
 
 `pr-status` is a read-only status utility. `update-main` and `release` are available for explicitly requested maintenance/release work; the milestone flow does not automatically release or deploy.
 
