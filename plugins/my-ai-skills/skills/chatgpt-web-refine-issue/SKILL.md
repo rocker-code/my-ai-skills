@@ -1,17 +1,19 @@
 ---
 name: chatgpt-web-refine-issue
-description: ChatGPT Web-only review and refinement of existing GitHub issues, comments and implementation questions. Analyze gaps, approved decisions and dependencies, update issues and record decisions with GitHub connector. Do not run in CLI agents.
+description: Web-agent review and refinement of existing GitHub issues, comments and implementation questions. Analyze gaps, approved decisions and dependencies, update issues and record decisions with available GitHub connector or equivalent authorized integration. Do not run in CLI agents.
 metadata:
   category: chatgpt-web
   stage: backlog
-  runtime: chatgpt-web-only
+  runtime: web-project-instructions
 ---
 
-# Refine Existing GitHub Issue — ChatGPT Web
+# Refine Existing GitHub Issue — Web Agents
 
-**Audience:** ChatGPT Web as supervisor, not executor. Never edit application code or execute OpenSpec from this skill.
+**Audience:** ChatGPT, Claude or another web agent with project instructions and access to the required GitHub sources/actions, acting as supervisor, not executor. Never edit application code or execute OpenSpec from this skill.
 
-Read [the ChatGPT Web issue authoring protocol](references/CHATGPT_WEB_ISSUES.md) and apply its default issue standard, plus `refine-issue` and `resolve-questions` when their functions are needed. For UI work also read [the visual artifact protocol](references/VISUAL_ARTIFACTS.md). This wrapper standardizes how conversations become durable issue changes.
+Read [the Web issue authoring protocol](references/CHATGPT_WEB_ISSUES.md) and apply its default issue standard, plus `refine-issue` and `resolve-questions` when their functions are needed. For UI work also read [the visual artifact protocol](references/VISUAL_ARTIFACTS.md). This wrapper standardizes how conversations become durable issue changes.
+
+Keep the existing `chatgpt-web-*` names for compatibility. These are portable Markdown instructions, not a guarantee of native skill installation in any provider. Report missing read/write capabilities instead of claiming success.
 
 ## Trigger
 

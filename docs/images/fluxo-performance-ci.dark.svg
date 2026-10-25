@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="310" viewBox="0 0 960 310" role="img" aria-labelledby="title desc" font-family="DejaVu Sans, sans-serif">
+<title id="title">Acelerar o CI</title><desc id="desc">Performance: detectar lentidão, medir o gargalo, otimizar e comparar tempo e cobertura. Só adotar a melhoria se preservar as verificações necessárias.</desc>
+<rect width="960" height="310" rx="20" fill="#0c1117" />
+<g font-family="DejaVu Sans, sans-serif">
+<text x="28" y="45" font-size="27" font-weight="700" fill="#e6edf3">Acelerar o CI</text>
+<text x="28" y="74" font-size="17" fill="#a4afbc">Quando há lentidão, melhorar com evidência.</text>
+<rect x="28" y="103" width="210" height="136" rx="14" fill="#1c2633" stroke="#303842" stroke-opacity="1" stroke-width="1.5" />
+<rect x="28" y="103" width="4" height="136" fill="#e3b341" /><rect x="42" y="118" width="28" height="28" rx="7" fill="#e3b341" /><text x="56" y="137" text-anchor="middle" fill="#0c1117" font-size="14" font-weight="700">1</text>
+<text x="45" y="177" font-size="23" font-weight="700" fill="#e6edf3">Detectar</text>
+<text x="45" y="207" font-size="15" fill="#a4afbc">Encontrar a lentidão</text>
+<path d="M 244 170 h 9 m -4 -5 l 5 5 -5 5" fill="none" stroke="#e3b341" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="259" y="103" width="210" height="136" rx="14" fill="#1c2633" stroke="#303842" stroke-opacity="1" stroke-width="1.5" />
+<rect x="259" y="103" width="4" height="136" fill="#e3b341" /><rect x="273" y="118" width="28" height="28" rx="7" fill="#e3b341" /><text x="287" y="137" text-anchor="middle" fill="#0c1117" font-size="14" font-weight="700">2</text>
+<text x="276" y="177" font-size="23" font-weight="700" fill="#e6edf3">Medir</text>
+<text x="276" y="207" font-size="15" fill="#a4afbc">Localizar o gargalo</text>
+<path d="M 475 170 h 9 m -4 -5 l 5 5 -5 5" fill="none" stroke="#e3b341" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="490" y="103" width="210" height="136" rx="14" fill="#1c2633" stroke="#303842" stroke-opacity="1" stroke-width="1.5" />
+<rect x="490" y="103" width="4" height="136" fill="#e3b341" /><rect x="504" y="118" width="28" height="28" rx="7" fill="#e3b341" /><text x="518" y="137" text-anchor="middle" fill="#0c1117" font-size="14" font-weight="700">3</text>
+<text x="507" y="177" font-size="23" font-weight="700" fill="#e6edf3">Otimizar</text>
+<text x="507" y="207" font-size="15" fill="#a4afbc">Testar uma mudança</text>
+<path d="M 706 170 h 9 m -4 -5 l 5 5 -5 5" fill="none" stroke="#e3b341" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="721" y="103" width="210" height="136" rx="14" fill="#1c2633" stroke="#303842" stroke-opacity="1" stroke-width="1.5" />
+<rect x="721" y="103" width="4" height="136" fill="#e3b341" /><rect x="735" y="118" width="28" height="28" rx="7" fill="#e3b341" /><text x="749" y="137" text-anchor="middle" fill="#0c1117" font-size="14" font-weight="700">4</text>
+<text x="738" y="177" font-size="23" font-weight="700" fill="#e6edf3">Comparar</text>
+<text x="738" y="207" font-size="15" fill="#a4afbc">Tempo + cobertura</text>
+
+<text x="28" y="279" font-size="15" fill="#a4afbc">Só adotar a melhoria se preservar as verificações necessárias.</text>
+</g></svg>

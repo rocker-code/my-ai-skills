@@ -1,236 +1,359 @@
-# my-ai-skills
+# AI Engineering Workflow
 
-Reusable skills and tools for a supervised, issue-driven AI software development lifecycle using GitHub, OpenSpec, ChatGPT, Codex, Claude and Claude Code.
+Português (Brasil) · [English](README.en.md)
 
-The repository defines one shared protocol across two operating layers:
+**AI Engineering Workflow** é o nome de apresentação do projeto. O repositório continua em `rocker-code/my-ai-skills`; URLs, comandos de instalação, caminhos e identificadores existentes permanecem válidos nesta etapa.
 
-- **Web / coordination:** requirements, decisions, architecture, contract handoff and independent review.
-- **CLI / execution:** repository exploration, OpenSpec, implementation, tests, PR preparation and review fixes.
+Skills e ferramentas reutilizáveis para um ciclo supervisionado de desenvolvimento com IA, orientado por issues, usando GitHub, OpenSpec, ChatGPT, Codex, Claude e Claude Code.
 
-GitHub is the source of truth. Material decisions must end up in an issue, PR, architecture document, OpenSpec artifact or code—not only in chat history.
+O repositório define um protocolo compartilhado entre duas camadas de trabalho:
 
-## Lifecycle
+- **Web / coordenação:** requisitos, decisões, arquitetura, entrega de contratos e revisão independente.
+- **CLI / execução:** exploração do repositório, OpenSpec, implementação, testes, preparação de PRs e correções da revisão.
 
-The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
+O GitHub é a fonte de verdade. Decisões relevantes devem ficar em uma issue, PR, documento de arquitetura, artefato OpenSpec ou código, além do histórico da conversa.
 
-![Fluxo do my-ai-skills: do milestone ao merge, com planejamento, implementação, validação e integração.](docs/images/fluxo-my-ai-skills.png)
+## Índice
+
+- [Fluxo de trabalho](#fluxo-de-trabalho)
+- [Visão geral das skills](#skills)
+- [Supervisão Web](#supervisão-web)
+- [Configurar o projeto no agente Web](#configurar-o-projeto-no-agente-web)
+- [Aplicar designs aprovados](#aplicar-designs-aprovados)
+- [Protocolo GitHub](#protocolo-github)
+- [Scripts auxiliares](#scripts-auxiliares)
+- [Métricas de tempo](#métricas-de-tempo)
+- [Instalação passo a passo](#instalação-passo-a-passo)
+- [Instalar como plugin pessoal](#instalar-como-plugin-pessoal-do-chatgptcodex)
+- [Cuidar de uma issue](#cuidar-de-uma-issue)
+- [Regras de milestones](#regras-de-milestones)
+- [Fluxo entre repositórios](#fluxo-entre-repositórios)
+- [Otimização de CI](#otimização-de-ci)
+- [Referências e agradecimentos](#referências-e-agradecimentos)
+
+## Fluxo de trabalho
+
+O fluxo começa no agente Web: você descreve a necessidade, as skills consultam o contexto e criam/refinam a issue no GitHub. Depois, o agente CLI recebe a issue ou milestone e conduz o planejamento, a implementação e a revisão.
+
+O ciclo passa por descoberta, prontidão, implementação, revisão e conclusão. OpenSpec é obrigatório; `openspec-workflow` rege exploração, propostas, validação da revisão exata, verificação da implementação e arquivamento.
+
+![Fluxo do AI Engineering Workflow: da ideia à issue com agente Web, seguida de planejamento, implementação, validação e merge no CLI.](docs/images/fluxo-my-ai-skills.svg)
+
+O diagrama acima usa diretamente a fonte SVG editável. Para exportar uma versão PNG, execute `inkscape docs/images/fluxo-my-ai-skills.svg --export-type=png --export-filename=docs/images/fluxo-my-ai-skills.png`.
 
 ### O fluxo em um olhar
 
-![Planejamento: entender a issue, resolver dúvidas, escrever o OpenSpec e validar o plano.](docs/images/fluxo-planejamento.svg)
+![Planejamento: entender a issue, resolver dúvidas, escrever o OpenSpec e validar o plano.](docs/images/fluxo-planejamento.dark.svg)
 
-![Implementação: codar, testar, validar e arquivar o OpenSpec, depois abrir a PR.](docs/images/fluxo-implementacao.svg)
+![Implementação: codar, testar, validar e arquivar o OpenSpec, depois abrir a PR.](docs/images/fluxo-implementacao.dark.svg)
 
-![Revisão: revisar de forma independente, corrigir achados, passar revisão final e CI, integrar.](docs/images/fluxo-revisao.svg)
+![Revisão: revisar de forma independente, corrigir achados, passar revisão final e CI, integrar.](docs/images/fluxo-revisao.dark.svg)
 
-![Performance: detectar lentidão, medir o gargalo, otimizar e comparar tempo e cobertura.](docs/images/fluxo-performance-ci.svg)
+![Performance: detectar lentidão, medir o gargalo, otimizar e comparar tempo e cobertura.](docs/images/fluxo-performance-ci.dark.svg)
 
-![Contrato: backend integrado, conferir API, congelar contrato e implementar o app com plano validado.](docs/images/fluxo-contrato.svg)
+![Contrato: backend integrado, conferir API, congelar contrato e implementar o app com plano validado.](docs/images/fluxo-contrato.dark.svg)
 
 <details>
 <summary>Detalhes técnicos, skills e regras de cada etapa</summary>
 
-### Technical flow reference
+### Referência técnica dos fluxos
 
-Read each diagram from top to bottom. Boxes describe what happens; diamonds show a decision. Skill names are listed below each flow so the sequence can be understood without knowing the installed commands. These views summarize the existing workflow; validation, independent sessions and repository gates still apply.
+Leia cada diagrama de cima para baixo. Caixas descrevem ações; losangos indicam decisões. As skills responsáveis aparecem abaixo de cada fluxo, permitindo entender a sequência sem conhecer os comandos instalados. As visões resumem o fluxo existente; validações, sessões independentes e regras do repositório continuam obrigatórias.
 
-#### 1. From an issue to delivery
+#### 1. Da issue à entrega
 
-Start with one issue, a repository queue or a milestone. The orchestrator uses the same delivery cycle for each eligible issue.
+Comece por uma issue, pela fila do repositório ou por um milestone. O orquestrador aplica o mesmo ciclo de entrega a cada issue elegível.
 
 ```mermaid
 flowchart TD
-    A["1. Select work and check dependencies"] --> B["2. Understand the issue and validate the plan"]
-    B --> C["3. Implement, test and open the PR"]
-    C --> D["4. Review, correct and pass final checks"]
-    D --> E["5. Merge, confirm closure and capture lessons"]
+    A["1. Selecionar trabalho e conferir dependências"] --> B["2. Entender a issue e validar o plano"]
+    B --> C["3. Implementar, testar e abrir a PR"]
+    C --> D["4. Revisar, corrigir e passar verificações finais"]
+    D --> E["5. Integrar, confirmar fechamento e registrar aprendizados"]
 ```
 
-| Part of the flow | Skills responsible |
+| Parte do fluxo | Skills responsáveis |
 |---|---|
-| Coordinate the selected scope and dependencies | `milestone-orchestrator` |
-| Check the issue and validate its plan | `issue-audit`, `implement-issue` |
-| Implement and prepare the PR | `apply-issue`, `prepare-pr` |
-| Review and resolve findings | `pr-audit`, `github-resolution`, `post-pr-audit` |
-| Capture evidenced improvements after merge | `kaizen` |
+| Coordenar o escopo selecionado e as dependências | `milestone-orchestrator` |
+| Conferir a issue e validar seu plano | `issue-audit`, `implement-issue` |
+| Implementar e preparar a PR | `apply-issue`, `prepare-pr` |
+| Revisar e resolver achados | `pr-audit`, `github-resolution`, `post-pr-audit` |
+| Registrar melhorias comprovadas após o merge | `kaizen` |
 
-Independent issues can run concurrently in isolated sessions/worktrees. Hard dependencies wait for confirmed merges. With **"sem merge"**, the cycle stops at **READY_TO_MERGE** after review and required checks. Release and deployment require a separate request.
+Issues independentes podem executar em paralelo, em sessões e árvores de trabalho isoladas. Dependências obrigatórias aguardam merges confirmados. Com **"sem merge"**, o ciclo para em **READY_TO_MERGE**, após revisão e verificações exigidas. Publicação de versões e implantação exigem pedido separado.
 
-#### 2. Planning: understand before implementing
+#### 2. Planejamento: entender antes de implementar
 
-The planning agent checks the issue against current code, resolves missing information and validates an exact OpenSpec proposal revision. It continues automatically when the evidence is sufficient.
+O agente de planejamento confere a issue contra o código atual, resolve informações ausentes e valida uma revisão exata da proposta OpenSpec. Ele continua automaticamente quando há evidências suficientes.
 
 ```mermaid
 flowchart TD
-    A["Inspect the issue and current code"] --> B{"Enough information to plan?"}
-    B -->|Yes| C["Check readiness and write the proposal"]
-    B -->|No| D["Refine requirements and resolve questions"]
+    A["Inspecionar a issue e o código atual"] --> B{"Há informações suficientes para planejar?"}
+    B -->|Sim| C["Conferir prontidão e escrever a proposta"]
+    B -->|Não| D["Refinar requisitos e resolver dúvidas"]
     D --> A
-    C --> E["Review and validate the exact proposal revision"]
-    E -->|Passed| F["Hand off to a fresh implementation session"]
-    E -->|Needs changes| C
+    C --> E["Revisar e validar a revisão exata da proposta"]
+    E -->|Aprovado| F["Encaminhar para uma nova sessão de implementação"]
+    E -->|Precisa de ajustes| C
 ```
 
-| Responsibility | Skills |
+| Responsabilidade | Skills |
 |---|---|
-| Coordinate planning | `implement-issue` |
-| Verify claims and explore current behavior | `issue-audit`, `issue-explore` |
-| Refine requirements or resolve material questions | `refine-issue`, `resolve-questions` |
-| Enforce readiness and the OpenSpec proposal gate | `issue-ready`, `openspec-workflow` |
-| Check domain rules when applicable | `magento-review`, `expo-mobile-review` |
+| Coordenar o planejamento | `implement-issue` |
+| Verificar afirmações e explorar o comportamento atual | `issue-audit`, `issue-explore` |
+| Refinar requisitos ou resolver questões relevantes | `refine-issue`, `resolve-questions` |
+| Exigir prontidão e validação da proposta OpenSpec | `issue-ready`, `openspec-workflow` |
+| Conferir regras de domínio quando aplicáveis | `magento-review`, `expo-mobile-review` |
 
-After material decisions, exploration repeats before readiness. Routine questions are resolved from evidence; unresolved material product or architecture decisions require owner input and block only affected work. Failed validation keeps the issue in planning.
+Após decisões relevantes, a exploração se repete antes da declaração de prontidão. Questões rotineiras são resolvidas por evidências; decisões materiais de produto ou arquitetura ainda pendentes exigem participação do responsável e bloqueiam apenas o trabalho afetado. Falhas na validação mantêm a issue no planejamento.
 
-#### 3. Implementation: turn the validated plan into a PR
+#### 3. Implementação: transformar o plano validado em PR
 
-Implementation starts in a fresh session against the pinned, validated proposal. Tests prove the acceptance criteria and concrete risks; applicable repository checks remain required.
+A implementação começa em uma nova sessão, usando a proposta identificada e validada. Os testes comprovam critérios de aceite e riscos concretos; as verificações aplicáveis do repositório continuam obrigatórias.
 
 ```mermaid
 flowchart TD
-    A["Implement the validated proposal"] --> B["Run focused tests and required checks"]
-    B --> C{"Verification passed?"}
-    C -->|No| D["Diagnose the failure and correct it"]
+    A["Implementar a proposta validada"] --> B["Executar testes focados e verificações exigidas"]
+    B --> C{"Verificação aprovada?"}
+    C -->|Não| D["Diagnosticar e corrigir a falha"]
     D --> B
-    C -->|Yes| E["Validate and archive the OpenSpec change"]
-    E --> F["Self-review and open the PR"]
+    C -->|Sim| E["Validar e arquivar a mudança OpenSpec"]
+    E --> F["Executar autorrevisão e abrir a PR"]
 ```
 
-| Responsibility | Skills |
+| Responsabilidade | Skills |
 |---|---|
-| Implement and verify in a fresh session | `apply-issue` |
-| Enforce verification, strict validation and archive | `openspec-workflow` |
-| Perform applicable quality analysis | `sonar` |
-| Prepare the commit and PR with evidence | `prepare-pr` |
+| Implementar e verificar em uma nova sessão | `apply-issue` |
+| Exigir verificação, validação estrita e arquivamento | `openspec-workflow` |
+| Executar a análise de qualidade aplicável | `sonar` |
+| Preparar o commit e a PR com evidências | `prepare-pr` |
 
-For integration-heavy changes, check the environment and fixtures before an expensive run, prove a narrow scenario first, then run the full required local suite against the commit candidate. Archive only after verification and strict validation pass; include the archive and synchronized specs in the same PR. If new evidence changes the validated contract, return to planning before continuing implementation.
+Em mudanças com muitas integrações, confira o ambiente e as massas de teste antes de uma execução cara. Comprove primeiro um cenário restrito e depois execute a suíte local completa exigida no commit candidato. Arquive somente após a verificação e a validação estrita passarem; inclua o arquivo e as especificações sincronizadas na mesma PR. Se novas evidências alterarem o contrato validado, retorne ao planejamento antes de continuar a implementação.
 
-#### 4. Review: correct findings before merge
+#### 4. Revisão: corrigir achados antes do merge
 
-A standalone review reports findings. Corrections and merge happen only in an authorized resolution run.
+Uma revisão isolada relata achados. Correções e merge só ocorrem em uma execução de resolução autorizada.
 
 ```mermaid
 flowchart TD
-    A["Independently review the current PR"] --> B{"Corrections needed?"}
-    B -->|Yes| C["Fix valid findings and refresh checks"]
+    A["Revisar a PR atual de forma independente"] --> B{"São necessárias correções?"}
+    B -->|Sim| C["Corrigir achados válidos e atualizar verificações"]
     C --> A
-    B -->|No| D["Pass independent final review and required CI"]
-    D --> E{"Selected merge mode?"}
-    E -->|Automatic, all gates passed| F["Merge and verify issue closure"]
-    E -->|Manual| G["Ready for owner to merge"]
+    B -->|Não| D["Passar pela revisão final independente e CI exigido"]
+    D --> E{"Qual o modo de merge?"}
+    E -->|Automático, validações aprovadas| F["Integrar e verificar o fechamento da issue"]
+    E -->|Manual| G["Pronto para merge pelo responsável"]
 ```
 
-| Responsibility | Skills |
+| Responsabilidade | Skills |
 |---|---|
-| Independently review requirements, code and tests | `pr-audit` |
-| Check changed boundaries and coupling when applicable | `architecture-audit` |
-| Coordinate authorized corrections and refreshed audits | `github-resolution` |
-| Fix valid review findings | `address-pr-review` |
-| Perform the independent final gate and authorized merge | `post-pr-audit` |
-| Capture lessons after confirmed merge and closure | `kaizen` |
+| Revisar requisitos, código e testes de forma independente | `pr-audit` |
+| Conferir limites alterados e acoplamento quando aplicável | `architecture-audit` |
+| Coordenar correções autorizadas e atualizar auditorias | `github-resolution` |
+| Corrigir achados válidos da revisão | `address-pr-review` |
+| Executar a validação final independente e o merge autorizado | `post-pr-audit` |
+| Registrar aprendizados após merge e fechamento confirmados | `kaizen` |
 
-A failed final review or CI check keeps the PR in review/correction. A new push requires affected evidence to be refreshed against the current head. Automatic merge never bypasses required checks, reviews or branch protections.
+Uma revisão final ou verificação de CI reprovada mantém a PR em revisão/correção. Um novo envio exige atualizar as evidências afetadas para a revisão atual do código. O merge automático nunca ignora verificações, revisões ou proteções de branch obrigatórias.
 
-#### 5. CI performance: support inside the existing steps
+#### 5. Desempenho de CI: apoio às etapas existentes
 
-Performance work is routed automatically when an issue or diff triggers the performance rules. It supports planning, implementation and review within the delivery cycle.
+O trabalho de desempenho é encaminhado automaticamente quando uma issue ou alteração aciona suas regras. Ele apoia planejamento, implementação e revisão dentro do ciclo de entrega.
 
-| When it is needed | What happens | Skills |
+| Quando é necessário | O que acontece | Skills |
 |---|---|---|
-| An issue reports a slow pipeline | Diagnose measured bottlenecks before proposing a change | `issue-audit` → `ci-performance-audit` |
-| Planning or implementing a performance change | Plan a bounded experiment, then compare results | `implement-issue` / `apply-issue` → `optimize-ci` |
-| Preparing or reviewing relevant CI/test changes | Check performance evidence and preserved test obligations | `prepare-pr` / `pr-audit` → `ci-performance-audit` |
-| Repeated slowdown is evidenced after delivery | Investigate whether a focused process improvement is justified | `kaizen` → `ci-performance-audit` |
+| Uma issue relata pipeline lenta | Diagnosticar gargalos medidos antes de propor mudanças | `issue-audit` → `ci-performance-audit` |
+| Planejar ou implementar melhoria de desempenho | Planejar um experimento limitado e comparar resultados | `implement-issue` / `apply-issue` → `optimize-ci` |
+| Preparar ou revisar mudanças relevantes de CI/testes | Conferir evidências de desempenho e obrigações de teste preservadas | `prepare-pr` / `pr-audit` → `ci-performance-audit` |
+| Lentidão recorrente comprovada após a entrega | Investigar se uma melhoria específica de processo é justificada | `kaizen` → `ci-performance-audit` |
 
-Ordinary test additions receive a lightweight check. `post-pr-audit` consumes current-head evidence; it does not automatically launch another benchmark.
+Adições comuns de testes recebem uma verificação leve. `post-pr-audit` usa as evidências da revisão atual e não inicia automaticamente outra medição de desempenho.
 
-#### 6. Backend to mobile: agree on the contract first
+#### 6. Backend para mobile: combinar o contrato primeiro
 
-The consumer's requirements are checked during planning. After the producer implementation is merged, the final handoff verifies the implemented contract before consumer implementation starts.
+Os requisitos do consumidor são conferidos no planejamento. Após o merge da implementação do produtor, a entrega final do contrato verifica a API implementada antes do início da implementação do consumidor.
 
 ```mermaid
 flowchart TD
-    A["Producer implementation merged"] --> B["Compare the implemented contract with consumer needs"]
-    B --> C{"Contract covers the consumer?"}
-    C -->|No| D["Update issues and resolve contract gaps"]
-    D -->|Required producer changes merged| B
-    C -->|Yes| E["Freeze the verified contract"]
-    E --> F["Start consumer implementation with a validated plan"]
+    A["Implementação do produtor integrada"] --> B["Comparar contrato implementado e necessidades do consumidor"]
+    B --> C{"O contrato atende ao consumidor?"}
+    C -->|Não| D["Atualizar issues e resolver lacunas do contrato"]
+    D -->|Mudanças exigidas no produtor integradas| B
+    C -->|Sim| E["Congelar o contrato verificado"]
+    E --> F["Iniciar o consumidor com plano validado"]
 ```
 
-| Responsibility | Skills |
+| Responsabilidade | Skills |
 |---|---|
-| Verify scenarios against the producer and freeze the final contract | `contract-handoff` |
-| Update incomplete producer or consumer requirements | `refine-issue` |
-| Plan and validate consumer work | `implement-issue` |
-| Implement only after the final freeze and proposal gate | `apply-issue` |
+| Conferir cenários contra o produtor e congelar o contrato final | `contract-handoff` |
+| Atualizar requisitos incompletos do produtor ou consumidor | `refine-issue` |
+| Planejar e validar o trabalho do consumidor | `implement-issue` |
+| Implementar somente após congelamento final e validação da proposta | `apply-issue` |
 
-Missing producer capabilities become hard dependencies. If only the consumer issue needs clarification, update it and repeat the comparison; no producer change is needed. A contract change after the freeze requires a revised consumer issue and another handoff.
+Capacidades ausentes no produtor tornam-se dependências obrigatórias. Se apenas a issue consumidora precisar de esclarecimento, atualize-a e repita a comparação; não é necessário alterar o produtor. Uma mudança de contrato após seu congelamento exige revisar a issue consumidora e repetir a entrega do contrato.
 
 </details>
 
-`pr-status` is a read-only status utility. `update-main` and `release` are available for explicitly requested maintenance/release work; the milestone flow does not automatically release or deploy.
+`pr-status` é uma ferramenta de consulta de status. `update-main` e `release` atendem pedidos explícitos de manutenção ou publicação de versões; o fluxo de milestone não publica versões nem implanta automaticamente.
 
-Invoking `/prepare-pr` authorizes the skill to stage and commit only files for the current issue, push its feature branch without force, and open the PR. It does not authorize merging. Explicitly requesting a prepare-only run keeps the work local.
+Invocar `/prepare-pr` autoriza a skill a preparar e registrar em commit somente os arquivos da issue atual, enviar sua branch sem forçar e abrir a PR. Isso não autoriza merge. Um pedido explícito de apenas preparação mantém o trabalho local.
 
-After implementation and tests pass, archive the completed OpenSpec change on the feature branch before `/prepare-pr`. The archive and synchronized live specs belong in the same issue PR, avoiding a follow-up archive-only PR. During PR audits, review the validated change under `openspec/changes/archive/` together with live specs.
+Após a implementação e os testes passarem, arquive a mudança OpenSpec concluída na branch da funcionalidade antes de `/prepare-pr`. O arquivo e as especificações vigentes sincronizadas pertencem à mesma PR da issue, evitando uma PR posterior apenas para arquivamento. Nas auditorias, revise a mudança validada em `openspec/changes/archive/` junto às especificações vigentes.
 
-Start with **"Cuide da issue: URL"** for one issue, **"Cuide da issue: URL, sem merge"** to keep its merge manual, **"Cuide da fila deste projeto"** for the current repository, **"Cuide da fila deste projeto, sem merges"** to opt out of merging, or **"Cuide deste milestone: URL"** to limit the scope. `milestone-orchestrator` runs once for the selected scope. For one issue, it inventories that issue and its verified linked PR; for a queue or milestone, it inventories all selected issues. It builds a dependency DAG, and schedules independent work in isolated child sessions/worktrees while serializing hard dependencies and likely file conflicts. It reviews each eligible OpenSpec proposal against the issue and current code, validates its exact SHA without a routine owner approval checkpoint, then automatically runs fresh Apply sessions, tests, verification, archive, PR preparation, github-resolution, independent audits and CI. The default is merge when green for the selected run, only after all required checks, reviews and branch protections pass; "do not merge" or `merge_mode=manual` overrides it. Blocked issues do not stop unrelated work. If the runtime lacks child-session/worktree capability, it reports the missing capability instead of claiming end-to-end automation.
+Comece com **"Cuide da issue: URL"** para uma issue, **"Cuide da issue: URL, sem merge"** para integração manual, **"Cuide da fila deste projeto"** para o repositório atual, **"Cuide da fila deste projeto, sem merges"** para impedir merges, ou **"Cuide deste milestone: URL"** para limitar o escopo. `milestone-orchestrator` executa uma vez para o escopo escolhido. Para uma issue, inventaria essa issue e sua PR vinculada verificada; para uma fila ou milestone, inventaria todas as issues selecionadas. Constrói um grafo de dependências e agenda trabalho independente em sessões e árvores de trabalho isoladas, serializando dependências obrigatórias e possíveis conflitos de arquivos. Revisa cada proposta OpenSpec elegível contra a issue e o código atual, valida seu SHA exato sem uma aprovação rotineira do responsável e executa automaticamente novas sessões de implementação, testes, verificação, arquivamento, preparação da PR, resolução, auditorias independentes e CI. O padrão é integrar quando tudo estiver aprovado, respeitando verificações, revisões e proteções de branch; "não faça merge" ou `merge_mode=manual` substitui esse padrão. Issues bloqueadas não interrompem trabalho independente. Se o ambiente não oferecer sessões filhas ou árvores de trabalho isoladas, o agente informa a capacidade ausente em vez de alegar automação completa.
 
-Production implementation does not begin while blocking questions remain or before the OpenSpec readiness gate passes. A second exploration after decisions is mandatory for material changes.
+A implementação de produção não começa enquanto houver questões bloqueantes ou antes da validação de prontidão do OpenSpec. Mudanças relevantes exigem uma segunda exploração após as decisões.
 
 ## Skills
 
-### Shared workflow
+### Fluxo compartilhado
 
-| Skill | Responsibility |
+| Skill | Responsabilidade |
 |---|---|
-| `milestone-orchestrator` | Run one selected issue, the current repository queue or a selected milestone; review and validate pinned OpenSpec proposals, schedule isolated workers and merge eligible PRs when green by default. |
-| `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
-| `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
-| `issue-audit` | Verify the issue's claims against current code before exploration. |
-| `implement-issue` | Audit, explore, propose and validate the exact OpenSpec revision; hand off automatically unless a material decision is unresolved. |
-| `apply-issue` | Implement the pinned validated OpenSpec revision in a new session. |
-| `openspec-workflow` | Enforce official OpenSpec commands, exact-revision review and validation, verification, strict validation and archive. |
-| `prepare-pr` | Self-review, validate and create/prepare a traceable PR. |
-| `pr-audit` | Independently verify PR claims, trust boundary, requirements, OpenSpec, code and tests; publish review findings when authorized. |
-| `architecture-audit` | Check boundaries and new coupling without requiring LikeC4. |
-| `github-resolution` | Execute audited issues/PRs, correct valid findings and pass each PR to independent final audit and authorized merge. |
-| `post-pr-audit` | Independent final review and merge gate; merge when green by default, unless the direct request opts out. |
-| `update-main` | Safely fast-forward the local `main` after merge, preserving uncommitted work. |
-| `release` | Publish a verified version from the repository's documented changelog and versioning policy, only after CI is green on the exact release commit. |
-| `kaizen` | Convert evidenced failures into focused project or process improvements. |
-| `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
-| `pr-status` | Read-only classification of the current PR state and next action. |
-| `contract-handoff` | Trace consumer scenarios to producer contracts during planning, record hard dependencies for gaps, then freeze the final implemented contract before consumer work. |
-| `visual-artifact-implementation` | Apply approved visual exports attached to issues using native UI components and visual-verification evidence, without a separate workflow. |
+| `milestone-orchestrator` | Executar uma issue, a fila atual ou um milestone; revisar e validar propostas OpenSpec identificadas, agendar executores isolados e integrar PRs elegíveis quando aprovadas por padrão. |
+| `issue-explore` | Adicionar o protocolo supervisionado de perguntas/saídas do GitHub ao comando oficial `/opsx-explore`; não substitui o comando CLI. |
+| `issue-ready` | Reler decisões e exigir a definição de prontidão. |
+| `issue-audit` | Verificar as afirmações da issue contra o código atual antes da exploração. |
+| `implement-issue` | Auditar, explorar, propor e validar a revisão OpenSpec exata; entregar para execução automaticamente, salvo decisão material pendente. |
+| `apply-issue` | Implementar a revisão OpenSpec identificada e validada em uma nova sessão. |
+| `openspec-workflow` | Exigir comandos oficiais do OpenSpec, revisão e validação exatas, verificação, validação estrita e arquivamento. |
+| `prepare-pr` | Executar autorrevisão, validar e criar/preparar uma PR rastreável. |
+| `pr-audit` | Conferir de forma independente as afirmações da PR, limites de confiança, requisitos, OpenSpec, código e testes; publicar achados quando autorizado. |
+| `architecture-audit` | Conferir limites e novos acoplamentos sem exigir LikeC4. |
+| `github-resolution` | Executar issues/PRs auditadas, corrigir achados válidos e encaminhar cada PR à auditoria final independente e ao merge autorizado. |
+| `post-pr-audit` | Executar revisão final independente e validar elegibilidade de merge; integrar quando aprovado por padrão, salvo instrução contrária. |
+| `update-main` | Avançar a branch local `main` com segurança após o merge, preservando alterações sem commit. |
+| `release` | Publicar uma versão verificada conforme o histórico de mudanças e a política de versões do repositório, somente após CI aprovado no commit exato da versão. |
+| `kaizen` | Transformar falhas comprovadas em melhorias específicas do projeto ou processo. |
+| `address-pr-review` | Atualizar comentários de revisão, corrigir achados válidos e responder com evidências. |
+| `pr-status` | Consultar e classificar o estado atual da PR e a próxima ação. |
+| `contract-handoff` | Rastrear cenários do consumidor até os contratos do produtor no planejamento, registrar dependências obrigatórias para lacunas e congelar o contrato implementado antes do trabalho consumidor. |
+| `visual-artifact-implementation` | Aplicar exportações visuais aprovadas anexadas às issues usando componentes nativos e evidências de verificação visual, sem fluxo separado. |
 
-### Web supervision
+### Supervisão Web
 
-The two `chatgpt-web-*` skills are repository instructions for **ChatGPT Web**, not CLI agents or automatically installed ChatGPT capabilities. Use the connected GitHub tools; see [ChatGPT Web issue protocol](protocol/CHATGPT_WEB_ISSUES.md).
+As duas skills `chatgpt-web-*` oferecem instruções Markdown portáveis para **ChatGPT, Claude e outros agentes Web com instruções de projeto**. Os nomes atuais são mantidos por compatibilidade. É necessário acesso de leitura às instruções e aos repositórios; alterações de issues exigem conector GitHub autorizado ou integração equivalente. As instruções não instalam capacidades nativas automaticamente e não substituem a execução CLI. Consulte o [protocolo de issues Web](protocol/CHATGPT_WEB_ISSUES.md).
 
 
-| Skill | Responsibility |
+| Skill | Responsabilidade |
 |---|---|
-| `refine-issue` | Convert an idea or draft issue into an implementable specification. |
-| `resolve-questions` | Analyze `[QUESTION]` comments and record evidence-backed `[DECISION]` responses. |
-| `chatgpt-web-create-issue` | ChatGPT Web-only: research context and create detailed, linked, implementation-ready GitHub issues. |
-| `chatgpt-web-refine-issue` | ChatGPT Web-only: discuss and resolve questions, refine existing issues and register durable decisions. |
+| `refine-issue` | Transformar uma ideia ou rascunho de issue em especificação implementável. |
+| `resolve-questions` | Analisar comentários `[QUESTION]` e registrar respostas `[DECISION]` sustentadas por evidências. |
+| `chatgpt-web-create-issue` | Supervisão Web: pesquisar contexto e criar issues detalhadas, vinculadas e prontas para implementação. |
+| `chatgpt-web-refine-issue` | Supervisão Web: discutir e resolver dúvidas, refinar issues existentes e registrar decisões duráveis. |
 
-### Domain checks
+### Configurar o projeto no agente Web
 
-| Skill | Responsibility |
+Para usar as duas skills nas conversas do projeto, mantenha o conector GitHub disponível com acesso ao `rocker-code/my-ai-skills` e aos repositórios de destino. Copie o bloco abaixo para as **instruções do projeto no agente Web** (ChatGPT, Claude ou equivalente). Ele orienta a consulta das instruções atuais no GitHub; não instala skills automaticamente nem altera as configurações da conta por si só.
+
+Não é necessário anexar os arquivos das skills a cada conversa quando o conector consegue lê-los. As regras detalhadas ficam nos protocolos versionados: alterações passam a ser consultadas após o merge em `main`. Atualize este bloco nas configurações se o próprio texto de encaminhamento mudar. Se a leitura pelo conector falhar, o agente deve informar quais fontes não conseguiu consultar, sem afirmar que aplicou a versão atual.
+
+O mesmo texto pode ser usado nas instruções de projeto do ChatGPT, Claude ou de outro agente que aceite descrições persistentes do projeto. A capacidade depende do ambiente: ler instruções não concede acesso ao GitHub nem permissão para criar issues. Se não houver integração de escrita, o agente pode preparar um rascunho, informando que a publicação não foi realizada.
+
+#### Instruções para copiar
+
+```text
+# Rocker Code — Instruções do Projeto
+
+Este projeto utiliza o AI Engineering Workflow, disponível em
+https://github.com/rocker-code/my-ai-skills, como referência
+para engenharia de software e gerenciamento de GitHub Issues.
+
+## Skills do agente Web (ChatGPT, Claude ou equivalente)
+
+Use estas instruções no ChatGPT, Claude ou outro agente com instruções de projeto.
+Os nomes chatgpt-web-* são mantidos por compatibilidade. É necessário acesso de
+leitura às fontes; alterações de issues exigem integração GitHub autorizada.
+
+No início de cada tarefa de criação ou revisão de issues, consulte pela integração
+GitHub disponível a versão atual em main da skill correspondente e do protocolo compartilhado:
+
+- Criação: skills/chatgpt-web-create-issue/SKILL.md
+- Revisão/refinamento: skills/chatgpt-web-refine-issue/SKILL.md
+- Protocolo: protocol/CHATGPT_WEB_ISSUES.md
+- Design visual, quando aplicável: protocol/VISUAL_ARTIFACTS.md
+
+Leia também as referências necessárias indicadas nesses arquivos. Reutilize a
+leitura dentro da mesma tarefa; atualize-a se houver mudança relevante. Se uma
+fonte estiver inacessível, informe a limitação e não invente seu conteúdo.
+
+## Regras
+
+- Aplique a skill conforme a solicitação, sem exigir comandos especiais.
+- Consulte issues, comentários, decisões, PRs e código relevante; identifique a
+  revisão inspecionada e o que já existe para evitar trabalho duplicado.
+- Preserve os padrões dos projetos Magento, Mobile e App Operacional. Distinga
+  fatos verificados, decisões aprovadas, propostas e questões abertas.
+- Abra a issue com um resumo simples: o que muda, onde muda e de que depende.
+  Defina comportamento esperado, escopo, fora do escopo e critérios observáveis.
+- Inclua cenários de teste em tabela com preparação/ação, resultado esperado e
+  camada sugerida. Priorize riscos reais, reutilize testes e massas de teste e evite
+  matrizes exaustivas ou cobertura duplicada.
+- Em integrações, documente a assinatura atual e a esperada, exemplos, estados,
+  erros, autorização e dependências entre produtor e consumidor. Identifique
+  contratos propostos como não implementados/não congelados; registre a
+  assinatura efetiva após o entrega do contrato antes da integração final.
+- Para backend, integração ou arquitetura, inclua system design Mermaid simples,
+  com responsabilidades e fluxo dos dados verificáveis.
+- Para interfaces, inclua esboço em caracteres em bloco text, principais estados
+  e ações, além de referências visuais aprovadas, acessíveis e versionadas quando
+  houver design. Valores ilustrativos não são dados reais. Siga VISUAL_ARTIFACTS.md;
+  um link privado de Claude Artifacts sozinho não comprova acesso ao design.
+- Quando houver conteúdo apresentado ao usuário, inclua i18n e tradução conforme
+  o mecanismo e locale do projeto: textos, estados, erros, acessibilidade, datas,
+  números, moeda e plurais. Defina quem traduz os textos da API; não exponha enums
+  ou chaves cruas. Preserve nomes/dados de domínio e preveja fallback traduzido
+  seguro para códigos desconhecidos, com critérios e testes representativos.
+- Mantenha comportamento, design, esboço, contrato, critérios e testes coerentes.
+  Ajustes pontuais devem preservar o conteúdo e as decisões fora de seu escopo.
+- Explique questões técnicas e alternativas de forma simples quando houver uma
+  decisão material pendente do usuário. Resolva detalhes rotineiros por evidências
+  e não peça confirmações extras para ações já solicitadas ou autorizadas.
+- Registre decisões aprovadas nas issues quando solicitado. Verifique as alterações
+  no GitHub antes de afirmar sucesso e forneça os links e bloqueios restantes.
+- Não implemente código ao criar/refinar issues; a execução segue o fluxo CLI com
+  OpenSpec. Não invente código inspecionado, contratos, anexos ou testes executados.
+
+## Forma de trabalho
+
+Aceite pedidos naturais como:
+- "Crie uma issue para..."
+- "Analise a issue #123."
+- "Responda à dúvida desta issue."
+- "Revise as issues do milestone."
+- "Atualize a especificação considerando o design anexado."
+
+Não exija que o usuário repita estas instruções.
+```
+
+#### Padrão esperado nas issues
+
+| Situação | Conteúdo esperado |
 |---|---|
-| `magento-review` | Adobe Commerce/Magento architecture and implementation checklist, including native reuse and concurrency. |
-| `expo-mobile-review` | Expo/React Native navigation, state, GraphQL, resilience, accessibility and E2E checklist. |
-| `sonar` | Agent-agnostic SonarQube CLI quality/security analysis, secret scanning, finding classification and remediation evidence. |
+| Toda issue | Resumo, comportamento esperado, limites, critérios de aceite e cenários de teste proporcionais. |
+| Implementação existente | Situação atual com evidências/revisão, componentes e testes a reutilizar ou atualizar. |
+| API ou integração | Contrato atual → esperado, exemplos, estados/erros, responsabilidades e ordem de entrega. |
+| Backend, integração ou arquitetura | System design Mermaid legível em um olhar. |
+| Interface | Wireframe em caracteres e referência aprovada/versionada quando disponível, com estados e ações relevantes. |
+| Texto apresentado ao usuário | Seção de i18n/tradução, responsabilidade app/API, formatação local e validação representativa. |
 
-### Implementing approved UI designs
+As seções são condicionais e seguem o [protocolo compartilhado](protocol/CHATGPT_WEB_ISSUES.md). O agente Web prepara e refina o backlog; o agente CLI continua responsável pela exploração, validação OpenSpec, implementação, testes e PR. Configurar o bloco acima é uma ação do usuário; uma PR neste repositório não atualiza as instruções de projetos já existentes no ChatGPT, Claude ou outro agente Web.
 
-Attach the approved, versioned Claude Artifact export (ZIP or accessible project files) and preview screenshots to the GitHub issue; include the original Artifact link as optional context, target screens, and behavior that must remain unchanged. Then use the normal command **"Cuide da issue: URL"**. `issue-audit` and `apply-issue` automatically use [the visual artifact protocol](protocol/VISUAL_ARTIFACTS.md), OpenSpec planning, native UI components and representative verification. Inaccessible private links and missing visual tooling must be disclosed rather than guessed.
+### Verificações de domínio
 
-## GitHub protocol
+| Skill | Responsabilidade |
+|---|---|
+| `magento-review` | Conferir arquitetura e implementação Adobe Commerce/Magento, incluindo reutilização nativa e concorrência. |
+| `expo-mobile-review` | Conferir navegação, estado, GraphQL, resiliência, acessibilidade e testes de ponta a ponta em Expo/React Native. |
+| `sonar` | Executar análise de qualidade e segurança SonarQube independente de agente, busca de segredos, classificação e evidências de correção. |
 
-Discussion markers:
+### Aplicar designs aprovados
+
+Anexe à issue a exportação aprovada e versionada do Claude Artifact (ZIP ou arquivos acessíveis) e capturas de referência. Inclua o link original como contexto opcional, as telas de destino e os comportamentos que devem ser preservados. Depois use **"Cuide da issue: URL"**. `issue-audit` e `apply-issue` aplicam automaticamente o [protocolo de artefatos visuais](protocol/VISUAL_ARTIFACTS.md), planejamento OpenSpec, componentes nativos e verificação representativa. Links privados inacessíveis e falta de ferramentas visuais devem ser informados, sem suposições.
+
+## Protocolo GitHub
+
+Marcadores de discussão:
 
 ```text
 [QUESTION]
@@ -239,7 +362,7 @@ Discussion markers:
 [RESOLVED]
 ```
 
-Review severities:
+Severidades de revisão:
 
 ```text
 [BLOCKER]
@@ -248,13 +371,13 @@ Review severities:
 [NICE TO HAVE]
 ```
 
-Test coverage follows [TEST_STRATEGY.md](protocol/TEST_STRATEGY.md) automatically in planning, implementation and review. Agents select representative scenarios from acceptance criteria and concrete risks, reuse fixtures, and avoid duplicating the full rule matrix across unit, integrated and GraphQL tests. Reviewers must justify extra tests by the failure existing evidence would miss. Required checks remain mandatory; repeated failures trigger diagnosis rather than blind retries. No new skill installation or approval step is needed. Existing tests for the affected behavior are also checked for redundancy or obsolete expectations. Broader suite simplification runs as a dedicated, measured task with proof preserved for every consolidated, migrated or removed test.
+A cobertura segue [TEST_STRATEGY.md](protocol/TEST_STRATEGY.md) automaticamente no planejamento, implementação e revisão. Os agentes selecionam cenários representativos a partir dos critérios de aceite e riscos concretos, reutilizam massas de teste e evitam duplicar toda a matriz de regras em testes unitários, integrados e GraphQL. Revisores devem justificar testes extras pela falha que as evidências atuais não detectariam. As verificações exigidas continuam obrigatórias; falhas repetidas exigem diagnóstico, não tentativas cegas. Nenhuma instalação extra de skill ou etapa de aprovação é necessária. Testes existentes do comportamento afetado também são avaliados por redundância ou expectativas obsoletas. Uma simplificação ampla da suíte é uma tarefa dedicada e medida, preservando a comprovação de cada teste consolidado, migrado ou removido.
 
-Read [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol/GITHUB_CONVENTIONS.md) [REVIEW_POLICY.md](protocol/REVIEW_POLICY.md) and [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md) for the canonical rules.
+Consulte [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol/GITHUB_CONVENTIONS.md), [REVIEW_POLICY.md](protocol/REVIEW_POLICY.md) e [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md) para as regras oficiais.
 
-## Helper scripts
+## Scripts auxiliares
 
-The context scripts require `gh` and `jq`; the timing scripts require Python 3.10+ and GitHub CLI access. `workflow-event` updates one hidden structured comment per issue/run; `workflow-report` is read-only:
+Os scripts de contexto exigem `gh` e `jq`; os scripts de tempo exigem Python 3.10+ e acesso pelo GitHub CLI. `workflow-event` atualiza um comentário estruturado oculto por issue/execução; `workflow-report` apenas consulta:
 
 ```bash
 scripts/issue-context https://github.com/owner/repo/issues/123
@@ -264,9 +387,9 @@ scripts/workflow-event new-run-id
 scripts/workflow-report https://github.com/owner/repo/issues/123
 ```
 
-### Workflow timing metrics
+### Métricas de tempo
 
-The orchestrator creates a shared run ID, then uses `workflow-event` at real gate boundaries. A single hidden, structured GitHub issue comment is maintained per issue/run; each event updates that comment instead of adding a comment per transition. For a milestone, initialize every issue in the selected scope with the same run ID, including blocked or queued issues. Record stage start/end and explicit wait start/end events. Rework is recorded only when a completed gate must be revisited because of a review finding, failed check, replan or reopening.
+O orquestrador cria um identificador de execução compartilhado e usa `workflow-event` nas transições reais entre etapas de validação. Mantém um comentário estruturado oculto por issue/execução; cada evento atualiza esse comentário em vez de publicar outro. Para um milestone, inicialize todas as issues selecionadas com o mesmo identificador, inclusive bloqueadas ou em fila. Registre início/fim das etapas e início/fim explícitos das esperas. Retrabalho só é registrado quando uma etapa já concluída precisa ser refeita por achado de revisão, verificação reprovada, replanejamento ou reabertura.
 
 ```bash
 RUN_ID=$(scripts/workflow-event new-run-id)
@@ -285,22 +408,22 @@ scripts/workflow-report https://github.com/owner/repo/milestone/7 --format json
 scripts/workflow-report https://github.com/owner/repo/milestone/7 --format csv
 ```
 
-For wait events, pass a stage and one reason: `owner_input`, `dependency`, `ci`, `review`, `runtime_capacity`, `external` or `other`. For rework, use `--reason review|ci|replan|reopened|other` and link evidence with `--evidence` (a GitHub URL or commit SHA). Optional agent/model values are recorded only when the runtime exposes them. Do not include prompts or sensitive text.
+Nos eventos de espera, informe a etapa e um motivo: `owner_input`, `dependency`, `ci`, `review`, `runtime_capacity`, `external` ou `other`. Para retrabalho, use `--reason review|ci|replan|reopened|other` e vincule evidências com `--evidence` (URL do GitHub ou SHA de commit). Valores opcionais de agente/modelo só são registrados quando o ambiente os fornece. Não inclua prompts ou dados sensíveis.
 
-The report shows issue cycle time, recorded work, explicit waits, stages, rework, PR review findings and failed/pending checks. A milestone report includes state counts and per-stage medians; it shows P90 only when there are at least five samples. Use `--run-id` to get a common milestone execution. The total registered work can exceed calendar time when workers ran in parallel. Recorded work is wall-clock time within stage windows minus explicitly marked waits, not model-internal thinking time. Missing data is reported as unavailable, never inferred from issue labels or conversation text.
+O relatório mostra o tempo de ciclo da issue, trabalho registrado, esperas explícitas, etapas, retrabalho, achados de revisão e verificações reprovadas/pendentes. No milestone, inclui contagens por estado e medianas por etapa; apresenta P90 apenas com pelo menos cinco amostras. Use `--run-id` para consultar uma execução comum do milestone. A soma do trabalho pode superar o tempo de calendário quando há execução paralela. Trabalho registrado é tempo de relógio dentro das etapas, descontadas as esperas explícitas, e não tempo de raciocínio interno do modelo. Dados ausentes são informados como indisponíveis, nunca inferidos de labels ou conversas.
 
-Timing metrics support `kaizen`: after completion, compare recurring bottlenecks with rework and quality evidence before suggesting a process change. A single slow run does not justify changing a gate. Tokens and cost are not estimated when the runtime does not expose them.
+As métricas apoiam `kaizen`: após a conclusão, compare gargalos recorrentes com retrabalho e evidências de qualidade antes de sugerir mudanças no processo. Uma execução lenta isolada não justifica alterar uma etapa de validação. Tokens e custos não são estimados quando o ambiente não os fornece.
 
 
-The context helpers normalize live GitHub context so agents refresh comments, decisions, reviews and CI instead of relying on stale chat context.
+Os auxiliares de contexto normalizam os dados atuais do GitHub para que os agentes atualizem comentários, decisões, revisões e CI em vez de depender de conversas antigas.
 
-## Step-by-step installation
+## Instalação passo a passo
 
-Use the terminal in the application repository you want the agents to work on. The examples use Bash (Linux, macOS or Git Bash) and OpenCode; replace `opencode` with `codex` or `claude-code` for your agent.
+Use o terminal no repositório da aplicação em que os agentes vão trabalhar. Os exemplos usam Bash (Linux, macOS ou Git Bash) e OpenCode; substitua `opencode` por `codex` ou `claude-code` conforme seu agente.
 
-### 1. Check prerequisites and GitHub access
+### 1. Conferir pré-requisitos e acesso ao GitHub
 
-Install Git, Node.js/npm compatible with the current [OpenSpec requirements](https://github.com/Fission-AI/OpenSpec), GitHub CLI, jq, Python 3.10+ and your chosen agent. Then check:
+Instale Git, Node.js/npm compatíveis com os [requisitos do OpenSpec](https://github.com/Fission-AI/OpenSpec), GitHub CLI, jq, Python 3.10+ e o agente escolhido. Confira:
 
 ```bash
 git --version
@@ -311,30 +434,30 @@ jq --version
 gh auth status
 ```
 
-If GitHub CLI is not authenticated, run `gh auth login` in this environment. Access to private repositories must be available to both the installer and the execution agent. The helpers use GitHub CLI authentication; web agents need their own GitHub connection.
+Se o GitHub CLI não estiver autenticado, execute `gh auth login` neste ambiente. O acesso a repositórios privados precisa estar disponível tanto para o instalador quanto para o agente executor. Os auxiliares usam a autenticação do GitHub CLI; agentes Web precisam de sua própria conexão ao GitHub.
 
-### 2. Install the skills for your agent
+### 2. Instalar as skills para seu agente
 
-From the application repository root:
+Na raiz do repositório da aplicação:
 
 ```bash
 cd /path/to/your-project
 npx skills add rocker-code/my-ai-skills --skill '*' -a opencode -y
 ```
 
-This installs all skills for the selected agent at project scope. For a personal installation shared across projects, use:
+Isso instala todas as skills para o agente selecionado no escopo do projeto. Para uma instalação pessoal compartilhada entre projetos, use:
 
 ```bash
 npx skills add rocker-code/my-ai-skills --skill '*' -a opencode -g -y
 ```
 
-Choose one scope deliberately. For multiple agents, pass `-a opencode -a codex -a claude-code`. Use `--skill '*'` to select all skills for these agents; `--all` selects all skills **and all agents**. See the [skills CLI documentation](https://github.com/vercel-labs/skills).
+Escolha o escopo conscientemente. Para vários agentes, informe `-a opencode -a codex -a claude-code`. Use `--skill '*'` para selecionar todas as skills desses agentes; `--all` seleciona todas as skills **e todos os agentes**. Consulte a [documentação do CLI de skills](https://github.com/vercel-labs/skills).
 
-For a partial installation, use repeated `--skill <name>` options. Install the skills called by your selected flow as well as its entry skill; installing only `milestone-orchestrator` does not install all its workers automatically.
+Para uma instalação parcial, repita `--skill <name>`. Instale também as skills chamadas pelo fluxo escolhido, além da skill de entrada; instalar somente `milestone-orchestrator` não instala todos os executores automaticamente.
 
-### 3. Initialize OpenSpec in the application repository
+### 3. Inicializar OpenSpec no repositório da aplicação
 
-The skills enforce OpenSpec but do not install its CLI or initialize the project:
+As skills exigem OpenSpec, mas não instalam seu CLI nem inicializam o projeto:
 
 ```bash
 npm install -g @fission-ai/openspec@latest
@@ -342,15 +465,15 @@ openspec --version
 openspec init
 ```
 
-Select your execution agent in the initializer. If the project is already initialized, inspect its existing configuration and use `openspec update` to refresh the generated integrations instead of recreating the setup. Preserve repository instructions and project-specific configuration.
+Selecione o agente executor no inicializador. Se o projeto já estiver inicializado, confira a configuração existente e use `openspec update` para atualizar as integrações geradas, sem recriar a configuração. Preserve as instruções e configurações específicas do repositório.
 
-Use the commands generated for your agent: their syntax can differ between agents and OpenSpec versions. This repository's `openspec-workflow` verifies the official commands available in the installed version. See the [OpenSpec getting-started guide](https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md).
+Use os comandos gerados para seu agente: a sintaxe pode variar entre agentes e versões do OpenSpec. A skill `openspec-workflow` verifica os comandos oficiais disponíveis na versão instalada. Consulte o [guia de início do OpenSpec](https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md).
 
-### 4. Obtain the complementary files
+### 4. Obter os arquivos complementares
 
-The skills installer copies skill directories and their bundled references. It does **not** copy the repository-root `protocol/`, `templates/` or `scripts/` into your application.
+O instalador de skills copia seus diretórios e referências embarcadas. Ele **não** copia `protocol/`, `templates/` ou `scripts/` da raiz do repositório para a aplicação.
 
-Clone the source once into a separate location. Keep your terminal in the application repository:
+Clone a fonte uma vez em um local separado. Mantenha o terminal no repositório da aplicação:
 
 ```bash
 MY_AI_SKILLS_SOURCE="$HOME/.local/share/my-ai-skills"
@@ -358,11 +481,11 @@ mkdir -p "$(dirname "$MY_AI_SKILLS_SOURCE")"
 gh repo clone rocker-code/my-ai-skills "$MY_AI_SKILLS_SOURCE"
 ```
 
-If you already have a clone, set `MY_AI_SKILLS_SOURCE` to its absolute path and skip the clone command.
+Se já houver um clone, defina `MY_AI_SKILLS_SOURCE` com seu caminho absoluto e pule o comando de clonagem.
 
-### 5. Copy protocols, templates and runtime helpers into the project
+### 5. Copiar protocolos, modelos e auxiliares para o projeto
 
-This guide uses `.ai-workflow/` for project-visible copies. It is a documented installation convention, not a path automatically created by the skills installer.
+Este guia usa `.ai-workflow/` para cópias visíveis no projeto. É uma convenção documentada de instalação, não um caminho criado automaticamente pelo instalador de skills.
 
 ```bash
 mkdir -p .ai-workflow/protocol .ai-workflow/templates .ai-workflow/scripts
@@ -381,45 +504,45 @@ chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/workflow-report
 ```
 
-| Installed files | Purpose |
+| Arquivos instalados | Finalidade |
 |---|---|
-| `protocol/AI_WORKFLOW.md` | Lifecycle, readiness and implementation gates. |
-| `protocol/GITHUB_CONVENTIONS.md` | Durable issue, decision and PR conventions. |
-| `protocol/REVIEW_POLICY.md` | Review severity and evidence rules. |
-| `protocol/CI_PERFORMANCE.md` | Measured optimization and preserved CI obligations. |
-| `protocol/TEST_STRATEGY.md` | Risk-based coverage, proving layers, diagnosis and stopping criteria. |
-| `templates/pull-request.md`, `templates/github/*.md` | PR, question, decision, review and integration-contract formats. |
-| `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Read-only live GitHub context helpers, requiring `gh` and `jq`. |
-| `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Optional workflow timing capture and issue/milestone reports; require `gh` and Python 3.10+. |
+| `protocol/AI_WORKFLOW.md` | Ciclo de trabalho, prontidão e validações da implementação. |
+| `protocol/GITHUB_CONVENTIONS.md` | Convenções duráveis para issues, decisões e PRs. |
+| `protocol/REVIEW_POLICY.md` | Severidades de revisão e regras de evidência. |
+| `protocol/CI_PERFORMANCE.md` | Otimização medida e preservação das obrigações de CI. |
+| `protocol/TEST_STRATEGY.md` | Cobertura por risco, camadas de comprovação, diagnóstico e critérios de parada. |
+| `templates/pull-request.md`, `templates/github/*.md` | Formatos de PR, pergunta, decisão, revisão e contrato de integração. |
+| `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Consulta de contexto atual do GitHub; exige `gh` e `jq`. |
+| `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Registro opcional de tempos e relatórios por issue/milestone; exige `gh` e Python 3.10+. |
 
-`scripts/sync-plugin` is a package-maintenance tool for this repository. Do not install it as an application runtime helper.
+`scripts/sync-plugin` mantém o pacote deste repositório. Não o instale como auxiliar de execução da aplicação.
 
-The bundled skill references already contain the applicable protocols/templates. These project copies make the shared rules and helpers accessible to the team; copying them alone does not register skills with an agent.
+As referências embarcadas nas skills já contêm os protocolos e modelos aplicáveis. As cópias no projeto tornam essas regras e ferramentas acessíveis à equipe; copiá-las, por si só, não registra skills no agente.
 
-### 6. Connect the project instructions to the installed files
+### 6. Vincular as instruções do projeto aos arquivos instalados
 
-Append the following guidance to the existing `AGENTS.md` (or the instruction file your agent actually reads), adapting it to project policy. Preserve existing instructions; do not replace the file:
+Acrescente a orientação abaixo ao `AGENTS.md` existente (ou ao arquivo de instruções efetivamente lido pelo agente), adaptando-a às regras do projeto. Preserve as instruções existentes; não substitua o arquivo:
 
 ```markdown
-## AI development workflow
+## Fluxo de desenvolvimento com IA
 
-Use the installed my-ai-skills workflow for issue-driven work.
-Read .ai-workflow/protocol/AI_WORKFLOW.md,
-.ai-workflow/protocol/GITHUB_CONVENTIONS.md and
-.ai-workflow/protocol/REVIEW_POLICY.md and
-.ai-workflow/protocol/TEST_STRATEGY.md before executing that workflow.
-For CI or test-performance work, also read
+Use o fluxo AI Engineering Workflow instalado para trabalho orientado por issues.
+Leia .ai-workflow/protocol/AI_WORKFLOW.md,
+.ai-workflow/protocol/GITHUB_CONVENTIONS.md e
+.ai-workflow/protocol/REVIEW_POLICY.md e
+.ai-workflow/protocol/TEST_STRATEGY.md antes de executar esse fluxo.
+Para trabalho de CI ou desempenho de testes, leia também
 .ai-workflow/protocol/CI_PERFORMANCE.md.
 
-Use .ai-workflow/templates/ for the shared output formats.
-Refresh live GitHub evidence with .ai-workflow/scripts/issue-context,
-.ai-workflow/scripts/pr-context and .ai-workflow/scripts/workflow-status.
-Keep project-specific constraints and the user's selected scope and merge mode.
+Use .ai-workflow/templates/ para os formatos compartilhados de saída.
+Atualize as evidências do GitHub com .ai-workflow/scripts/issue-context,
+.ai-workflow/scripts/pr-context e .ai-workflow/scripts/workflow-status.
+Preserve as restrições do projeto, o escopo e o modo de merge escolhidos pelo usuário.
 ```
 
-For Claude Code, place the guidance in `CLAUDE.md` or reference your shared instruction file from it. Commit the project instructions, protocols, templates and helpers if the installation is intended for the team.
+Para Claude Code, coloque a orientação no `CLAUDE.md` ou referencie o arquivo compartilhado de instruções. Registre instruções, protocolos, modelos e auxiliares em commit se a instalação for destinada à equipe.
 
-### 7. Verify and start the existing flow
+### 7. Verificar e iniciar o fluxo existente
 
 ```bash
 npx skills list
@@ -435,88 +558,107 @@ python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```
 
-Replace the example URL with an issue you can access. For global skills, also check `npx skills list -g`. Restart the agent or start a new session so it discovers the installed skills.
+Substitua a URL de exemplo por uma issue acessível. Para skills globais, confira também `npx skills list -g`. Reinicie o agente ou abra uma nova sessão para que ele descubra as skills instaladas.
 
-Start with **"Cuide da issue: URL"**, **"Cuide da fila deste projeto"** or **"Cuide deste milestone: URL"**. The entry workflow routes the supporting skills automatically under their documented conditions; you do not need to invoke each diagram node. Loading skills does not create a background scheduler: a selected workflow still needs to be started, and its runtime must support the required tools and isolated sessions.
+Comece com **"Cuide da issue: URL"**, **"Cuide da fila deste projeto"** ou **"Cuide deste milestone: URL"**. O fluxo de entrada encaminha automaticamente às skills de apoio nas condições documentadas; não é necessário invocar cada caixa do diagrama. Carregar skills não cria um agendador em segundo plano: é preciso iniciar uma execução e o ambiente deve oferecer as ferramentas e sessões isoladas exigidas.
 
-### 8. Keep the installation current
+### 8. Manter a instalação atualizada
 
-Refresh the complementary source clone:
+Atualize o clone da fonte complementar:
 
 ```bash
 git -C "$MY_AI_SKILLS_SOURCE" pull --ff-only
 ```
 
-Then repeat step 2 for the chosen agent/scope and step 5 for the copied files. Review the diff before committing updates: copying overwrites those managed copies, so keep project-specific additions in separate files. Review protocol changes and their bundled skill references together. In a new terminal, set `MY_AI_SKILLS_SOURCE` again to your existing clone path.
+Depois repita a etapa 2 para o agente/escopo escolhido e a etapa 5 para os arquivos copiados. Revise as diferenças antes do commit: a cópia sobrescreve os arquivos gerenciados, portanto mantenha acréscimos específicos do projeto em arquivos separados. Revise mudanças de protocolo junto às referências embarcadas. Em um novo terminal, defina `MY_AI_SKILLS_SOURCE` novamente com o caminho do clone existente.
 
-## Install as a personal ChatGPT/Codex plugin
+## Instalar como plugin pessoal do ChatGPT/Codex
 
-The repository also contains a self-contained skills-only plugin at `plugins/my-ai-skills` and a repository marketplace at `.agents/plugins/marketplace.json`.
+O repositório também contém um plugin independente de skills em `plugins/my-ai-skills` e um catálogo em `.agents/plugins/marketplace.json`.
 
-Add the marketplace once:
+Adicione o catálogo uma vez:
 
 ```bash
 codex plugin marketplace add rocker-code/my-ai-skills --ref main
 ```
 
-Install the plugin:
+Instale o plugin:
 
 ```bash
 codex plugin add my-ai-skills@rocker-code-ai
 ```
 
-In the ChatGPT desktop app, restart the app, open the Plugins Directory, select the **Rocker Code AI** marketplace, and install **Rocker Code AI Workflow**. Start a new conversation after installation so the skills are loaded.
+No aplicativo desktop do ChatGPT, reinicie o app, abra o diretório de plugins, selecione o catálogo **Rocker Code AI** e instale **Rocker Code AI Workflow**. Abra uma nova conversa após a instalação para carregar as skills.
 
-The plugin is personal and does not need to be submitted to the public directory. Publishing it to a ChatGPT workspace is a separate administrative action.
+O plugin é pessoal e não precisa ser enviado ao diretório público. Publicá-lo em um espaço de trabalho do ChatGPT é uma ação administrativa separada.
 
-The root `skills/`, `protocol/`, `templates/`, and helper scripts remain the canonical source used by `skills.sh`. Their copies inside `plugins/my-ai-skills/` form the self-contained plugin package. Skills that link to shared protocol or templates carry a generated copy in their own `references/` directory, because `skills.sh` installs only each skill directory. After changing canonical files, regenerate those copies and synchronize the package with:
+Os diretórios `skills/`, `protocol/`, `templates/` e os scripts auxiliares na raiz continuam sendo a fonte oficial usada pelo `skills.sh`. Suas cópias em `plugins/my-ai-skills/` formam o pacote independente do plugin. Skills que referenciam protocolos ou modelos compartilhados recebem uma cópia gerada em seu próprio diretório `references/`, pois `skills.sh` instala apenas o diretório da skill. Após alterar arquivos oficiais, regenere as cópias e sincronize o pacote:
 
 ```bash
 scripts/sync-plugin
 ```
 
-## Taking care of one issue
+## Cuidar de uma issue
 
-Use either request:
+Use um dos pedidos:
 
 ```text
 Cuide da issue: https://github.com/owner/repo/issues/123
 Cuide da issue: https://github.com/owner/repo/issues/123, sem merge
 ```
 
-The same `milestone-orchestrator` handles this entry point with `scope=single_issue`; no new skill name or manual sequence is needed. It audits, plans/validates OpenSpec, implements in a fresh session, verifies/archives, prepares the PR, independently reviews, fixes findings and reaches merge/closure/kaizen when all gates pass. The second request stops at `READY_TO_MERGE`.
+O mesmo `milestone-orchestrator` atende à entrada com `scope=single_issue`; não é necessário outro nome de skill ou sequência manual. Ele audita, planeja/valida OpenSpec, implementa em nova sessão, verifica/arquiva, prepara a PR, revisa de forma independente, corrige achados e chega a merge/conclusão/kaizen quando todas as validações passam. O segundo pedido para em `READY_TO_MERGE`.
 
-An existing plan or linked implementation PR is resumed from current evidence. Related issues are inspected for dependencies but are not executed automatically. An unmerged hard dependency, missing material decision or runtime capability is reported as a blocker. A closed issue is inspected and reported without reopening it. The automatic CI-performance routing applies here too.
+Uma proposta ou PR de implementação existente é retomada a partir das evidências atuais. Issues relacionadas são consultadas como dependências e não executadas automaticamente. Uma dependência obrigatória sem merge, decisão material pendente ou capacidade ausente do ambiente é informada como bloqueio. Uma issue fechada é inspecionada e relatada sem reabertura. O encaminhamento automático de desempenho de CI também se aplica aqui.
 
-## Milestone operating rules
+## Regras de milestones
 
-- Invoke with the current repository queue or an identifiable milestone. The first output is a dependency inventory and the next unblocked work, including evidence for the proposed order.
-- Status is reconstructed from issue decisions, committed OpenSpec revision, PR head, reviews and CI. A helper's inferred status or ai-memory summary cannot prove proposal validation or a product decision.
-- Schedule independent work by dependency and conflict risk, with isolated sessions/worktrees; queue hard dependents until prerequisites merge. Resolve dependency cycles and unclear links before work on affected issues.
-- The agent reviews and validates the pinned proposal SHA; owner input is reserved for unresolved material decisions. Merge when green is the default for the selected run after final review and required gates; "do not merge" or `merge_mode=manual` opts out. The orchestrator does not release or deploy.
-- If a new implementation session is unavailable, keep the committed plan and return a copyable handoff. A failed or interrupted run resumes at its last verified gate.
-- A merged PR and closed issue are verified before kaizen. ghpending is optional for daily triage; GitHub Project is a product planning view.
+- Invoque com a fila do repositório atual ou um milestone identificável. A primeira saída é um inventário de dependências e o próximo trabalho desbloqueado, com evidências para a ordem proposta.
+- O estado é reconstruído a partir de decisões da issue, revisão OpenSpec registrada em commit, revisão atual da PR, revisões e CI. Um status inferido por ferramenta ou resumo do ai-memory não comprova validação da proposta nem decisão de produto.
+- Agende trabalho independente por dependência e risco de conflito, usando sessões e árvores de trabalho isoladas. Aguarde pré-requisitos com merge para trabalhos dependentes. Resolva ciclos de dependência e vínculos incertos antes de executar o trabalho afetado.
+- O agente revisa e valida a proposta OpenSpec identificada; a participação do responsável fica reservada a decisões materiais pendentes. O padrão é integrar quando tudo estiver aprovado após a revisão final e verificações exigidas; "não faça merge" ou `merge_mode=manual` substitui o padrão. O orquestrador não publica versões nem implanta.
+- Se uma nova sessão de implementação não estiver disponível, preserve o plano registrado em commit e entregue instruções de continuidade para copiar. Uma execução interrompida ou reprovada retoma a última etapa comprovada.
+- Merge da PR e fechamento da issue são verificados antes de kaizen. ghpending é opcional para triagem diária; GitHub Project é uma visão de planejamento do produto.
 
-## Recommended cross-repository flow
+## Fluxo entre repositórios
 
-For backend → mobile work:
+Para trabalho backend → mobile:
 
-1. merge backend contract issues;
-2. run `contract-handoff` against the final backend code and the mobile issue;
-3. update the consumer issue if necessary;
+1. faça merge das issues de contrato do backend;
+2. execute `contract-handoff` contra o código final do backend e a issue mobile;
+3. atualize a issue consumidora, se necessário;
 4. declare `CONTRACT FROZEN`;
-5. only then implement the consumer.
+5. só então implemente o consumidor.
 
-If the producer contract changes after the freeze, explicitly revise the consumer issue and repeat the handoff.
-## Automatic CI performance improvement
+Se o contrato do produtor mudar após o congelamento, revise explicitamente a issue consumidora e repita a entrega do contrato.
+## Otimização de CI
 
-The existing queue and milestone commands automatically route relevant work to two domain skills:
+Os comandos existentes de fila e milestone encaminham automaticamente o trabalho relevante a duas skills de domínio:
 
-| Skill | Responsibility |
+| Skill | Responsabilidade |
 |---|---|
-| `ci-performance-audit` | Diagnose measured bottlenecks and independently review optimization evidence and preserved CI obligations. |
-| `optimize-ci` | Guide bounded experiments through the existing OpenSpec planning, fresh Apply session and review workflow. |
+| `ci-performance-audit` | Diagnosticar gargalos medidos e revisar de forma independente as evidências de otimização e a preservação das obrigações de CI. |
+| `optimize-ci` | Orientar experimentos limitados pelas etapas existentes de planejamento OpenSpec, implementação em nova sessão e revisão. |
 
-No manual skill invocation is required. Performance issues trigger diagnosis/planning; material workflow, fixture, setup or test-selection changes trigger proportional review; kaizen diagnoses evidenced recurring slowdown. Ordinary test additions receive a lightweight check, not a mandatory hosted benchmark. Scheduling and merge authority remain with the existing orchestrator and review skills.
+Não é necessária invocação manual. Issues de desempenho acionam diagnóstico/planejamento; mudanças relevantes em fluxos, massas de teste, preparação do ambiente ou seleção de testes acionam revisão proporcional; kaizen diagnostica lentidão recorrente comprovada. Adições comuns de testes recebem uma verificação leve, não uma medição hospedada obrigatória. Autoridade de agendamento e merge continua com o orquestrador e as skills de revisão.
 
-Read [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md). Compare elapsed time, runner-minutes and behavioral proof; a faster green pipeline alone does not prove improvement. Magento-specific guidance is bundled with ci-performance-audit. Source changes are synchronized to the plugin by `scripts/sync-plugin`.
+Consulte [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md). Compare tempo decorrido, minutos de execução e comprovação de comportamento; uma pipeline verde e mais rápida, sozinha, não comprova melhoria. Orientações específicas de Magento estão embarcadas em ci-performance-audit. Alterações nas fontes são sincronizadas ao plugin por `scripts/sync-plugin`.
+
+## Referências e agradecimentos
+
+Muitas das ideias, práticas e ferramentas usadas aqui não foram inventadas por mim. Estou reunindo, experimentando e adaptando soluções de diferentes projetos para construir um workflow de engenharia com IA que funcione para mim e para os meus projetos.
+
+Minha contribuição está na combinação dessas peças, nas instruções que conectam cada etapa e nos ajustes que surgem do uso no dia a dia. O crédito pelas ferramentas e pelas ideias originais pertence aos seus respectivos autores e comunidades.
+
+| Referência | Papel neste workflow |
+|---|---|
+| [OpenSpec](https://github.com/Fission-AI/OpenSpec) | Desenvolvimento orientado por especificações: exploração, proposta, validação, implementação e arquivamento. |
+| [skills.sh / Vercel Skills CLI](https://github.com/vercel-labs/skills) | Distribuição e instalação das skills usadas pelos agentes. |
+| [ai-memory — Fabio Akita](https://github.com/akitaonrails/ai-memory) | Continuidade de contexto e transferência de trabalho entre sessões e agentes. |
+| [OpenAI Codex](https://github.com/openai/codex) | Agente de programação utilizado na execução e revisão do trabalho. |
+| [Claude Code](https://code.claude.com/docs/en/overview) | Agente de programação utilizado na execução e revisão do trabalho. |
+| [OpenCode](https://opencode.ai/) | Ambiente de execução de agentes de programação. |
+| [ChatGPT](https://chatgpt.com/) e [Claude](https://claude.ai/) | Ambientes Web usados para discutir requisitos, criar/refinar issues e registrar decisões. |
+| [GitHub](https://docs.github.com/) e [GitHub CLI](https://cli.github.com/) | Issues, PRs, decisões, revisões e acesso ao contexto do repositório. |
+| [GitHub Actions](https://github.com/features/actions) | Automação das verificações de integração contínua. |
+| [SonarQube](https://www.sonarsource.com/products/sonarqube/) | Análise de qualidade e segurança de código. |

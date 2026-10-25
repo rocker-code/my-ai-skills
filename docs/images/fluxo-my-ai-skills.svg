@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1720" height="1690" viewBox="0 0 1720 1690" role="img" aria-labelledby="title desc">
+<title id="title">Como funciona o AI Engineering Workflow: da ideia ao merge</title>
+<desc id="desc">Agente Web cria e refina issues no GitHub. O agente CLI coordena planejamento OpenSpec, implementação, testes e revisão até o merge.</desc>
+<rect width="1720" height="1690" fill="#0c1117"/>
+<g font-family="DejaVu Sans, sans-serif">
+<text x="70" y="60" font-size="19" fill="#8b98a6" font-weight="bold">DA IDEIA AO MERGE</text>
+<text x="70" y="120" font-size="46" fill="#e6edf3" font-weight="bold">Como funciona o AI Engineering Workflow</text>
+<text x="70" y="166" font-size="26" fill="#a4afbc" font-weight="normal">O agente Web define o trabalho. O agente CLI entrega com OpenSpec.</text>
+<rect x="70" y="210" width="1580" height="282" rx="18" fill="#10252c" stroke="#43b9cd" stroke-width="2"/>
+<text x="96" y="250" font-size="22" fill="#65d4e4" font-weight="bold">1   CRIAR E REFINAR ISSUES · AGENTE WEB</text>
+<text x="96" y="293" font-size="29" fill="#e6edf3" font-weight="bold">ChatGPT · Claude · outros agentes com instruções de projeto</text>
+<text x="96" y="345" font-size="23" fill="#e6edf3" font-weight="bold">Você descreve a necessidade</text>
+<text x="96" y="383" font-size="19" fill="#afc2cc" font-weight="normal">Funcionalidade, problema ou design.</text>
+<text x="96" y="413" font-size="19" fill="#afc2cc" font-weight="normal">As instruções apontam para as skills.</text>
+<text x="650" y="345" font-size="23" fill="#e6edf3" font-weight="bold">O agente aplica as skills Web</text>
+<text x="650" y="383" font-size="19" fill="#afc2cc" font-weight="normal">Consulta código, decisões e contratos.</text>
+<text x="650" y="413" font-size="19" fill="#afc2cc" font-weight="normal">Define aceite, testes, design e i18n.</text>
+<text x="1200" y="345" font-size="23" fill="#e6edf3" font-weight="bold">A issue fica no GitHub</text>
+<text x="1200" y="383" font-size="19" fill="#afc2cc" font-weight="normal">Escopo e dependências claros.</text>
+<text x="1200" y="413" font-size="19" fill="#afc2cc" font-weight="normal">Decisões e referências acessíveis.</text>
+<path d="M570 369 L617 369" stroke="#65d4e4" stroke-width="3" fill="none"/>
+<path d="M607 363 L617 369 L607 375" fill="#65d4e4"/>
+<path d="M1123 369 L1167 369" stroke="#65d4e4" stroke-width="3" fill="none"/>
+<path d="M1157 363 L1167 369 L1157 375" fill="#65d4e4"/>
+<text x="96" y="462" font-size="19" fill="#65d4e4" font-weight="normal">chatgpt-web-create-issue  ·  chatgpt-web-refine-issue</text>
+<path d="M860 492 L860 535" stroke="#65d4e4" stroke-width="3" fill="none"/>
+<path d="M854 525 L860 535 L866 525" fill="#65d4e4"/>
+<rect x="70" y="540" width="1580" height="110" rx="18" fill="#1a2036" stroke="#8262e3" stroke-width="2"/>
+<text x="96" y="576" font-size="18" fill="#baa3ff" font-weight="bold">ORQUESTRAÇÃO · AGENTE CLI</text>
+<text x="96" y="615" font-size="28" fill="#e6edf3" font-weight="bold">“Cuide da issue: URL” ou “Cuide deste milestone: URL”</text>
+<text x="1138" y="579" font-size="18" fill="#baa3ff" font-weight="normal">milestone-orchestrator</text>
+<text x="1138" y="614" font-size="21" fill="#b7bdca" font-weight="normal">Ordena trabalho e dependências.</text>
+<path d="M860 650 L860 683" stroke="#a78bfa" stroke-width="3" fill="none"/>
+<path d="M854 673 L860 683 L866 673" fill="#a78bfa"/>
+<text x="70" y="704" font-size="19" fill="#8b98a6" font-weight="bold">EXECUÇÃO A PARTIR DA ISSUE · PLANEJAR → IMPLEMENTAR → REVISAR</text>
+<rect x="70" y="735" width="500" height="657" rx="18" fill="#121921" stroke="#303842" stroke-width="2"/>
+<rect x="94" y="758" width="43" height="43" rx="10" fill="#58a6ff" stroke="#58a6ff" stroke-width="2"/>
+<text x="106" y="789" font-size="26" fill="#0c1117" font-weight="bold">2</text>
+<text x="155" y="791" font-size="29" fill="#e6edf3" font-weight="bold">Planejar</text>
+<text x="94" y="840" font-size="21" fill="#9ca9b6" font-weight="normal">Entender antes de alterar</text>
+<rect x="94" y="874" width="452" height="123" rx="13" fill="#1c2633" stroke="#1c2633" stroke-width="2"/>
+<rect x="94" y="874" width="5" height="123" fill="#58a6ff"/>
+<text x="113" y="910" font-size="25" fill="#e6edf3" font-weight="bold">Conferir a issue</text>
+<text x="113" y="945" font-size="18" fill="#b2bdc9" font-weight="normal">Código atual, escopo e dúvidas.</text>
+<text x="113" y="977" font-size="17" fill="#58a6ff" font-weight="normal">issue-audit</text>
+<path d="M320 1000 L320 1023" stroke="#58a6ff" stroke-width="3" fill="none"/>
+<path d="M314 1013 L320 1023 L326 1013" fill="#58a6ff"/>
+<rect x="94" y="1027" width="452" height="123" rx="13" fill="#1c2633" stroke="#1c2633" stroke-width="2"/>
+<rect x="94" y="1027" width="5" height="123" fill="#58a6ff"/>
+<text x="113" y="1063" font-size="25" fill="#e6edf3" font-weight="bold">Explorar e especificar</text>
+<text x="113" y="1098" font-size="18" fill="#b2bdc9" font-weight="normal">Proposta OpenSpec analisada e validada.</text>
+<text x="113" y="1130" font-size="17" fill="#58a6ff" font-weight="normal">implement-issue · OpenSpec</text>
+<path d="M320 1153 L320 1176" stroke="#58a6ff" stroke-width="3" fill="none"/>
+<path d="M314 1166 L320 1176 L326 1166" fill="#58a6ff"/>
+<rect x="94" y="1180" width="452" height="123" rx="13" fill="#1c2633" stroke="#1c2633" stroke-width="2"/>
+<rect x="94" y="1180" width="5" height="123" fill="#58a6ff"/>
+<text x="113" y="1216" font-size="25" fill="#e6edf3" font-weight="bold">Preparar a execução</text>
+<text x="113" y="1251" font-size="18" fill="#b2bdc9" font-weight="normal">Prontidão e contrato entre projetos.</text>
+<text x="113" y="1283" font-size="17" fill="#58a6ff" font-weight="normal">issue-ready · contract-handoff*</text>
+<text x="94" y="1361" font-size="17" fill="#9ca9b6" font-weight="normal">Decisões materiais voltam ao responsável.</text>
+<rect x="610" y="735" width="500" height="657" rx="18" fill="#121921" stroke="#303842" stroke-width="2"/>
+<rect x="634" y="758" width="43" height="43" rx="10" fill="#b68cff" stroke="#b68cff" stroke-width="2"/>
+<text x="646" y="789" font-size="26" fill="#0c1117" font-weight="bold">3</text>
+<text x="695" y="791" font-size="29" fill="#e6edf3" font-weight="bold">Implementar</text>
+<text x="634" y="840" font-size="21" fill="#9ca9b6" font-weight="normal">Executar a proposta validada</text>
+<rect x="634" y="874" width="452" height="123" rx="13" fill="#1c2633" stroke="#1c2633" stroke-width="2"/>
+<rect x="634" y="874" width="5" height="123" fill="#b68cff"/>
+<text x="653" y="910" font-size="25" fill="#e6edf3" font-weight="bold">Implementar</text>
+<text x="653" y="945" font-size="18" fill="#b2bdc9" font-weight="normal">Nova sessão com proposta identificada.</text>
+<text x="653" y="977" font-size="17" fill="#b68cff" font-weight="normal">apply-issue · OpenSpec</text>
+<path d="M860 1000 L860 1023" stroke="#b68cff" stroke-width="3" fill="none"/>
+<path d="M854 1013 L860 1023 L866 1013" fill="#b68cff"/>
+<rect x="634" y="1027" width="452" height="123" rx="13" fill="#1c2633" stroke="#1c2633" stroke-width="2"/>
+<rect x="634" y="1027" width="5" height="123" fill="#b68cff"/>
+<text x="653" y="1063" font-size="25" fill="#e6edf3" font-weight="bold">Testar e verificar</text>
+<text x="653" y="1098" font-size="18" fill="#b2bdc9" font-weight="normal">Cenários focados e checks obrigatórios.</text>
+<text x="653" y="1130" font-size="17" fill="#b68cff" font-weight="normal">Testes e verificações locais</text>
+<path d="M860 1153 L860 1176" stroke="#b68cff" stroke-width="3" fill="none"/>
+<path d="M854 1166 L860 1176 L866 1166" fill="#b68cff"/>
+<rect x="634" y="1180" width="452" height="123" rx="13" fill="#1c2633" stroke="#1c2633" stroke-width="2"/>
+<rect x="634" y="1180" width="5" height="123" fill="#b68cff"/>
+<text x="653" y="1216" font-size="25" fill="#e6edf3" font-weight="bold">Abrir o Pull Request</text>
+<text x="653" y="1251" font-size="18" fill="#b2bdc9" font-weight="normal">Verificar e arquivar a mudança.</text>
+<text x="653" y="1283" font-size="17" fill="#b68cff" font-weight="normal">prepare-pr · OpenSpec</text>
+<text x="634" y="1361" font-size="17" fill="#9ca9b6" font-weight="normal">Evidências e validações acompanham a PR.</text>
+<rect x="1150" y="735" width="500" height="657" rx="18" fill="#121921" stroke="#303842" stroke-width="2"/>
+<rect x="1174" y="758" width="43" height="43" rx="10" fill="#3fb950" stroke="#3fb950" stroke-width="2"/>
+<text x="1186" y="789" font-size="26" fill="#0c1117" font-weight="bold">4</text>
+<text x="1235" y="791" font-size="29" fill="#e6edf3" font-weight="bold">Revisar e integrar</text>
+<text x="1174" y="840" font-size="21" fill="#9ca9b6" font-weight="normal">Auditar antes do merge</text>
+<rect x="1174" y="874" width="452" height="123" rx="13" fill="#1c2633" stroke="#1c2633" stroke-width="2"/>
+<rect x="1174" y="874" width="5" height="123" fill="#3fb950"/>
+<text x="1193" y="910" font-size="25" fill="#e6edf3" font-weight="bold">Auditar em outra sessão</text>
+<text x="1193" y="945" font-size="18" fill="#b2bdc9" font-weight="normal">Requisitos, código e arquitetura.</text>
+<text x="1193" y="977" font-size="17" fill="#3fb950" font-weight="normal">pr-audit · architecture-audit</text>
+<path d="M1400 1000 L1400 1023" stroke="#3fb950" stroke-width="3" fill="none"/>
+<path d="M1394 1013 L1400 1023 L1406 1013" fill="#3fb950"/>
+<rect x="1174" y="1027" width="452" height="123" rx="13" fill="#1c2633" stroke="#1c2633" stroke-width="2"/>
+<rect x="1174" y="1027" width="5" height="123" fill="#3fb950"/>
+<text x="1193" y="1063" font-size="25" fill="#e6edf3" font-weight="bold">Corrigir e reavaliar</text>
+<text x="1193" y="1098" font-size="18" fill="#b2bdc9" font-weight="normal">Achados exigem nova verificação.</text>
+<text x="1193" y="1130" font-size="17" fill="#3fb950" font-weight="normal">github-resolution · post-pr-audit</text>
+<path d="M1400 1153 L1400 1176" stroke="#3fb950" stroke-width="3" fill="none"/>
+<path d="M1394 1166 L1400 1176 L1406 1166" fill="#3fb950"/>
+<rect x="1174" y="1180" width="452" height="123" rx="13" fill="#1c2633" stroke="#1c2633" stroke-width="2"/>
+<rect x="1174" y="1180" width="5" height="123" fill="#3fb950"/>
+<text x="1193" y="1216" font-size="25" fill="#e6edf3" font-weight="bold">Integrar quando aprovado</text>
+<text x="1193" y="1251" font-size="18" fill="#b2bdc9" font-weight="normal">CI, auditorias e proteções atendidas.</text>
+<text x="1193" y="1283" font-size="17" fill="#3fb950" font-weight="normal">Merge quando verde</text>
+<text x="1174" y="1361" font-size="17" fill="#9ca9b6" font-weight="normal">Release e deploy são etapas separadas.</text>
+<text x="450" y="1433" font-size="21" fill="#e3b341" font-weight="normal">Se houver falha: corrigir e repetir as verificações afetadas antes do merge.</text>
+<rect x="70" y="1460" width="1580" height="82" rx="18" fill="#13232b" stroke="#28525e" stroke-width="2"/>
+<text x="96" y="1491" font-size="17" fill="#65d4e4" font-weight="bold">CONTINUIDADE ENTRE SESSÕES</text>
+<text x="96" y="1523" font-size="23" fill="#e6edf3" font-weight="normal">ai-memory · Contexto, notas e retomada do trabalho entre agentes.</text>
+<rect x="70" y="1560" width="1580" height="82" rx="18" fill="#151c24" stroke="#303842" stroke-width="2"/>
+<text x="96" y="1591" font-size="17" fill="#9ca9b6" font-weight="bold">REGISTRO E MELHORIA CONTÍNUA</text>
+<text x="96" y="1623" font-size="23" fill="#e6edf3" font-weight="normal">GitHub guarda decisões e evidências · Kaizen transforma falhas em melhorias.</text>
+<text x="70" y="1673" font-size="16" fill="#83909f" font-weight="normal">Fluxo simplificado · rocker-code/my-ai-skills · *contract-handoff quando há integração entre projetos</text>
+</g></svg>

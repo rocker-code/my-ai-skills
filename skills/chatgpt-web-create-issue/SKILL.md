@@ -1,17 +1,19 @@
 ---
 name: chatgpt-web-create-issue
-description: ChatGPT Web-only issue authoring from conversational requirements. Research repository context, design a detailed implementation-ready GitHub issue and create it using the GitHub connector. Do not run in CLI agents.
+description: Web-agent issue authoring from conversational requirements. Research repository context, design a detailed implementation-ready GitHub issue and create it using the available GitHub connector or equivalent authorized integration. Do not run in CLI agents.
 metadata:
   category: chatgpt-web
   stage: backlog
-  runtime: chatgpt-web-only
+  runtime: web-project-instructions
 ---
 
-# Create GitHub Issue — ChatGPT Web
+# Create GitHub Issue — Web Agents
 
-**Audience:** ChatGPT Web as backlog/product/architecture supervisor, not Codex CLI, Claude Code or OpenCode. It does not implement code, create OpenSpec changes or open implementation PRs.
+**Audience:** ChatGPT, Claude or another web agent with project instructions and access to the required GitHub sources/actions, acting as backlog/product/architecture supervisor, not Codex CLI, Claude Code or OpenCode. It does not implement code, create OpenSpec changes or open implementation PRs.
 
-Read [the ChatGPT Web issue authoring protocol](references/CHATGPT_WEB_ISSUES.md) and apply its default issue standard. For UI work also read [the visual artifact protocol](references/VISUAL_ARTIFACTS.md). Reuse the existing `refine-issue` conventions for requirements and `resolve-questions` for approved decision records; do not replace execution-side issue-audit or OpenSpec.
+Read [the Web issue authoring protocol](references/CHATGPT_WEB_ISSUES.md) and apply its default issue standard. For UI work also read [the visual artifact protocol](references/VISUAL_ARTIFACTS.md). Reuse the existing `refine-issue` conventions for requirements and `resolve-questions` for approved decision records; do not replace execution-side issue-audit or OpenSpec.
+
+Keep the existing `chatgpt-web-*` names for compatibility. These are portable Markdown instructions, not a guarantee of native skill installation in any provider. Report missing read/write capabilities instead of claiming success.
 
 ## Trigger
 

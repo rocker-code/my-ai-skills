@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="310" viewBox="0 0 960 310" role="img" aria-labelledby="title desc" font-family="DejaVu Sans, sans-serif">
+<title id="title">Conectar backend e app</title><desc id="desc">Contrato: backend integrado, conferir API, congelar contrato e implementar o app com plano validado. Faltou algo na API? Resolver no backend e conferir novamente.</desc>
+<rect width="960" height="310" rx="20" fill="#0c1117" />
+<g font-family="DejaVu Sans, sans-serif">
+<text x="28" y="45" font-size="27" font-weight="700" fill="#e6edf3">Conectar backend e app</text>
+<text x="28" y="74" font-size="17" fill="#a4afbc">O app começa com um contrato conferido e estável.</text>
+<rect x="28" y="103" width="210" height="136" rx="14" fill="#1c2633" stroke="#303842" stroke-opacity="1" stroke-width="1.5" />
+<rect x="28" y="103" width="4" height="136" fill="#65d4e4" /><rect x="42" y="118" width="28" height="28" rx="7" fill="#65d4e4" /><text x="56" y="137" text-anchor="middle" fill="#0c1117" font-size="14" font-weight="700">1</text>
+<text x="45" y="177" font-size="20" font-weight="700" fill="#e6edf3">Backend pronto</text>
+<text x="45" y="207" font-size="13" fill="#a4afbc">Implementação integrada</text>
+<path d="M 244 170 h 9 m -4 -5 l 5 5 -5 5" fill="none" stroke="#65d4e4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="259" y="103" width="210" height="136" rx="14" fill="#1c2633" stroke="#303842" stroke-opacity="1" stroke-width="1.5" />
+<rect x="259" y="103" width="4" height="136" fill="#65d4e4" /><rect x="273" y="118" width="28" height="28" rx="7" fill="#65d4e4" /><text x="287" y="137" text-anchor="middle" fill="#0c1117" font-size="14" font-weight="700">2</text>
+<text x="276" y="177" font-size="23" font-weight="700" fill="#e6edf3">Conferir</text>
+<text x="276" y="207" font-size="15" fill="#a4afbc">API atende ao app?</text>
+<path d="M 475 170 h 9 m -4 -5 l 5 5 -5 5" fill="none" stroke="#65d4e4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="490" y="103" width="210" height="136" rx="14" fill="#1c2633" stroke="#303842" stroke-opacity="1" stroke-width="1.5" />
+<rect x="490" y="103" width="4" height="136" fill="#65d4e4" /><rect x="504" y="118" width="28" height="28" rx="7" fill="#65d4e4" /><text x="518" y="137" text-anchor="middle" fill="#0c1117" font-size="14" font-weight="700">3</text>
+<text x="507" y="177" font-size="23" font-weight="700" fill="#e6edf3">Congelar</text>
+<text x="507" y="207" font-size="15" fill="#a4afbc">Firmar o contrato</text>
+<path d="M 706 170 h 9 m -4 -5 l 5 5 -5 5" fill="none" stroke="#65d4e4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="721" y="103" width="210" height="136" rx="14" fill="#1c2633" stroke="#303842" stroke-opacity="1" stroke-width="1.5" />
+<rect x="721" y="103" width="4" height="136" fill="#65d4e4" /><rect x="735" y="118" width="28" height="28" rx="7" fill="#65d4e4" /><text x="749" y="137" text-anchor="middle" fill="#0c1117" font-size="14" font-weight="700">4</text>
+<text x="738" y="177" font-size="20" font-weight="700" fill="#e6edf3">Implementar app</text>
+<text x="738" y="207" font-size="15" fill="#a4afbc">Usar o plano validado</text>
+
+<text x="28" y="279" font-size="15" fill="#a4afbc">Faltou algo na API? Resolver no backend e conferir novamente.</text>
+</g></svg>
