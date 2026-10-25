@@ -15,97 +15,158 @@ The lifecycle moves through discovery, readiness, implementation, review and com
 
 ![Fluxo do my-ai-skills: do milestone ao merge, com planejamento, implementação, validação e integração.](docs/images/fluxo-my-ai-skills.png)
 
-### Skills called in each flow
+### O fluxo em um olhar
 
-Every diagram node is an installed skill. Solid arrows show the main coordination or handoff; dotted arrows show conditional calls or a supporting skill. An arrow does not bypass validation, authorization or independent-session gates. These are skill maps, not a list of commands to invoke manually.
+![Planejamento: entender a issue, resolver dúvidas, escrever o OpenSpec e validar o plano.](docs/images/fluxo-planejamento.svg)
 
-#### Single issue, queue or milestone coordination
+![Implementação: codar, testar, validar e arquivar o OpenSpec, depois abrir a PR.](docs/images/fluxo-implementacao.svg)
 
-`milestone-orchestrator` schedules the following flow for one selected issue or for each eligible issue in a queue/milestone. The detailed planning and review maps below expand its workers. Independent work can run concurrently; hard dependencies wait for confirmed merges.
+![Revisão: revisar de forma independente, corrigir achados, passar revisão final e CI, integrar.](docs/images/fluxo-revisao.svg)
 
-```mermaid
-flowchart TD
-    MO["milestone-orchestrator"] --> IA["issue-audit"]
-    IA --> II["implement-issue"]
-    II --> AI["apply-issue"]
-    AI --> PP["prepare-pr"]
-    PP --> PA["pr-audit"]
-    PA --> GR["github-resolution"]
-    GR --> PO["post-pr-audit"]
-    GR -->|after confirmed merge| K["kaizen"]
-    PA -.->|boundary changes| AA["architecture-audit"]
-```
+![Performance: detectar lentidão, medir o gargalo, otimizar e comparar tempo e cobertura.](docs/images/fluxo-performance-ci.svg)
 
-#### Issue planning and questions
+![Contrato: backend integrado, conferir API, congelar contrato e implementar o app com plano validado.](docs/images/fluxo-contrato.svg)
 
-`implement-issue` coordinates the audit, exploration, readiness and proposal. Refinement and question resolution are used when evidence or material decisions are missing. After material decisions, exploration repeats before readiness. The proposal is reviewed and validated at its pinned revision before the fresh implementation session.
+<details>
+<summary>Detalhes técnicos, skills e regras de cada etapa</summary>
+
+### Technical flow reference
+
+Read each diagram from top to bottom. Boxes describe what happens; diamonds show a decision. Skill names are listed below each flow so the sequence can be understood without knowing the installed commands. These views summarize the existing workflow; validation, independent sessions and repository gates still apply.
+
+#### 1. From an issue to delivery
+
+Start with one issue, a repository queue or a milestone. The orchestrator uses the same delivery cycle for each eligible issue.
 
 ```mermaid
 flowchart TD
-    II["implement-issue"] --> IA["issue-audit"]
-    IA --> IE["issue-explore"]
-    II --> OW["openspec-workflow"]
-    OW --> IE
-    IE --> IR["issue-ready"]
-    IA -.->|issue needs refinement| RI["refine-issue"]
-    IE -.->|material questions| RQ["resolve-questions"]
-    RI -.-> IE
-    RQ -.->|re-explore after decisions| IE
-    IE -.->|Magento repository| MR["magento-review"]
-    IE -.->|Expo mobile repository| ER["expo-mobile-review"]
-    IR -->|validated proposal handoff| AI["apply-issue"]
+    A["1. Select work and check dependencies"] --> B["2. Understand the issue and validate the plan"]
+    B --> C["3. Implement, test and open the PR"]
+    C --> D["4. Review, correct and pass final checks"]
+    D --> E["5. Merge, confirm closure and capture lessons"]
 ```
 
-#### Implementation and PR preparation
+| Part of the flow | Skills responsible |
+|---|---|
+| Coordinate the selected scope and dependencies | `milestone-orchestrator` |
+| Check the issue and validate its plan | `issue-audit`, `implement-issue` |
+| Implement and prepare the PR | `apply-issue`, `prepare-pr` |
+| Review and resolve findings | `pr-audit`, `github-resolution`, `post-pr-audit` |
+| Capture evidenced improvements after merge | `kaizen` |
 
-`apply-issue` runs in a fresh session against the pinned validated proposal. For integration-heavy changes, planning records the proving scenarios and local environment, while Apply checks fixtures and setup before an expensive run, tests a narrow scenario, diagnoses each failure, then runs the repository's full required local suite against the commit candidate. Verification, strict validation, task completion and archive happen before `prepare-pr`. Applicable quality analysis can use `sonar`; it is not an extra mandatory phase for every issue. Repository-specific domain skills are loaded during exploration as shown above.
+Independent issues can run concurrently in isolated sessions/worktrees. Hard dependencies wait for confirmed merges. With **"sem merge"**, the cycle stops at **READY_TO_MERGE** after review and required checks. Release and deployment require a separate request.
+
+#### 2. Planning: understand before implementing
+
+The planning agent checks the issue against current code, resolves missing information and validates an exact OpenSpec proposal revision. It continues automatically when the evidence is sufficient.
 
 ```mermaid
 flowchart TD
-    AI["apply-issue"] --> OW["openspec-workflow"]
-    AI -->|after verification and archive| PP["prepare-pr"]
-    AI -.->|applicable quality analysis| S["sonar"]
+    A["Inspect the issue and current code"] --> B{"Enough information to plan?"}
+    B -->|Yes| C["Check readiness and write the proposal"]
+    B -->|No| D["Refine requirements and resolve questions"]
+    D --> A
+    C --> E["Review and validate the exact proposal revision"]
+    E -->|Passed| F["Hand off to a fresh implementation session"]
+    E -->|Needs changes| C
 ```
 
-#### Independent review, corrections and merge
+| Responsibility | Skills |
+|---|---|
+| Coordinate planning | `implement-issue` |
+| Verify claims and explore current behavior | `issue-audit`, `issue-explore` |
+| Refine requirements or resolve material questions | `refine-issue`, `resolve-questions` |
+| Enforce readiness and the OpenSpec proposal gate | `issue-ready`, `openspec-workflow` |
+| Check domain rules when applicable | `magento-review`, `expo-mobile-review` |
 
-A standalone `pr-audit` reports findings; it does not start fixes or merge on its own. In an authorized resolution run, `github-resolution` coordinates corrections, refreshed audits and the independent final gate. Merge remains subject to current-head checks and the selected merge mode.
+After material decisions, exploration repeats before readiness. Routine questions are resolved from evidence; unresolved material product or architecture decisions require owner input and block only affected work. Failed validation keeps the issue in planning.
+
+#### 3. Implementation: turn the validated plan into a PR
+
+Implementation starts in a fresh session against the pinned, validated proposal. Tests prove the acceptance criteria and concrete risks; applicable repository checks remain required.
 
 ```mermaid
 flowchart TD
-    PA["pr-audit"] -->|authorized resolution| GR["github-resolution"]
-    PA -.->|boundary changes| AA["architecture-audit"]
-    GR -.->|valid findings| AR["address-pr-review"]
-    AR -->|changed head| PA
-    GR --> PO["post-pr-audit"]
-    GR -->|after confirmed merge| K["kaizen"]
+    A["Implement the validated proposal"] --> B["Run focused tests and required checks"]
+    B --> C{"Verification passed?"}
+    C -->|No| D["Diagnose the failure and correct it"]
+    D --> B
+    C -->|Yes| E["Validate and archive the OpenSpec change"]
+    E --> F["Self-review and open the PR"]
 ```
 
-#### Automatic CI performance routing
+| Responsibility | Skills |
+|---|---|
+| Implement and verify in a fresh session | `apply-issue` |
+| Enforce verification, strict validation and archive | `openspec-workflow` |
+| Perform applicable quality analysis | `sonar` |
+| Prepare the commit and PR with evidence | `prepare-pr` |
 
-The existing workflow calls these skills automatically when the issue or diff triggers the performance rules. `optimize-ci` works inside planning and implementation; `ci-performance-audit` supplies diagnosis or an independent review lens. Ordinary test additions get a lightweight check. `post-pr-audit` consumes current-head audit evidence; it does not automatically start another benchmark.
+For integration-heavy changes, check the environment and fixtures before an expensive run, prove a narrow scenario first, then run the full required local suite against the commit candidate. Archive only after verification and strict validation pass; include the archive and synchronized specs in the same PR. If new evidence changes the validated contract, return to planning before continuing implementation.
+
+#### 4. Review: correct findings before merge
+
+A standalone review reports findings. Corrections and merge happen only in an authorized resolution run.
 
 ```mermaid
 flowchart TD
-    IA["issue-audit"] -.->|performance issue: diagnosis| CPA["ci-performance-audit"]
-    II["implement-issue"] -.->|performance plan| OC["optimize-ci"]
-    AI["apply-issue"] -.->|validated experiment| OC
-    PP["prepare-pr"] -.->|relevant CI or test changes| CPA
-    PA["pr-audit"] -.->|independent performance review| CPA
-    K["kaizen"] -.->|evidenced recurring slowdown| CPA
+    A["Independently review the current PR"] --> B{"Corrections needed?"}
+    B -->|Yes| C["Fix valid findings and refresh checks"]
+    C --> A
+    B -->|No| D["Pass independent final review and required CI"]
+    D --> E{"Selected merge mode?"}
+    E -->|Automatic, all gates passed| F["Merge and verify issue closure"]
+    E -->|Manual| G["Ready for owner to merge"]
 ```
 
-#### Cross-repository contract handoff
+| Responsibility | Skills |
+|---|---|
+| Independently review requirements, code and tests | `pr-audit` |
+| Check changed boundaries and coupling when applicable | `architecture-audit` |
+| Coordinate authorized corrections and refreshed audits | `github-resolution` |
+| Fix valid review findings | `address-pr-review` |
+| Perform the independent final gate and authorized merge | `post-pr-audit` |
+| Capture lessons after confirmed merge and closure | `kaizen` |
 
-After the producer's implementation is merged, `contract-handoff` verifies the implemented contract and the consumer issue. Missing consumer requirements go through refinement; consumer planning starts only after the contract is frozen.
+A failed final review or CI check keeps the PR in review/correction. A new push requires affected evidence to be refreshed against the current head. Automatic merge never bypasses required checks, reviews or branch protections.
+
+#### 5. CI performance: support inside the existing steps
+
+Performance work is routed automatically when an issue or diff triggers the performance rules. It supports planning, implementation and review within the delivery cycle.
+
+| When it is needed | What happens | Skills |
+|---|---|---|
+| An issue reports a slow pipeline | Diagnose measured bottlenecks before proposing a change | `issue-audit` → `ci-performance-audit` |
+| Planning or implementing a performance change | Plan a bounded experiment, then compare results | `implement-issue` / `apply-issue` → `optimize-ci` |
+| Preparing or reviewing relevant CI/test changes | Check performance evidence and preserved test obligations | `prepare-pr` / `pr-audit` → `ci-performance-audit` |
+| Repeated slowdown is evidenced after delivery | Investigate whether a focused process improvement is justified | `kaizen` → `ci-performance-audit` |
+
+Ordinary test additions receive a lightweight check. `post-pr-audit` consumes current-head evidence; it does not automatically launch another benchmark.
+
+#### 6. Backend to mobile: agree on the contract first
+
+The consumer's requirements are checked during planning. After the producer implementation is merged, the final handoff verifies the implemented contract before consumer implementation starts.
 
 ```mermaid
 flowchart TD
-    CH["contract-handoff"] -->|contract frozen| II["implement-issue"]
-    CH -.->|consumer issue needs updates| RI["refine-issue"]
-    RI -->|recheck updated issue| CH
-    II -->|validated consumer proposal| AI["apply-issue"]
+    A["Producer implementation merged"] --> B["Compare the implemented contract with consumer needs"]
+    B --> C{"Contract covers the consumer?"}
+    C -->|No| D["Update issues and resolve contract gaps"]
+    D -->|Required producer changes merged| B
+    C -->|Yes| E["Freeze the verified contract"]
+    E --> F["Start consumer implementation with a validated plan"]
 ```
+
+| Responsibility | Skills |
+|---|---|
+| Verify scenarios against the producer and freeze the final contract | `contract-handoff` |
+| Update incomplete producer or consumer requirements | `refine-issue` |
+| Plan and validate consumer work | `implement-issue` |
+| Implement only after the final freeze and proposal gate | `apply-issue` |
+
+Missing producer capabilities become hard dependencies. If only the consumer issue needs clarification, update it and repeat the comparison; no producer change is needed. A contract change after the freeze requires a revised consumer issue and another handoff.
+
+</details>
 
 `pr-status` is a read-only status utility. `update-main` and `release` are available for explicitly requested maintenance/release work; the milestone flow does not automatically release or deploy.
 
