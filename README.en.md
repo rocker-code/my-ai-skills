@@ -1,6 +1,8 @@
-# my-ai-skills
+# AI Engineering Workflow
 
 [Português (Brasil)](README.md) · English
+
+**AI Engineering Workflow** is the project’s display name. The repository remains at `rocker-code/my-ai-skills`; existing URLs, installation commands, paths and identifiers stay valid at this stage.
 
 Reusable skills and tools for a supervised, issue-driven AI software development lifecycle using GitHub, OpenSpec, ChatGPT, Codex, Claude and Claude Code.
 
@@ -34,7 +36,7 @@ The workflow starts with the Web agent: describe your need, and the skills inspe
 
 The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
 
-![my-ai-skills: from an idea to a Web-authored issue, then CLI planning, implementation, validation and merge.](docs/images/fluxo-my-ai-skills.en.svg)
+![AI Engineering Workflow: from an idea to a Web-authored issue, then CLI planning, implementation, validation and merge.](docs/images/fluxo-my-ai-skills.en.svg)
 
 The diagram above uses the editable SVG source directly. To export a PNG, run `inkscape docs/images/fluxo-my-ai-skills.en.svg --export-type=png --export-filename=docs/images/fluxo-my-ai-skills.en.png`.
 
@@ -252,7 +254,8 @@ The same text can be used in ChatGPT, Claude or another agent that accepts persi
 ```text
 # Rocker Code — Project Instructions
 
-This project uses https://github.com/rocker-code/my-ai-skills as its reference
+This project uses AI Engineering Workflow, available at
+https://github.com/rocker-code/my-ai-skills, as its reference
 for software engineering and GitHub issue management.
 
 ## Web agent skills (ChatGPT, Claude or equivalent)
@@ -523,7 +526,7 @@ Append the following guidance to the existing `AGENTS.md` (or the instruction fi
 ```markdown
 ## AI development workflow
 
-Use the installed my-ai-skills workflow for issue-driven work.
+Use the installed AI Engineering Workflow for issue-driven work.
 Read .ai-workflow/protocol/AI_WORKFLOW.md,
 .ai-workflow/protocol/GITHUB_CONVENTIONS.md and
 .ai-workflow/protocol/REVIEW_POLICY.md and

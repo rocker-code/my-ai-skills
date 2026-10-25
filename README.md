@@ -1,6 +1,8 @@
-# my-ai-skills
+# AI Engineering Workflow
 
 Português (Brasil) · [English](README.en.md)
+
+**AI Engineering Workflow** é o nome de apresentação do projeto. O repositório continua em `rocker-code/my-ai-skills`; URLs, comandos de instalação, caminhos e identificadores existentes permanecem válidos nesta etapa.
 
 Skills e ferramentas reutilizáveis para um ciclo supervisionado de desenvolvimento com IA, orientado por issues, usando GitHub, OpenSpec, ChatGPT, Codex, Claude e Claude Code.
 
@@ -34,7 +36,7 @@ O fluxo começa no agente Web: você descreve a necessidade, as skills consultam
 
 O ciclo passa por descoberta, prontidão, implementação, revisão e conclusão. OpenSpec é obrigatório; `openspec-workflow` rege exploração, propostas, validação da revisão exata, verificação da implementação e arquivamento.
 
-![Fluxo do my-ai-skills: da ideia à issue com agente Web, seguida de planejamento, implementação, validação e merge no CLI.](docs/images/fluxo-my-ai-skills.svg)
+![Fluxo do AI Engineering Workflow: da ideia à issue com agente Web, seguida de planejamento, implementação, validação e merge no CLI.](docs/images/fluxo-my-ai-skills.svg)
 
 O diagrama acima usa diretamente a fonte SVG editável. Para exportar uma versão PNG, execute `inkscape docs/images/fluxo-my-ai-skills.svg --export-type=png --export-filename=docs/images/fluxo-my-ai-skills.png`.
 
@@ -252,7 +254,8 @@ O mesmo texto pode ser usado nas instruções de projeto do ChatGPT, Claude ou d
 ```text
 # Rocker Code — Instruções do Projeto
 
-Este projeto utiliza https://github.com/rocker-code/my-ai-skills como referência
+Este projeto utiliza o AI Engineering Workflow, disponível em
+https://github.com/rocker-code/my-ai-skills, como referência
 para engenharia de software e gerenciamento de GitHub Issues.
 
 ## Skills do agente Web (ChatGPT, Claude ou equivalente)
@@ -522,7 +525,7 @@ Acrescente a orientação abaixo ao `AGENTS.md` existente (ou ao arquivo de inst
 ```markdown
 ## Fluxo de desenvolvimento com IA
 
-Use o fluxo my-ai-skills instalado para trabalho orientado por issues.
+Use o fluxo AI Engineering Workflow instalado para trabalho orientado por issues.
 Leia .ai-workflow/protocol/AI_WORKFLOW.md,
 .ai-workflow/protocol/GITHUB_CONVENTIONS.md e
 .ai-workflow/protocol/REVIEW_POLICY.md e

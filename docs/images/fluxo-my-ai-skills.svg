@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1720" height="1690" viewBox="0 0 1720 1690" role="img" aria-labelledby="title desc">
-<title id="title">Como funciona o my-ai-skills: da ideia ao merge</title>
+<title id="title">Como funciona o AI Engineering Workflow: da ideia ao merge</title>
 <desc id="desc">Agente Web cria e refina issues no GitHub. O agente CLI coordena planejamento OpenSpec, implementação, testes e revisão até o merge.</desc>
 <rect width="1720" height="1690" fill="#0c1117"/>
 <g font-family="DejaVu Sans, sans-serif">
 <text x="70" y="60" font-size="19" fill="#8b98a6" font-weight="bold">DA IDEIA AO MERGE</text>
-<text x="70" y="120" font-size="46" fill="#e6edf3" font-weight="bold">Como funciona o my-ai-skills</text>
+<text x="70" y="120" font-size="46" fill="#e6edf3" font-weight="bold">Como funciona o AI Engineering Workflow</text>
 <text x="70" y="166" font-size="26" fill="#a4afbc" font-weight="normal">O agente Web define o trabalho. O agente CLI entrega com OpenSpec.</text>
 <rect x="70" y="210" width="1580" height="282" rx="18" fill="#10252c" stroke="#43b9cd" stroke-width="2"/>
 <text x="96" y="250" font-size="22" fill="#65d4e4" font-weight="bold">1   CRIAR E REFINAR ISSUES · AGENTE WEB</text>
