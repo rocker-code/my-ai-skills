@@ -40,15 +40,15 @@ The diagram above uses the editable SVG source directly. To export a PNG, run `i
 
 ### The workflow at a glance
 
-![Planning: understand the issue, resolve questions, write OpenSpec and validate the plan.](docs/images/fluxo-planejamento.en.svg)
+![Planning: understand the issue, resolve questions, write OpenSpec and validate the plan.](docs/images/fluxo-planejamento.en.dark.svg)
 
-![Implementation: code, test, validate and archive OpenSpec, then open the PR.](docs/images/fluxo-implementacao.en.svg)
+![Implementation: code, test, validate and archive OpenSpec, then open the PR.](docs/images/fluxo-implementacao.en.dark.svg)
 
-![Review: independent review, fixes, final review and CI, then merge.](docs/images/fluxo-revisao.en.svg)
+![Review: independent review, fixes, final review and CI, then merge.](docs/images/fluxo-revisao.en.dark.svg)
 
-![Performance: detect slowdowns, measure the bottleneck, optimize and compare time and coverage.](docs/images/fluxo-performance-ci.en.svg)
+![Performance: detect slowdowns, measure the bottleneck, optimize and compare time and coverage.](docs/images/fluxo-performance-ci.en.dark.svg)
 
-![Contract: backend merged, check the API, freeze the contract and implement the app with a validated plan.](docs/images/fluxo-contrato.en.svg)
+![Contract: backend merged, check the API, freeze the contract and implement the app with a validated plan.](docs/images/fluxo-contrato.en.dark.svg)
 
 <details>
 <summary>Technical details, skills and rules for each stage</summary>
