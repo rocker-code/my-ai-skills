@@ -14,7 +14,7 @@ GitHub is the source of truth. Material decisions must end up in an issue, PR, a
 - [Fluxo de trabalho](#lifecycle)
 - [Visão geral das skills](#skills)
 - [Supervisão Web](#web-supervision)
-- [Configurar o projeto no ChatGPT Web](#configurar-o-projeto-no-chatgpt-web)
+- [Configurar o projeto no agente Web](#configurar-o-projeto-no-agente-web)
 - [Aplicar designs aprovados](#implementing-approved-ui-designs)
 - [Protocolo GitHub](#github-protocol)
 - [Scripts auxiliares](#helper-scripts)
@@ -28,9 +28,13 @@ GitHub is the source of truth. Material decisions must end up in an issue, PR, a
 
 ## Lifecycle
 
+O fluxo começa no agente Web: você descreve a necessidade, as skills consultam o contexto e criam/refinam a issue no GitHub. Depois, o agente CLI recebe a issue ou milestone e conduz o planejamento, a implementação e a revisão.
+
 The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
 
-![Fluxo do my-ai-skills: do milestone ao merge, com planejamento, implementação, validação e integração.](docs/images/fluxo-my-ai-skills.png)
+![Fluxo do my-ai-skills: da ideia à issue com agente Web, seguida de planejamento, implementação, validação e merge no CLI.](docs/images/fluxo-my-ai-skills.png)
+
+Fonte editável do diagrama: [fluxo-my-ai-skills.svg](docs/images/fluxo-my-ai-skills.svg). O PNG é exportado a partir dela com `inkscape docs/images/fluxo-my-ai-skills.svg --export-type=png --export-filename=docs/images/fluxo-my-ai-skills.png`.
 
 ### O fluxo em um olhar
 
@@ -223,21 +227,23 @@ Production implementation does not begin while blocking questions remain or befo
 
 ### Web supervision
 
-The two `chatgpt-web-*` skills are repository instructions for **ChatGPT Web**, not CLI agents or automatically installed ChatGPT capabilities. Use the connected GitHub tools; see [ChatGPT Web issue protocol](protocol/CHATGPT_WEB_ISSUES.md).
+The two `chatgpt-web-*` skills provide portable Markdown instructions for **ChatGPT, Claude and other Web agents with project instructions**. The existing names are kept for compatibility. Read access to the instructions/repositories is required; issue writes require an authorized GitHub connector or equivalent integration. These instructions do not automatically install native capabilities and do not replace CLI execution. See the [Web issue protocol](protocol/CHATGPT_WEB_ISSUES.md).
 
 
 | Skill | Responsibility |
 |---|---|
 | `refine-issue` | Convert an idea or draft issue into an implementable specification. |
 | `resolve-questions` | Analyze `[QUESTION]` comments and record evidence-backed `[DECISION]` responses. |
-| `chatgpt-web-create-issue` | ChatGPT Web-only: research context and create detailed, linked, implementation-ready GitHub issues. |
-| `chatgpt-web-refine-issue` | ChatGPT Web-only: discuss and resolve questions, refine existing issues and register durable decisions. |
+| `chatgpt-web-create-issue` | Web supervision: research context and create detailed, linked, implementation-ready GitHub issues. |
+| `chatgpt-web-refine-issue` | Web supervision: discuss and resolve questions, refine existing issues and register durable decisions. |
 
-### Configurar o projeto no ChatGPT Web
+### Configurar o projeto no agente Web
 
-Para usar as duas skills nas conversas do projeto, mantenha o conector GitHub disponível com acesso ao `rocker-code/my-ai-skills` e aos repositórios de destino. Copie o bloco abaixo para as **instruções do projeto no ChatGPT Web**. Ele orienta a consulta das instruções atuais no GitHub; não instala skills automaticamente nem altera as configurações da conta por si só.
+Para usar as duas skills nas conversas do projeto, mantenha o conector GitHub disponível com acesso ao `rocker-code/my-ai-skills` e aos repositórios de destino. Copie o bloco abaixo para as **instruções do projeto no agente Web** (ChatGPT, Claude ou equivalente). Ele orienta a consulta das instruções atuais no GitHub; não instala skills automaticamente nem altera as configurações da conta por si só.
 
-Não é necessário anexar os arquivos das skills a cada conversa quando o conector consegue lê-los. As regras detalhadas ficam nos protocolos versionados: alterações passam a ser consultadas após o merge em `main`. Atualize este bloco nas configurações se o próprio texto de encaminhamento mudar. Se a leitura pelo conector falhar, o ChatGPT deve informar quais fontes não conseguiu consultar, sem afirmar que aplicou a versão atual.
+Não é necessário anexar os arquivos das skills a cada conversa quando o conector consegue lê-los. As regras detalhadas ficam nos protocolos versionados: alterações passam a ser consultadas após o merge em `main`. Atualize este bloco nas configurações se o próprio texto de encaminhamento mudar. Se a leitura pelo conector falhar, o agente deve informar quais fontes não conseguiu consultar, sem afirmar que aplicou a versão atual.
+
+O mesmo texto pode ser usado nas instruções de projeto do ChatGPT, Claude ou de outro agente que aceite descrições persistentes do projeto. A capacidade depende do ambiente: ler instruções não concede acesso ao GitHub nem permissão para criar issues. Se não houver integração de escrita, o agente pode preparar um rascunho, informando que a publicação não foi realizada.
 
 #### Instruções para copiar
 
@@ -247,10 +253,14 @@ Não é necessário anexar os arquivos das skills a cada conversa quando o conec
 Este projeto utiliza https://github.com/rocker-code/my-ai-skills como referência
 para engenharia de software e gerenciamento de GitHub Issues.
 
-## Skills do ChatGPT Web
+## Skills do agente Web (ChatGPT, Claude ou equivalente)
 
-No início de cada tarefa de criação ou revisão de issues, consulte pelo conector
-GitHub a versão atual em main da skill correspondente e do protocolo compartilhado:
+Use estas instruções no ChatGPT, Claude ou outro agente com instruções de projeto.
+Os nomes chatgpt-web-* são mantidos por compatibilidade. É necessário acesso de
+leitura às fontes; alterações de issues exigem integração GitHub autorizada.
+
+No início de cada tarefa de criação ou revisão de issues, consulte pela integração
+GitHub disponível a versão atual em main da skill correspondente e do protocolo compartilhado:
 
 - Criação: skills/chatgpt-web-create-issue/SKILL.md
 - Revisão/refinamento: skills/chatgpt-web-refine-issue/SKILL.md
@@ -321,7 +331,7 @@ Não exija que o usuário repita estas instruções.
 | Interface | Wireframe em caracteres e referência aprovada/versionada quando disponível, com estados e ações relevantes. |
 | Texto apresentado ao usuário | Seção de i18n/tradução, responsabilidade app/API, formatação local e validação representativa. |
 
-As seções são condicionais e seguem o [protocolo compartilhado](protocol/CHATGPT_WEB_ISSUES.md). O ChatGPT Web prepara e refina o backlog; o agente CLI continua responsável pela exploração, validação OpenSpec, implementação, testes e PR. Configurar o bloco acima é uma ação do usuário; uma PR neste repositório não atualiza as instruções de projetos já existentes no ChatGPT Web.
+As seções são condicionais e seguem o [protocolo compartilhado](protocol/CHATGPT_WEB_ISSUES.md). O agente Web prepara e refina o backlog; o agente CLI continua responsável pela exploração, validação OpenSpec, implementação, testes e PR. Configurar o bloco acima é uma ação do usuário; uma PR neste repositório não atualiza as instruções de projetos já existentes no ChatGPT, Claude ou outro agente Web.
 
 ### Domain checks
 

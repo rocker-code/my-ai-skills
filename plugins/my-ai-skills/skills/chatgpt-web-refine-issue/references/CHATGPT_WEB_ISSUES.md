@@ -1,6 +1,6 @@
-# ChatGPT Web issue authoring protocol
+# Web agent issue authoring protocol
 
-This protocol is for **ChatGPT Web supervision only**. It complements—not replaces—`refine-issue`, `resolve-questions`, `issue-audit`, `openspec-workflow` or the CLI implementation lifecycle. GitHub is the source of truth. These markdown skills are repository guidance, **not an automatic ChatGPT Web skill installation**; ChatGPT must have access to these instructions to apply them in a given conversation.
+This protocol is for **Web backlog supervision** in ChatGPT, Claude or another agent that accepts project instructions and can read the required sources. It complements—not replaces—`refine-issue`, `resolve-questions`, `issue-audit`, `openspec-workflow` or the CLI implementation lifecycle. GitHub is the source of truth. These Markdown skills are portable repository guidance, **not automatic native skill installation** in any provider. Keep the existing `chatgpt-web-*` names and protocol path for compatibility. The agent must be able to read these instructions and the target repository; creating/updating issues also requires an authorized GitHub connector or equivalent integration. Report unavailable capabilities and never claim an unperformed mutation.
 
 ## Principles
 
