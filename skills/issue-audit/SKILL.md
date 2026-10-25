@@ -20,3 +20,7 @@ Output: issue/ref, observed facts with evidence, assumptions, current implementa
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). For CI/test-performance or cost issues, automatically invoke `ci-performance-audit` in diagnosis mode before declaring readiness. Include its measured baseline, obligations and experiment gaps in this audit; do not require a manual invocation.
+
+## Approved UI artifact intake
+
+For issues implementing a visual design, automatically invoke `visual-artifact-implementation` and follow [the visual artifact protocol](../../protocol/VISUAL_ARTIFACTS.md). Verify the approved reference is accessible and pinned, inspect affected existing screens/components, and list exact UI acceptance and preservation criteria. Do not mark visual evidence inspected when only an inaccessible Claude Artifact URL exists.
