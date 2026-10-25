@@ -32,9 +32,9 @@ O fluxo começa no agente Web: você descreve a necessidade, as skills consultam
 
 The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
 
-![Fluxo do my-ai-skills: da ideia à issue com agente Web, seguida de planejamento, implementação, validação e merge no CLI.](docs/images/fluxo-my-ai-skills.png)
+![Fluxo do my-ai-skills: da ideia à issue com agente Web, seguida de planejamento, implementação, validação e merge no CLI.](docs/images/fluxo-my-ai-skills.svg)
 
-Fonte editável do diagrama: [fluxo-my-ai-skills.svg](docs/images/fluxo-my-ai-skills.svg). O PNG é exportado a partir dela com `inkscape docs/images/fluxo-my-ai-skills.svg --export-type=png --export-filename=docs/images/fluxo-my-ai-skills.png`.
+O diagrama acima usa diretamente a fonte SVG editável. Para exportar uma versão PNG, execute `inkscape docs/images/fluxo-my-ai-skills.svg --export-type=png --export-filename=docs/images/fluxo-my-ai-skills.png`.
 
 ### O fluxo em um olhar
 
