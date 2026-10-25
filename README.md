@@ -9,6 +9,23 @@ The repository defines one shared protocol across two operating layers:
 
 GitHub is the source of truth. Material decisions must end up in an issue, PR, architecture document, OpenSpec artifact or code—not only in chat history.
 
+## Índice
+
+- [Fluxo de trabalho](#lifecycle)
+- [Visão geral das skills](#skills)
+- [Supervisão Web](#web-supervision)
+- [Configurar o projeto no ChatGPT Web](#configurar-o-projeto-no-chatgpt-web)
+- [Aplicar designs aprovados](#implementing-approved-ui-designs)
+- [Protocolo GitHub](#github-protocol)
+- [Scripts auxiliares](#helper-scripts)
+- [Métricas de tempo](#workflow-timing-metrics)
+- [Instalação passo a passo](#step-by-step-installation)
+- [Instalar como plugin pessoal](#install-as-a-personal-chatgptcodex-plugin)
+- [Cuidar de uma issue](#taking-care-of-one-issue)
+- [Regras de milestones](#milestone-operating-rules)
+- [Fluxo entre repositórios](#recommended-cross-repository-flow)
+- [Otimização de CI](#automatic-ci-performance-improvement)
+
 ## Lifecycle
 
 The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
