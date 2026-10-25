@@ -29,6 +29,7 @@ GitHub is the source of truth. Material decisions must end up in an issue, PR, a
 - [Milestone operating rules](#milestone-operating-rules)
 - [Cross-repository flow](#recommended-cross-repository-flow)
 - [CI optimization](#automatic-ci-performance-improvement)
+- [References and acknowledgments](#references-and-acknowledgments)
 
 ## Lifecycle
 
@@ -643,3 +644,22 @@ The existing queue and milestone commands automatically route relevant work to t
 No manual skill invocation is required. Performance issues trigger diagnosis/planning; material workflow, fixture, setup or test-selection changes trigger proportional review; kaizen diagnoses evidenced recurring slowdown. Ordinary test additions receive a lightweight check, not a mandatory hosted benchmark. Scheduling and merge authority remain with the existing orchestrator and review skills.
 
 Read [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md). Compare elapsed time, runner-minutes and behavioral proof; a faster green pipeline alone does not prove improvement. Magento-specific guidance is bundled with ci-performance-audit. Source changes are synchronized to the plugin by `scripts/sync-plugin`.
+
+## References and acknowledgments
+
+Many of the ideas, practices and tools used here were not invented by me. I am bringing together, experimenting with and adapting solutions from different projects to build an AI engineering workflow that works for me and my projects.
+
+My contribution lies in combining these pieces, writing the instructions that connect each stage and refining the process through everyday use. Credit for the original tools and ideas belongs to their respective authors and communities.
+
+| Reference | Role in this workflow |
+|---|---|
+| [OpenSpec](https://github.com/Fission-AI/OpenSpec) | Specification-driven development: exploration, proposals, validation, implementation and archiving. |
+| [skills.sh / Vercel Skills CLI](https://github.com/vercel-labs/skills) | Distribution and installation of the skills used by agents. |
+| [ai-memory — Fabio Akita](https://github.com/akitaonrails/ai-memory) | Context continuity and work handoffs across sessions and agents. |
+| [OpenAI Codex](https://github.com/openai/codex) | Coding agent used for implementation and review. |
+| [Claude Code](https://code.claude.com/docs/en/overview) | Coding agent used for implementation and review. |
+| [OpenCode](https://opencode.ai/) | Execution environment for coding agents. |
+| [ChatGPT](https://chatgpt.com/) and [Claude](https://claude.ai/) | Web environments used to discuss requirements, create/refine issues and record decisions. |
+| [GitHub](https://docs.github.com/) and [GitHub CLI](https://cli.github.com/) | Issues, PRs, decisions, reviews and access to repository context. |
+| [GitHub Actions](https://github.com/features/actions) | Automated continuous integration checks. |
+| [SonarQube](https://www.sonarsource.com/products/sonarqube/) | Code quality and security analysis. |

@@ -29,6 +29,7 @@ O GitHub é a fonte de verdade. Decisões relevantes devem ficar em uma issue, P
 - [Regras de milestones](#regras-de-milestones)
 - [Fluxo entre repositórios](#fluxo-entre-repositórios)
 - [Otimização de CI](#otimização-de-ci)
+- [Referências e agradecimentos](#referências-e-agradecimentos)
 
 ## Fluxo de trabalho
 
@@ -642,3 +643,22 @@ Os comandos existentes de fila e milestone encaminham automaticamente o trabalho
 Não é necessária invocação manual. Issues de desempenho acionam diagnóstico/planejamento; mudanças relevantes em fluxos, massas de teste, preparação do ambiente ou seleção de testes acionam revisão proporcional; kaizen diagnostica lentidão recorrente comprovada. Adições comuns de testes recebem uma verificação leve, não uma medição hospedada obrigatória. Autoridade de agendamento e merge continua com o orquestrador e as skills de revisão.
 
 Consulte [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md). Compare tempo decorrido, minutos de execução e comprovação de comportamento; uma pipeline verde e mais rápida, sozinha, não comprova melhoria. Orientações específicas de Magento estão embarcadas em ci-performance-audit. Alterações nas fontes são sincronizadas ao plugin por `scripts/sync-plugin`.
+
+## Referências e agradecimentos
+
+Muitas das ideias, práticas e ferramentas usadas aqui não foram inventadas por mim. Estou reunindo, experimentando e adaptando soluções de diferentes projetos para construir um workflow de engenharia com IA que funcione para mim e para os meus projetos.
+
+Minha contribuição está na combinação dessas peças, nas instruções que conectam cada etapa e nos ajustes que surgem do uso no dia a dia. O crédito pelas ferramentas e pelas ideias originais pertence aos seus respectivos autores e comunidades.
+
+| Referência | Papel neste workflow |
+|---|---|
+| [OpenSpec](https://github.com/Fission-AI/OpenSpec) | Desenvolvimento orientado por especificações: exploração, proposta, validação, implementação e arquivamento. |
+| [skills.sh / Vercel Skills CLI](https://github.com/vercel-labs/skills) | Distribuição e instalação das skills usadas pelos agentes. |
+| [ai-memory — Fabio Akita](https://github.com/akitaonrails/ai-memory) | Continuidade de contexto e transferência de trabalho entre sessões e agentes. |
+| [OpenAI Codex](https://github.com/openai/codex) | Agente de programação utilizado na execução e revisão do trabalho. |
+| [Claude Code](https://code.claude.com/docs/en/overview) | Agente de programação utilizado na execução e revisão do trabalho. |
+| [OpenCode](https://opencode.ai/) | Ambiente de execução de agentes de programação. |
+| [ChatGPT](https://chatgpt.com/) e [Claude](https://claude.ai/) | Ambientes Web usados para discutir requisitos, criar/refinar issues e registrar decisões. |
+| [GitHub](https://docs.github.com/) e [GitHub CLI](https://cli.github.com/) | Issues, PRs, decisões, revisões e acesso ao contexto do repositório. |
+| [GitHub Actions](https://github.com/features/actions) | Automação das verificações de integração contínua. |
+| [SonarQube](https://www.sonarsource.com/products/sonarqube/) | Análise de qualidade e segurança de código. |
