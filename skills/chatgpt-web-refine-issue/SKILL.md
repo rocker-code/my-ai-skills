@@ -11,7 +11,7 @@ metadata:
 
 **Audience:** ChatGPT Web as supervisor, not executor. Never edit application code or execute OpenSpec from this skill.
 
-Read [the ChatGPT Web issue authoring protocol](../../protocol/CHATGPT_WEB_ISSUES.md), plus `refine-issue` and `resolve-questions` when their functions are needed. This wrapper standardizes how conversations become durable issue changes.
+Read [the ChatGPT Web issue authoring protocol](references/CHATGPT_WEB_ISSUES.md) and apply its default issue standard, plus `refine-issue` and `resolve-questions` when their functions are needed. For UI work also read [the visual artifact protocol](references/VISUAL_ARTIFACTS.md). This wrapper standardizes how conversations become durable issue changes.
 
 ## Trigger
 
@@ -23,7 +23,7 @@ User asks to inspect an issue, clarify an agent's question, check whether it is 
 2. Explain complex questions in plain Portuguese first, when discussion is requested. State the current observed behavior, what is being decided, concrete options, trade-offs and a recommendation grounded in existing project patterns. Do not post a decision before the user chooses when material authority is required.
 3. Resolve routine technical ambiguity through evidence; identify material unresolved product/security/architecture choices explicitly as `[QUESTION]`.
 4. After user agrees, write durable `[DECISION]` responses or update the issue. Preserve existing requirements, prior decisions and comments; do not replace entire issue body without reconciling changes. Use `[IMPLEMENTATION NOTE]` for verified facts rather than pretending they are approvals.
-5. Apply the shared quality bar: objective, current/expected behavior, scope/non-goals, contracts, UI assets, test/acceptance, edge cases and repo dependencies as applicable. If a visual reference changed, record the newly approved immutable export and whether a new OpenSpec validation is needed.
+5. For an authorized full refinement/readiness review, apply the shared default: short opening summary, current implementation with inspected commit links, before/after behavior, scope/non-goals, acceptance and a representative scenario table with suggested proving layers. Include current → expected API signatures/examples for integration, a compact Mermaid system design for backend/integration/architecture changes, and character wireframes plus accessible approved assets for UI work. Distinguish verified facts, decisions, proposals and pending handoffs; reconcile behavior, visuals, contract, criteria and scenarios across linked issues. Reuse delivered code/tests and flag obsolete expectations. If a visual reference changed, record the approved version and whether new OpenSpec validation is needed. For narrow corrections, preserve unrelated content and update only affected sections and inconsistencies; do not expand the requested scope to reformat the whole issue.
 6. Verify the resulting GitHub mutation and provide the issue/comment link or exact issue URL, plus READY FOR OPSX EXPLORE or the precise unresolved blocker.
 
 ## Guardrails

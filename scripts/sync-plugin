@@ -42,6 +42,11 @@ bundle_reference pr-audit protocol/REVIEW_POLICY.md
 bundle_reference prepare-pr templates/pull-request.md
 bundle_reference resolve-questions templates/github/decision.md
 
+for skill in chatgpt-web-create-issue chatgpt-web-refine-issue; do
+  bundle_reference "$skill" protocol/CHATGPT_WEB_ISSUES.md
+  bundle_reference "$skill" protocol/VISUAL_ARTIFACTS.md
+done
+
 bundle_reference issue-audit protocol/CI_PERFORMANCE.md
 bundle_reference implement-issue protocol/CI_PERFORMANCE.md
 bundle_reference apply-issue protocol/CI_PERFORMANCE.md
