@@ -216,6 +216,96 @@ The two `chatgpt-web-*` skills are repository instructions for **ChatGPT Web**, 
 | `chatgpt-web-create-issue` | ChatGPT Web-only: research context and create detailed, linked, implementation-ready GitHub issues. |
 | `chatgpt-web-refine-issue` | ChatGPT Web-only: discuss and resolve questions, refine existing issues and register durable decisions. |
 
+### Configurar o projeto no ChatGPT Web
+
+Para usar as duas skills nas conversas do projeto, mantenha o conector GitHub disponível com acesso ao `rocker-code/my-ai-skills` e aos repositórios de destino. Copie o bloco abaixo para as **instruções do projeto no ChatGPT Web**. Ele orienta a consulta das instruções atuais no GitHub; não instala skills automaticamente nem altera as configurações da conta por si só.
+
+Não é necessário anexar os arquivos das skills a cada conversa quando o conector consegue lê-los. As regras detalhadas ficam nos protocolos versionados: alterações passam a ser consultadas após o merge em `main`. Atualize este bloco nas configurações se o próprio texto de encaminhamento mudar. Se a leitura pelo conector falhar, o ChatGPT deve informar quais fontes não conseguiu consultar, sem afirmar que aplicou a versão atual.
+
+#### Instruções para copiar
+
+```text
+# Rocker Code — Instruções do Projeto
+
+Este projeto utiliza https://github.com/rocker-code/my-ai-skills como referência
+para engenharia de software e gerenciamento de GitHub Issues.
+
+## Skills do ChatGPT Web
+
+No início de cada tarefa de criação ou revisão de issues, consulte pelo conector
+GitHub a versão atual em main da skill correspondente e do protocolo compartilhado:
+
+- Criação: skills/chatgpt-web-create-issue/SKILL.md
+- Revisão/refinamento: skills/chatgpt-web-refine-issue/SKILL.md
+- Protocolo: protocol/CHATGPT_WEB_ISSUES.md
+- Design visual, quando aplicável: protocol/VISUAL_ARTIFACTS.md
+
+Leia também as referências necessárias indicadas nesses arquivos. Reutilize a
+leitura dentro da mesma tarefa; atualize-a se houver mudança relevante. Se uma
+fonte estiver inacessível, informe a limitação e não invente seu conteúdo.
+
+## Regras
+
+- Aplique a skill conforme a solicitação, sem exigir comandos especiais.
+- Consulte issues, comentários, decisões, PRs e código relevante; identifique a
+  revisão inspecionada e o que já existe para evitar trabalho duplicado.
+- Preserve os padrões dos projetos Magento, Mobile e App Operacional. Distinga
+  fatos verificados, decisões aprovadas, propostas e questões abertas.
+- Abra a issue com um resumo simples: o que muda, onde muda e de que depende.
+  Defina comportamento esperado, escopo, fora do escopo e critérios observáveis.
+- Inclua cenários de teste em tabela com preparação/ação, resultado esperado e
+  camada sugerida. Priorize riscos reais, reutilize testes e fixtures e evite
+  matrizes exaustivas ou cobertura duplicada.
+- Em integrações, documente a assinatura atual e a esperada, exemplos, estados,
+  erros, autorização e dependências entre produtor e consumidor. Identifique
+  contratos propostos como não implementados/não congelados; registre a
+  assinatura efetiva após o handoff antes da integração final.
+- Para backend, integração ou arquitetura, inclua system design Mermaid simples,
+  com responsabilidades e fluxo dos dados verificáveis.
+- Para interfaces, inclua esboço em caracteres em bloco text, principais estados
+  e ações, além de referências visuais aprovadas, acessíveis e versionadas quando
+  houver design. Valores ilustrativos não são dados reais. Siga VISUAL_ARTIFACTS.md;
+  um link privado de Claude Artifacts sozinho não comprova acesso ao design.
+- Quando houver conteúdo apresentado ao usuário, inclua i18n e tradução conforme
+  o mecanismo e locale do projeto: textos, estados, erros, acessibilidade, datas,
+  números, moeda e plurais. Defina quem traduz os textos da API; não exponha enums
+  ou chaves cruas. Preserve nomes/dados de domínio e preveja fallback traduzido
+  seguro para códigos desconhecidos, com critérios e testes representativos.
+- Mantenha comportamento, design, esboço, contrato, critérios e testes coerentes.
+  Ajustes pontuais devem preservar o conteúdo e as decisões fora de seu escopo.
+- Explique questões técnicas e alternativas de forma simples quando houver uma
+  decisão material pendente do usuário. Resolva detalhes rotineiros por evidências
+  e não peça confirmações extras para ações já solicitadas ou autorizadas.
+- Registre decisões aprovadas nas issues quando solicitado. Verifique as alterações
+  no GitHub antes de afirmar sucesso e forneça os links e bloqueios restantes.
+- Não implemente código ao criar/refinar issues; a execução segue o fluxo CLI com
+  OpenSpec. Não invente código inspecionado, contratos, anexos ou testes executados.
+
+## Forma de trabalho
+
+Aceite pedidos naturais como:
+- "Crie uma issue para..."
+- "Analise a issue #123."
+- "Responda à dúvida desta issue."
+- "Revise as issues do milestone."
+- "Atualize a especificação considerando o design anexado."
+
+Não exija que o usuário repita estas instruções.
+```
+
+#### Padrão esperado nas issues
+
+| Situação | Conteúdo esperado |
+|---|---|
+| Toda issue | Resumo, comportamento esperado, limites, critérios de aceite e cenários de teste proporcionais. |
+| Implementação existente | Situação atual com evidências/revisão, componentes e testes a reutilizar ou atualizar. |
+| API ou integração | Contrato atual → esperado, exemplos, estados/erros, responsabilidades e ordem de entrega. |
+| Backend, integração ou arquitetura | System design Mermaid legível em um olhar. |
+| Interface | Wireframe em caracteres e referência aprovada/versionada quando disponível, com estados e ações relevantes. |
+| Texto apresentado ao usuário | Seção de i18n/tradução, responsabilidade app/API, formatação local e validação representativa. |
+
+As seções são condicionais e seguem o [protocolo compartilhado](protocol/CHATGPT_WEB_ISSUES.md). O ChatGPT Web prepara e refina o backlog; o agente CLI continua responsável pela exploração, validação OpenSpec, implementação, testes e PR. Configurar o bloco acima é uma ação do usuário; uma PR neste repositório não atualiza as instruções de projetos já existentes no ChatGPT Web.
+
 ### Domain checks
 
 | Skill | Responsibility |
