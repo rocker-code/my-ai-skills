@@ -36,3 +36,7 @@ Read [the CI performance protocol](references/CI_PERFORMANCE.md). Automatically 
 Read [the test strategy](references/TEST_STRATEGY.md). Implement the planned scenarios using existing fixtures and the smallest proving layer. Record the concrete reason for added coverage. Run narrow checks while correcting failures, diagnose after two attempts without progress on the same failure, and retain the final repository-required gates. Stop expanding scenarios once the agreed criteria and identified risks are proven.
 
 Inspect existing tests for the affected behavior for redundant cases or obsolete expectations under the test strategy. Keep ordinary cleanup small and scope-bound; for a wider suite audit use a dedicated issue. Any consolidation, migration or removal needs a current-obligation → retained/replacement proof (or authoritative obsolescence evidence) map and applicable validation.
+
+## Visual design application
+
+When the validated issue includes an approved UI artifact, automatically apply `visual-artifact-implementation` and [the visual artifact protocol](../../protocol/VISUAL_ARTIFACTS.md) during `/opsx-apply`. Preserve existing behavior and project UI patterns; capture and compare actual screenshots when feasible. Record visual verification limitations honestly in the PR handoff. No extra standalone command or owner checkpoint is required for routine visual decisions.
