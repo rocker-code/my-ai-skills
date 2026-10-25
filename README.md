@@ -206,10 +206,15 @@ Production implementation does not begin while blocking questions remain or befo
 
 ### Web supervision
 
+The two `chatgpt-web-*` skills are repository instructions for **ChatGPT Web**, not CLI agents or automatically installed ChatGPT capabilities. Use the connected GitHub tools; see [ChatGPT Web issue protocol](protocol/CHATGPT_WEB_ISSUES.md).
+
+
 | Skill | Responsibility |
 |---|---|
 | `refine-issue` | Convert an idea or draft issue into an implementable specification. |
 | `resolve-questions` | Analyze `[QUESTION]` comments and record evidence-backed `[DECISION]` responses. |
+| `chatgpt-web-create-issue` | ChatGPT Web-only: research context and create detailed, linked, implementation-ready GitHub issues. |
+| `chatgpt-web-refine-issue` | ChatGPT Web-only: discuss and resolve questions, refine existing issues and register durable decisions. |
 
 ### Domain checks
 
