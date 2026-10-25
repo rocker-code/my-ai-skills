@@ -28,4 +28,6 @@ User asks to inspect an issue, clarify an agent's question, check whether it is 
 
 ## Guardrails
 
+For affected user-facing content, reconcile the issue's **i18n and translation** section, acceptance and scenarios with inspected locale catalogs/helpers and API text ownership. Cover state/error/accessibility labels, safe unknown-code fallbacks and local formatting/plurals; preserve domain data. Apply this to full refinements or the affected part of a narrow correction without expanding into unrelated translation cleanup.
+
 No invented GraphQL types, no speculative native Magento behavior, no silent change in existing product decisions, no accidental expanding scope, no automatic implementation/PR/merge. The CLI's later `issue-audit` and OpenSpec stages still independently verify the issue.
