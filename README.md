@@ -141,6 +141,7 @@ Production implementation does not begin while blocking questions remain or befo
 | `address-pr-review` | Refresh feedback, fix valid review findings and reply with evidence. |
 | `pr-status` | Read-only classification of the current PR state and next action. |
 | `contract-handoff` | Trace consumer scenarios to producer contracts during planning, record hard dependencies for gaps, then freeze the final implemented contract before consumer work. |
+| `visual-artifact-implementation` | Apply approved visual exports attached to issues using native UI components and visual-verification evidence, without a separate workflow. |
 
 ### Web supervision
 
@@ -156,6 +157,10 @@ Production implementation does not begin while blocking questions remain or befo
 | `magento-review` | Adobe Commerce/Magento architecture and implementation checklist, including native reuse and concurrency. |
 | `expo-mobile-review` | Expo/React Native navigation, state, GraphQL, resilience, accessibility and E2E checklist. |
 | `sonar` | Agent-agnostic SonarQube CLI quality/security analysis, secret scanning, finding classification and remediation evidence. |
+
+### Implementing approved UI designs
+
+Attach the approved, versioned Claude Artifact export (ZIP or accessible project files) and preview screenshots to the GitHub issue; include the original Artifact link as optional context, target screens, and behavior that must remain unchanged. Then use the normal command **"Cuide da issue: URL"**. `issue-audit` and `apply-issue` automatically use [the visual artifact protocol](protocol/VISUAL_ARTIFACTS.md), OpenSpec planning, native UI components and representative verification. Inaccessible private links and missing visual tooling must be disclosed rather than guessed.
 
 ## GitHub protocol
 
