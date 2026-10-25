@@ -28,4 +28,6 @@ User asks to create, register, break down or plan a feature/bug/UI improvement a
 
 ## Quality bar
 
+For user-facing text changes, apply the protocol's **i18n and translation** standard: inspect the existing localization mechanism, record app/API text ownership and require translated states/errors/accessibility, safe unknown-code fallbacks and local formatting/plurals. Include corresponding acceptance criteria and representative scenarios; do not assume backend descriptions are already localized or translate domain names.
+
 An executing agent should know **what** to implement, **where**, **what must remain unchanged**, **how to verify**, and **which dependencies must land first**, without repeated owner questions. This is not permission to invent contract or policy.

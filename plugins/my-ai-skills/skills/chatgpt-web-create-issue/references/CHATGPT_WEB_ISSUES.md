@@ -26,6 +26,7 @@ Apply this standard to new issues and authorized refinements. Scale detail to th
 | Integration contract | Current → expected operation/signature, inputs, outputs, types/nullability, states/errors and producer/consumer ownership | API or system integration |
 | System design | Compact Mermaid diagram of components, responsibilities, data flow and access checks; explain the boundary briefly | Backend behavior or integration/architecture changes |
 | Visual reference and wireframe | Accessible approved export, target views and a fenced `text` character wireframe showing hierarchy, actions and meaningful states | UI creation or changes; export when a design exists |
+| i18n and translation | Existing localization mechanism, locale, text ownership, translated states/errors/accessibility and local formatting | Changes to user-facing text or its API source |
 | Acceptance criteria | Observable outcomes consistent with scope and approved decisions | Always |
 | Identified test scenarios | Preparation/action, expected result and suggested proving layer | Always, proportionate to risk |
 | Dependencies and non-goals | Linked prerequisites, sequencing, blockers and explicit scope boundaries | Non-goals always; dependencies when applicable |
@@ -47,6 +48,16 @@ Inspect relevant current code, schema, tests and linked PRs before prescribing c
 - Link the approved, accessible and versioned export/preview when available, identifying exact views and target routes. A private URL alone is insufficient; never claim an attachment was saved or inspected without verification. With no approved design, label the wireframe as a proposal and surface only material unresolved choices.
 - Treat the approved design as the visual baseline and the wireframe as a structural aid. Reconcile conflicts explicitly rather than silently replacing approved behavior. Reuse current components/tokens, cover relevant loading/empty/error states and accessibility/screen-size expectations, and follow `VISUAL_ARTIFACTS.md`.
 - Require actual visual comparison in the implementation PR when tooling permits, otherwise `NOT VERIFIED VISUALLY` with the reason. Never fabricate screenshot evidence.
+
+### i18n and translation
+
+- Include an explicit `i18n e tradução` section whenever the change creates or modifies user-facing text, including backend-generated descriptions/errors consumed by an interface. Inspect repository instructions, locale catalogs, translation helpers and affected components; link the inspected sources/revision. Use established project locales (pt-BR for the Rancho apps), without introducing a new localization framework or unsupported languages.
+- Require all application-controlled copy to use the existing translation mechanism: titles, actions, badges, movement/state labels, context/help, loading/empty/error/retry messages and accessibility labels. Identify reusable key namespaces and new keys only after inspection; do not prescribe mobile paths/hooks for Magento or another platform. Avoid hardcoded UI strings and concatenated fragments that prevent translation.
+- Record who localizes API content. Map stable codes/enums to translated presentation labels; do not expose raw enums, translation keys or internal errors. For unknown values, specify a neutral translated fallback that does not invent a financial/business state. For dynamic descriptions/reasons, inspect whether the API returns a code, parameters or already-localized text; define producer/consumer responsibility and a dependency if needed instead of blindly displaying English or guessing semantics from free text.
+- Keep domain data such as event/product/customer names intact unless the contract explicitly provides localized variants. Never translate arbitrary backend content through ad hoc client string matching.
+- Specify locale-aware dates/times (with the contract's timezone), numbers, currency, quantities, point signs and singular/plural using the project's conventions. Preserve real values and timestamps; missing dates must not become fabricated dates or unrelated record timestamps.
+- Require translated accessibility labels to convey relevant meaning, values/signs and states without relying only on color or strikethrough. Update obsolete translation keys/expectations only within the affected scope and after checking remaining usages.
+- Add observable i18n acceptance and representative scenarios to the issue's existing criteria/test table: resolved locale keys, affected API states plus an unknown-code fallback when relevant, local formatting/plurals and accessible reading. Reuse fixtures and existing tests; do not create an exhaustive locale × state matrix or a separate mandatory suite. Record unavailable visual/screen-reader validation honestly.
 
 ### Representative tests and consistency
 
@@ -95,6 +106,12 @@ Inspect relevant current code, schema, tests and linked PRs before prescribing c
 
 ## Esboço da interface (quando aplicável)
 [Fenced text character wireframe; relevant states, actions and illustrative data]
+
+## i18n e tradução (quando houver conteúdo apresentado ao usuário)
+- Verified locale catalogs/helpers and reusable key namespaces
+- App/API text ownership; state/error mapping and safe unknown-code fallback
+- Local date/time/number/currency/plural formatting and accessibility copy
+- Corresponding acceptance criteria and representative scenarios below
 
 ## Critérios de aceite
 - [ ] Observable user/system outcome
