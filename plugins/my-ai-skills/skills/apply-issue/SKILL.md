@@ -40,3 +40,7 @@ Inspect existing tests for the affected behavior for redundant cases or obsolete
 ## Visual design application
 
 When the validated issue includes an approved UI artifact, automatically apply `visual-artifact-implementation` and [the visual artifact protocol](../../protocol/VISUAL_ARTIFACTS.md) during `/opsx-apply`. Preserve existing behavior and project UI patterns; capture and compare actual screenshots when feasible. Record visual verification limitations honestly in the PR handoff. No extra standalone command or owner checkpoint is required for routine visual decisions.
+
+## Worktree lifecycle
+
+Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Close out only verified eligible worktrees using non-forced Git operations.

@@ -31,6 +31,18 @@ O GitHub é a fonte de verdade. Decisões relevantes devem ficar em uma issue, P
 - [Otimização de CI](#otimização-de-ci)
 - [Referências e agradecimentos](#referências-e-agradecimentos)
 
+
+## Worktrees e evolução do milestone
+
+O [protocolo de worktrees](protocol/WORKTREES.md) define inventário, uma branch/worktree por issue, um executor com escrita por vez, reaproveitamento entre planejamento e implementação, retomada e encerramento seguro. A sessão nova de Apply usa a mesma worktree verificada. Trabalho incompleto ou aguardando merge manual fica preservado; a limpeza automática ocorre após entrega/kaizen e verifica sobras em cada retomada e encerramento. Remove worktrees gerenciadas elegíveis sem confirmação adicional e lista o motivo de cada retenção. A remoção exige entrega confirmada e ausência de alterações/dados locais a preservar.
+
+Use **“Mostre a evolução deste milestone: URL”** ou **“Como está o milestone 13 deste repositório?”** para acionar `milestone-progress`. A consulta retorna tabelas de resumo e de todas as issues com etapa verificada, entrega, PR/CI, bloqueios, próxima ação e tempos registrados. A consulta apenas lê o estado. Comparações históricas precisam de uma referência verificável; sem ela, mostra a fotografia atual e informa a ausência de histórico. Issues sem instrumentação continuam no relatório, com tempos indisponíveis.
+
+```bash
+npx skills add rocker-code/my-ai-skills --skill milestone-progress
+```
+
+
 ## Fluxo de trabalho
 
 O fluxo começa no agente Web: você descreve a necessidade, as skills consultam o contexto e criam/refinam a issue no GitHub. Depois, o agente CLI recebe a issue ou milestone e conduz o planejamento, a implementação e a revisão.

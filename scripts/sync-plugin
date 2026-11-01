@@ -37,6 +37,11 @@ bundle_reference() {
 bundle_reference contract-handoff templates/github/integration-contract.md
 bundle_reference issue-explore templates/github/question.md
 bundle_reference milestone-orchestrator protocol/AI_WORKFLOW.md
+bundle_reference milestone-progress protocol/AI_WORKFLOW.md
+
+for skill in milestone-orchestrator milestone-progress implement-issue apply-issue prepare-pr github-resolution address-pr-review; do
+  bundle_reference "$skill" protocol/WORKTREES.md
+done
 bundle_reference post-pr-audit protocol/REVIEW_POLICY.md
 bundle_reference pr-audit protocol/REVIEW_POLICY.md
 bundle_reference prepare-pr templates/pull-request.md

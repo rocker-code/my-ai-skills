@@ -122,6 +122,8 @@ Reject a handoff when issue, validated proposal SHA, review/validation evidence,
 
 On interruption, refresh GitHub and Git, inspect partial work and PR state, preserve unrelated changes, and resume from the last verified gate. Do not rerun valid work. If a session fails, retry that issue within the configured attempt/resource limits; after repeated failure, mark FAILED and continue unrelated eligible issues. Never silently skip a blocked issue or claim a failed check passed.
 
+For a report-only milestone request, route to `milestone-progress` without starting this execution workflow. During an authorized run, use its table format for progress updates when available.
+
 Return a compact dashboard of the selected scope's issues and PRs, dependency graph/order, active workers, states, evidence/SHAs, checks, blockers, merge mode, and the next automatic action. In manual mode, report all `READY_TO_MERGE` items together. In auto-if-green mode, report which PRs are queued for GitHub auto-merge and why any could not be queued. ghpending may aid triage; GitHub Project is a product view, not an execution gate.
 
 ## Workflow timing instrumentation
@@ -144,3 +146,7 @@ Read [the CI performance protocol](references/CI_PERFORMANCE.md). Carry automati
 ## Proportionate test coverage
 
 Read [the test strategy](references/TEST_STRATEGY.md). Carry each issue's risk-based scenario matrix through planning, Apply and review handoffs. Use the existing matrix and gates; do not introduce a test-planning approval checkpoint, fixed test quota or per-issue benchmark.
+
+## Worktree lifecycle
+
+Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Automatically remove verified eligible managed worktrees after delivery/kaizen, reconcile leftovers at startup/resume and run end, and report retained paths with precise reasons. Use only non-forced Git operations.

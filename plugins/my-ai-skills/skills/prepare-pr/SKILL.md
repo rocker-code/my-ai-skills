@@ -58,3 +58,7 @@ Read [the CI performance protocol](references/CI_PERFORMANCE.md). For performanc
 Read [the test strategy](references/TEST_STRATEGY.md). Self-review test sufficiency and duplication against the planned evidence matrix. Include the proving layer, reused/new tests and material residual uncertainty in the existing PR evidence. Add coverage only for a concrete missing obligation; preserve required checks.
 
 Inspect existing tests for the affected behavior for redundant cases or obsolete expectations under the test strategy. Keep ordinary cleanup small and scope-bound; for a wider suite audit use a dedicated issue. Any consolidation, migration or removal needs a current-obligation → retained/replacement proof (or authoritative obsolescence evidence) map and applicable validation.
+
+## Worktree lifecycle
+
+Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Close out only verified eligible worktrees using non-forced Git operations.
