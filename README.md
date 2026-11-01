@@ -256,6 +256,7 @@ A implementação de produção não começa enquanto houver questões bloqueant
 | `architecture-audit` | Conferir limites e novos acoplamentos sem exigir LikeC4. |
 | `github-resolution` | Executar issues/PRs auditadas, corrigir achados válidos e encaminhar cada PR à auditoria final independente e ao merge autorizado. |
 | `post-pr-audit` | Executar revisão final independente e validar elegibilidade de merge; integrar quando aprovado por padrão, salvo instrução contrária. |
+| `update-ai-workflow` | Atualizar a instalação do my-ai-skills sob demanda, incluindo novas skills em instalações completas, protocolos e auxiliares, preservando agentes, escopo e ajustes locais. |
 | `update-main` | Avançar a branch local `main` com segurança após o merge, preservando alterações sem commit. |
 | `release` | Publicar uma versão verificada conforme o histórico de mudanças e a política de versões do repositório, somente após CI aprovado no commit exato da versão. |
 | `kaizen` | Transformar falhas comprovadas em melhorias específicas do projeto ou processo. |
@@ -311,6 +312,12 @@ Para consultas rápidas de roadmap (“me situa”, “onde estamos”, “como 
 “o que faço agora”), consulte em main skills/roadmap-status/SKILL.md pela integração
 GitHub e siga suas instruções. Mostre até 5 linhas de tabela, um próximo passo
 e decisões pendentes; informe limitações de acesso e não execute alterações.
+
+Quando eu pedir “atualize o my-ai-skills” ou “atualize o workflow de IA deste projeto”,
+consulte em main skills/update-ai-workflow/SKILL.md e siga suas instruções.
+Execute apenas sob pedido explícito, preservando agentes, escopo e ajustes locais.
+Se não houver acesso ao ambiente local, informe a limitação e entregue o próximo
+comando necessário; não afirme que minha instalação foi atualizada.
 
 Leia também as referências necessárias indicadas nesses arquivos. Reutilize a
 leitura dentro da mesma tarefa; atualize-a se houver mudança relevante. Se uma
@@ -602,6 +609,18 @@ Substitua a URL de exemplo por uma issue acessível. Para skills globais, confir
 Comece com **"Cuide da issue: URL"**, **"Cuide da fila deste projeto"** ou **"Cuide deste milestone: URL"**. O fluxo de entrada encaminha automaticamente às skills de apoio nas condições documentadas; não é necessário invocar cada caixa do diagrama. Carregar skills não cria um agendador em segundo plano: é preciso iniciar uma execução e o ambiente deve oferecer as ferramentas e sessões isoladas exigidas.
 
 ### 8. Manter a instalação atualizada
+
+Depois de instalar `update-ai-workflow`, peça **“Atualize o my-ai-skills deste projeto”**. O agente identifica a instalação e atualiza as skills e os arquivos complementares existentes, preservando escopo, agentes e personalizações. Instalações completas recebem também as novas skills; seleções parciais são mantidas. A execução ocorre **somente quando você pedir**, sem agendamento ou atualização ao iniciar tarefas.
+
+Instale a skill uma vez para seu agente e escopo (exemplo: OpenCode no projeto atual; adicione `-g` para uma instalação global):
+
+```bash
+npx skills add rocker-code/my-ai-skills --skill update-ai-workflow -a opencode -y
+```
+
+Consulte a [skill de atualização](skills/update-ai-workflow/SKILL.md). Ela verifica também protocolos, modelos, scripts e instruções; apenas rodar `npx skills update` não cobre todas essas partes nem garante instalar skills novas. No Web, sem acesso ao computador, ela informa o que falta executar no CLI. O bloco de instruções do projeto acima já inclui esse encaminhamento.
+
+Para atualização manual:
 
 Atualize o clone da fonte complementar:
 
