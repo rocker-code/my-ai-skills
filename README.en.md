@@ -32,6 +32,27 @@ GitHub is the source of truth. Material decisions must end up in an issue, PR, a
 - [References and acknowledgments](#references-and-acknowledgments)
 
 
+## Quick roadmap snapshot
+
+Use **“Charles, me situa”**, **“Where are we on the MVP?”** or **“What should I do next?”** to invoke `roadmap-status` in Web agents or the CLI. It reads GitHub and returns a one-screen snapshot: current position and focus, a short table, one next step and pending owner decisions. It can cover multiple repositories belonging to the same product, preserves approved scope and flags unverified evidence. Queries are read-only. Use `milestone-progress` for a complete per-issue milestone report and timings.
+
+```bash
+npx skills add rocker-code/my-ai-skills --skill roadmap-status
+```
+
+Add this routing instruction to the Web project's instructions:
+
+```text
+When I ask “me situa”, “where are we”, “how is the MVP” or “what should I do next”,
+read skills/roadmap-status/SKILL.md on main in rocker-code/my-ai-skills through
+GitHub integration and follow it. Return a short snapshot with a table of up to
+5 rows, one next step and pending owner decisions. Resolve repositories from
+project context and check their current GitHub state. Report access limitations.
+The query does not authorize execution or roadmap changes.
+```
+
+This routes to the [skill](skills/roadmap-status/SKILL.md); it does not install native capabilities or automatically update existing project instructions.
+
 ## Worktrees and milestone progress
 
 The [worktree protocol](protocol/WORKTREES.md) defines inventory, one issue branch/worktree, one writer at a time, reuse across planning and implementation, recovery and safe closeout. A fresh Apply session reuses the verified issue worktree. Incomplete work and manual-merge work remain preserved; automatic cleanup follows delivery/kaizen and reconciles leftovers at startup/resume and run end. It removes eligible managed worktrees without another confirmation and reports why each remaining checkout was retained. Removal requires confirmed delivery and no local changes/data to preserve.
@@ -222,6 +243,7 @@ Production implementation does not begin while blocking questions remain or befo
 
 | Skill | Responsibility |
 |---|---|
+| `roadmap-status` | Show a short roadmap snapshot, focus, blockers and one next step; Web and CLI, read-only. |
 | `milestone-orchestrator` | Run one selected issue, the current repository queue or a selected milestone; review and validate pinned OpenSpec proposals, schedule isolated workers and merge eligible PRs when green by default. |
 | `issue-explore` | Add the supervised GitHub question/output protocol to OpenSpec's official CLI command `/opsx-explore`; it is not a replacement CLI command. |
 | `issue-ready` | Re-read decisions and enforce the Definition of Ready. |
@@ -284,6 +306,11 @@ integration to read the current main version of the relevant skill and shared pr
 - Review/refinement: skills/chatgpt-web-refine-issue/SKILL.md
 - Protocol: protocol/CHATGPT_WEB_ISSUES.md
 - Visual design, when applicable: protocol/VISUAL_ARTIFACTS.md
+
+For quick roadmap queries (“me situa”, “where are we”, “how is the MVP”,
+“what should I do next”), read skills/roadmap-status/SKILL.md on main through
+GitHub integration and follow it. Show up to 5 table rows, one next step and
+pending decisions; disclose access limitations and do not execute changes.
 
 Also read the necessary references linked by these files. Reuse the reads within
 the same task; refresh them after relevant changes. If a source is inaccessible,

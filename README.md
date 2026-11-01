@@ -32,6 +32,27 @@ O GitHub é a fonte de verdade. Decisões relevantes devem ficar em uma issue, P
 - [Referências e agradecimentos](#referências-e-agradecimentos)
 
 
+## Visão rápida do roadmap
+
+Use **“Charles, me situa”**, **“Como estamos no MVP?”** ou **“O que faço agora?”** para acionar `roadmap-status` no Web ou no CLI. A skill consulta o GitHub e entrega uma visão de uma tela: onde estamos, foco atual, tabela curta, um próximo passo e decisões pendentes. Pode reunir vários repositórios do mesmo produto; respeita o escopo aprovado e indica dados não verificados. A consulta é somente leitura. Para todas as issues, etapas e tempos de um milestone, use `milestone-progress`.
+
+```bash
+npx skills add rocker-code/my-ai-skills --skill roadmap-status
+```
+
+No agente Web, acrescente às instruções do projeto:
+
+```text
+Quando eu pedir “me situa”, “onde estamos”, “como estamos no MVP” ou “o que faço agora”,
+consulte em main a skill skills/roadmap-status/SKILL.md do repositório
+rocker-code/my-ai-skills pela integração GitHub e siga suas instruções.
+Mostre uma visão curta, com tabela de até 5 linhas, um próximo passo e decisões pendentes.
+Use o contexto do projeto para identificar os repositórios; consulte o estado atual no GitHub.
+Informe limitações de acesso. A consulta não autoriza execução nem alterações no roadmap.
+```
+
+O bloco orienta a leitura da [skill](skills/roadmap-status/SKILL.md); não instala capacidades nativas nem atualiza automaticamente instruções de projetos existentes.
+
 ## Worktrees e evolução do milestone
 
 O [protocolo de worktrees](protocol/WORKTREES.md) define inventário, uma branch/worktree por issue, um executor com escrita por vez, reaproveitamento entre planejamento e implementação, retomada e encerramento seguro. A sessão nova de Apply usa a mesma worktree verificada. Trabalho incompleto ou aguardando merge manual fica preservado; a limpeza automática ocorre após entrega/kaizen e verifica sobras em cada retomada e encerramento. Remove worktrees gerenciadas elegíveis sem confirmação adicional e lista o motivo de cada retenção. A remoção exige entrega confirmada e ausência de alterações/dados locais a preservar.
@@ -222,6 +243,7 @@ A implementação de produção não começa enquanto houver questões bloqueant
 
 | Skill | Responsabilidade |
 |---|---|
+| `roadmap-status` | Situar no roadmap com uma visão curta, foco, bloqueios e próximo passo; Web e CLI, somente leitura. |
 | `milestone-orchestrator` | Executar uma issue, a fila atual ou um milestone; revisar e validar propostas OpenSpec identificadas, agendar executores isolados e integrar PRs elegíveis quando aprovadas por padrão. |
 | `issue-explore` | Adicionar o protocolo supervisionado de perguntas/saídas do GitHub ao comando oficial `/opsx-explore`; não substitui o comando CLI. |
 | `issue-ready` | Reler decisões e exigir a definição de prontidão. |
@@ -284,6 +306,11 @@ GitHub disponível a versão atual em main da skill correspondente e do protocol
 - Revisão/refinamento: skills/chatgpt-web-refine-issue/SKILL.md
 - Protocolo: protocol/CHATGPT_WEB_ISSUES.md
 - Design visual, quando aplicável: protocol/VISUAL_ARTIFACTS.md
+
+Para consultas rápidas de roadmap (“me situa”, “onde estamos”, “como estamos no MVP”,
+“o que faço agora”), consulte em main skills/roadmap-status/SKILL.md pela integração
+GitHub e siga suas instruções. Mostre até 5 linhas de tabela, um próximo passo
+e decisões pendentes; informe limitações de acesso e não execute alterações.
 
 Leia também as referências necessárias indicadas nesses arquivos. Reutilize a
 leitura dentro da mesma tarefa; atualize-a se houver mudança relevante. Se uma
