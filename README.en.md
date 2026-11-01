@@ -31,6 +31,18 @@ GitHub is the source of truth. Material decisions must end up in an issue, PR, a
 - [CI optimization](#automatic-ci-performance-improvement)
 - [References and acknowledgments](#references-and-acknowledgments)
 
+
+## Worktrees and milestone progress
+
+The [worktree protocol](protocol/WORKTREES.md) defines inventory, one issue branch/worktree, one writer at a time, reuse across planning and implementation, recovery and safe closeout. A fresh Apply session reuses the verified issue worktree. Incomplete work and manual-merge work remain preserved; automatic cleanup follows delivery/kaizen and reconciles leftovers at startup/resume and run end. It removes eligible managed worktrees without another confirmation and reports why each remaining checkout was retained. Removal requires confirmed delivery and no local changes/data to preserve.
+
+Use **“Show progress for this milestone: URL”** or **“How is milestone 13 in this repository?”** to invoke `milestone-progress`. The read-only query returns summary and complete per-issue tables with verified stage, delivery, PR/CI, blockers, next action and recorded timings. Historical comparisons require a verifiable baseline; otherwise it reports the current snapshot and missing history. Uninstrumented issues remain in the report with unavailable timings.
+
+```bash
+npx skills add rocker-code/my-ai-skills --skill milestone-progress
+```
+
+
 ## Lifecycle
 
 The workflow starts with the Web agent: describe your need, and the skills inspect context and create/refine the GitHub issue. The CLI agent then receives the issue or milestone and handles planning, implementation and review.

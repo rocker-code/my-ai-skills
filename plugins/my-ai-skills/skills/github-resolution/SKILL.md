@@ -32,3 +32,7 @@ Report each ticket's audited scope, changes and evidence, final PR SHA/checks, r
 ## Automatic CI performance routing
 
 Read [the CI performance protocol](references/CI_PERFORMANCE.md). Preserve the CI performance obligations and benchmark evidence in optimization handoffs and corrections. Route materially changed workflow/test-infrastructure inputs back through `pr-audit` and its automatic `ci-performance-audit` lens; do not replace the scheduler or final merge gate.
+
+## Worktree lifecycle
+
+Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Close out only verified eligible worktrees using non-forced Git operations.

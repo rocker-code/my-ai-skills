@@ -94,3 +94,11 @@ Apply [TEST_STRATEGY.md](TEST_STRATEGY.md) automatically in planning, Apply and 
 ## Automatic CI performance expertise
 
 Apply [CI_PERFORMANCE.md](CI_PERFORMANCE.md) in the existing stages. issue-audit diagnoses relevant issues; implement-issue and apply-issue use optimize-ci; prepare-pr self-reviews and pr-audit independently verifies relevant CI/test-infrastructure changes. post-pr-audit checks current evidence and kaizen diagnoses recurring slowdown. The orchestrator carries these hooks automatically and isolates comparable experiments. No new user command, lifecycle, routine approval or unconditional hosted benchmark is required.
+
+## Worktree ownership and closeout
+
+Apply [WORKTREES.md](WORKTREES.md) during planning, implementation, review corrections and recovery. Reuse one verified issue checkout across fresh sessions, serialize ownership transfers, and retain incomplete/manual-merge work. Cleanup requires verified delivery, durable evidence, no owner and no local data to preserve; never force removal.
+
+## Milestone progress queries
+
+Use `milestone-progress` for read-only milestone status/evolution requests. Return summary and per-issue tables from a complete live inventory, including uninstrumented issues. Distinguish GitHub closure from verified delivery, show current-head CI and blockers, and compare historical progress only against an identifiable evidence-backed baseline. Missing timing/history remains unavailable. A report request does not start execution or mutate GitHub/Git.

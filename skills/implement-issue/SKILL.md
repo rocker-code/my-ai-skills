@@ -25,3 +25,7 @@ Read [the CI performance protocol](references/CI_PERFORMANCE.md). For CI/test-pe
 ## Proportionate test coverage
 
 Read [the test strategy](references/TEST_STRATEGY.md). During proposal planning, extend the existing evidence matrix with scenario, acceptance criterion/concrete risk, proving layer and existing/new test. Reuse current tests and select sufficient coverage before handoff; do not generate exhaustive combinations or duplicate obligations across layers.
+
+## Worktree lifecycle
+
+Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Close out only verified eligible worktrees using non-forced Git operations.
