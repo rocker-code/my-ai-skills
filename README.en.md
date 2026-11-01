@@ -256,6 +256,7 @@ Production implementation does not begin while blocking questions remain or befo
 | `architecture-audit` | Check boundaries and new coupling without requiring LikeC4. |
 | `github-resolution` | Execute audited issues/PRs, correct valid findings and pass each PR to independent final audit and authorized merge. |
 | `post-pr-audit` | Independent final review and merge gate; merge when green by default, unless the direct request opts out. |
+| `update-ai-workflow` | Update the installed my-ai-skills on request, including new skills in full installations, protocols and helpers, preserving agents, scope and local changes. |
 | `update-main` | Safely fast-forward the local `main` after merge, preserving uncommitted work. |
 | `release` | Publish a verified version from the repository's documented changelog and versioning policy, only after CI is green on the exact release commit. |
 | `kaizen` | Convert evidenced failures into focused project or process improvements. |
@@ -311,6 +312,12 @@ For quick roadmap queries (“me situa”, “where are we”, “how is the MVP
 “what should I do next”), read skills/roadmap-status/SKILL.md on main through
 GitHub integration and follow it. Show up to 5 table rows, one next step and
 pending decisions; disclose access limitations and do not execute changes.
+
+When I ask “update my-ai-skills” or “update this project’s AI workflow”, read
+skills/update-ai-workflow/SKILL.md on main and follow it. Run only on explicit
+request, preserving agents, scope and local changes. If local execution is
+unavailable, report the limitation and give the next required CLI command;
+do not claim my local installation was updated.
 
 Also read the necessary references linked by these files. Reuse the reads within
 the same task; refresh them after relevant changes. If a source is inaccessible,
@@ -603,6 +610,18 @@ Replace the example URL with an issue you can access. For global skills, also ch
 Start with **"Take care of this issue: URL"**, **"Take care of this project queue"** or **"Take care of this milestone: URL"**. The entry workflow routes the supporting skills automatically under their documented conditions; you do not need to invoke each diagram node. Loading skills does not create a background scheduler: a selected workflow still needs to be started, and its runtime must support the required tools and isolated sessions.
 
 ### 8. Keep the installation current
+
+After installing `update-ai-workflow`, ask **“Update my-ai-skills for this project”**. The agent detects the installation and updates skills and existing complementary files, preserving scope, agents and local customizations. Full installations also receive newly added skills; partial selections stay partial. It runs **only when requested**, without scheduling or startup updates.
+
+Install the skill once for your agent and scope (example: project-scoped OpenCode; add `-g` for a global installation):
+
+```bash
+npx skills add rocker-code/my-ai-skills --skill update-ai-workflow -a opencode -y
+```
+
+Read the [update skill](skills/update-ai-workflow/SKILL.md). It also checks protocols, templates, helpers and instructions; `npx skills update` alone does not cover all components or guarantee installation of new skills. Web agents without access to the computer report the remaining CLI action. The shared project instructions above already include this routing.
+
+For manual updates:
 
 Refresh the complementary source clone:
 
