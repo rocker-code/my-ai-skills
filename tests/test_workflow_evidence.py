@@ -118,6 +118,27 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(manifest["counts"]["tests"], 1)
         self.assertEqual(self.verify(evidence_id)[1]["state"], "verified")
 
+    def test_tracked_output_cannot_hide_code(self):
+        for option in ("--report", "--artifact", "--output-dir"):
+            with self.subTest(option=option):
+                path = "a.py" if option != "--output-dir" else "source"
+                if option == "--output-dir":
+                    (self.repo / "source").mkdir(exist_ok=True)
+                    (self.repo / "source" / "tracked.py").write_text("tracked")
+                    self.git("add", "source/tracked.py")
+                result = self.cli("record", "--obligation", "T1", option, path, "--", "true")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("tracked code", result.stderr)
+        evidence_id, manifest = self.record()
+        manifest["code"]["excluded_paths"] = ["a.py"]
+        self.assertEqual(verify_manifest(manifest, record_dir(self.repo, evidence_id), self.repo)["state"], "incomplete")
+
+    def test_untracked_output_made_tracked_invalidates_evidence(self):
+        evidence_id, manifest = self.record("--report", "report.xml")
+        (self.repo / "report.xml").write_text("tracked")
+        self.git("add", "report.xml")
+        self.assertEqual(verify_manifest(manifest, record_dir(self.repo, evidence_id), self.repo)["state"], "incomplete")
+
     def test_missing_log_incomplete(self):
         evidence_id, _ = self.record()
         (record_dir(self.repo, evidence_id) / "artifacts/execution.log").unlink()
@@ -169,6 +190,25 @@ class EvidenceTests(unittest.TestCase):
         evidence_id, manifest = self.record(command=[sys.executable, "-c", "print('ok')", "--token=abc123"])
         self.assertNotIn("abc123", json.dumps(manifest))
 
+        for args in (["Authorization: Bearer abc123"], ["Authorization:", "Bearer abc123"],
+                     ["Authorization:", "Bearer", "abc123"], ["Authorization: Bearer", "abc123"],
+                     ["-H", "Authorization: Bearer abc123"]):
+            with self.subTest(args=args):
+                self.assertNotIn("abc123", json.dumps(scrub(args)))
+        _, manifest = self.record(command=[sys.executable, "-c", "print('ok')", "Authorization: Bearer abc123"])
+        package = Path(self.temp.name) / "scrubbed.tar.gz"
+        export_bundle(self.repo, manifest["evidence_id"], package)
+        with tarfile.open(package, "r:gz") as tar:
+            self.assertNotIn("abc123", tar.extractfile("manifest.json").read().decode())
+
+    def test_required_local_gate_needs_clean_candidate_and_execution(self):
+        (self.repo / "a.py").write_text("dirty")
+        evidence_id, _ = self.record("--required-gate", "local")
+        status, result = self.verify(evidence_id)
+        self.assertEqual((status, result["state"], result["obligations"][0]["gate"]),
+                         (3, "verified", "pending"))
+        self.assertEqual(result["recovery"]["obligations"], ["T1"])
+
     def test_record_verified_from_other_worktree(self):
         evidence_id, _ = self.record()
         other = Path(self.temp.name) / "other"
@@ -211,6 +251,21 @@ class EvidenceTests(unittest.TestCase):
                 target.addfile(info, io.BytesIO(b""))
         with self.assertRaisesRegex(ValueError, "unsafe"):
             import_bundle(self.repo, package)
+
+    def test_import_rejects_oversized_or_too_many_members_without_installing(self):
+        from workflow_evidence import MAX_MEMBER_BYTES, MAX_BUNDLE_MEMBERS
+        for mode in ("large", "many"):
+            with self.subTest(mode=mode):
+                package = Path(self.temp.name) / f"{mode}.tar.gz"
+                with tarfile.open(package, "w:gz") as target:
+                    count = 1 if mode == "large" else MAX_BUNDLE_MEMBERS + 1
+                    for index in range(count):
+                        info = tarfile.TarInfo(f"member-{index}")
+                        info.size = MAX_MEMBER_BYTES + 1 if mode == "large" else 0
+                        target.addfile(info, io.BytesIO(b"\0" * info.size))
+                with self.assertRaisesRegex(ValueError, "limit|unsafe"):
+                    import_bundle(self.repo, package)
+        self.assertEqual(list((self.repo / ".git/ai-workflow/evidence").glob("ev-*")), [])
 
     def test_unknown_extensions_preserved(self):
         evidence_id, manifest = self.record()
@@ -322,7 +377,7 @@ class EvidenceTests(unittest.TestCase):
         result = verify_manifest(projection, self.repo, self.repo, projection=True)
         self.assertEqual(result["state"], "incomplete")
 
-    def fake_run(self, head=None, conclusion="success", path=".github/workflows/test.yml"):
+    def fake_run(self, head=None, conclusion="success", path=".github/workflows/test.yml@main"):
         return {"id": 123, "repository": {"full_name": "example/repo"},
                 "head_sha": head or self.git("rev-parse", "HEAD"), "status": "completed",
                 "conclusion": conclusion, "path": path, "created_at": "2026-01-01T00:00:00Z",
@@ -338,6 +393,31 @@ class EvidenceTests(unittest.TestCase):
         with patch("workflow_evidence.gh", return_value=self.fake_run()):
             result = verify_manifest(projection, self.repo, self.repo, projection=True)
         self.assertEqual((result["state"], result["result"]), ("verified", "passed"))
+        self.assertEqual(result["obligations"], [])
+
+    def test_public_hosted_without_gate_is_not_cli_pass(self):
+        projection = self.hosted_projection()
+        from workflow_evidence import comment_payload, save_manifest
+        script = Path(self.temp.name) / "gh"
+        script.write_text("#!/usr/bin/env python3\nimport json,sys\n" +
+                          f"print(json.dumps({repr([[{'body': comment_payload(projection)}]])} " +
+                          f"if '--slurp' in sys.argv else {repr(self.fake_run())}))\n")
+        script.chmod(0o755)
+        env = {**self.env, "PATH": str(script.parent) + os.pathsep + self.env["PATH"]}
+        public = self.cli("verify", projection["evidence_id"], "--from-github",
+                          "https://github.com/example/repo/pull/12", "--format", "json", env=env)
+        self.assertEqual(public.returncode, 3, public.stderr)
+        self.assertEqual(json.loads(public.stdout)["state"], "verified")
+        self.assertEqual(json.loads(public.stdout)["obligations"], [])
+        hosted = {**projection, "schema": "my-ai-skills.test-evidence/v1", "command": {}, "runner": {},
+                  "started_at": "x", "finished_at": "y", "artifacts": [], "exit_code": 0,
+                  "obligations": [{"id": "T1", "required_gate": None}],
+                  "hosted": {**projection["hosted"], "clean": True}}
+        save_manifest(record_dir(self.repo, projection["evidence_id"]), hosted)
+        cli = self.cli("verify", projection["evidence_id"], "--format", "json", env=env)
+        self.assertEqual(cli.returncode, 3, cli.stderr)
+        self.assertEqual(json.loads(cli.stdout)["obligations"][0]["gate"], "pending")
+        self.assertEqual(json.loads(cli.stdout)["recovery"]["obligations"], ["T1"])
 
     def test_published_hosted_unconfirmed_metadata_only(self):
         with patch("workflow_evidence.gh", side_effect=ValueError("unavailable")):
@@ -348,9 +428,9 @@ class EvidenceTests(unittest.TestCase):
         import base64
         projection = self.hosted_projection()
         manifest = {**projection, "schema": "my-ai-skills.test-evidence/v1", "command": {}, "runner": {}, "artifacts": [],
-                    "started_at": "2026-01-01T00:00:00Z", "finished_at": "2026-01-01T00:01:00Z",
-                    "obligations": [{"id": "T1", "required_gate": "hosted", "relevant_paths": []}], "exit_code": 0}
-        manifest["hosted"]["clean"] = True
+                     "started_at": "2026-01-01T00:00:00Z", "finished_at": "2026-01-01T00:01:00Z",
+                     "obligations": [{"id": "T1", "required_gate": "hosted", "relevant_paths": []}], "exit_code": 0}
+        manifest["hosted"] = {**projection["hosted"], "clean": True}
         policy = base64.b64encode(json.dumps({"obligations": {"T1": {"workflow": ".github/workflows/test.yml",
                                                                      "check": "required-job"}}}).encode()).decode()
 
@@ -363,18 +443,47 @@ class EvidenceTests(unittest.TestCase):
             if "/contents/" in endpoint:
                 return {"content": policy}
             if endpoint.endswith("required_status_checks"):
-                return {"checks": [{"context": "required-job"}]}
-            if endpoint.endswith("/jobs"):
-                return {"jobs": [{"name": "required-job", "run_id": 123, "status": "completed", "conclusion": "success"}]}
+                return {"checks": [{"context": "required-job", "app_id": 15368}]}
+            if "/check-runs/" in endpoint:
+                return {"id": 456, "name": "required-job", "head_sha": self.git("rev-parse", "HEAD"),
+                        "status": "completed", "conclusion": "success", "app": {"id": 15368}}
+            if "/jobs?" in endpoint:
+                self.assertIn("--slurp", args)
+                return [{"jobs": []}, {"jobs": [{"name": "required-job", "run_id": 123,
+                         "head_sha": self.git("rev-parse", "HEAD"), "status": "completed", "conclusion": "success",
+                         "check_run_url": "https://api.github.com/repos/example/repo/check-runs/456"}]}]
             raise AssertionError(endpoint)
 
         with patch("workflow_evidence.gh", side_effect=fake_api):
             self.assertEqual(verify_manifest(manifest, self.repo, self.repo)["obligations"][0]["gate"], "pending")
             verified = verify_manifest(manifest, self.repo, self.repo, base_branch="main")
             self.assertEqual(verified["obligations"][0]["gate"], "satisfied")
-        with patch("workflow_evidence.gh", side_effect=lambda *args: ({"jobs": [{"name": "unrelated", "run_id": 123,
-                       "status": "completed", "conclusion": "success"}]} if args[-1].endswith("/jobs") else fake_api(*args))):
+        with patch("workflow_evidence.gh", side_effect=lambda *args: ([{"jobs": [{"name": "unrelated", "run_id": 123,
+                        "status": "completed", "conclusion": "success"}]}] if "/jobs?" in args[-1] else fake_api(*args))):
             self.assertEqual(verify_manifest(manifest, self.repo, self.repo, base_branch="main")["obligations"][0]["gate"], "pending")
+        with patch("workflow_evidence.gh", side_effect=lambda *args: (
+                {**fake_api(*args), "app": {"id": 99}} if "/check-runs/" in args[-1] else fake_api(*args))):
+            self.assertEqual(verify_manifest(manifest, self.repo, self.repo, base_branch="main")["obligations"][0]["gate"], "pending")
+        with patch("workflow_evidence.gh", side_effect=fake_api):
+            self.assertEqual(verify_manifest(projection, self.repo, self.repo, projection=True,
+                             base_branch="main", required_obligations=["T1"])["obligations"][0]["gate"], "satisfied")
+            self.assertEqual(verify_manifest(projection, self.repo, self.repo, projection=True)["obligations"], [])
+            self.assertEqual(verify_manifest(projection, self.repo, self.repo, projection=True,
+                             base_branch="main", required_obligations=["other"])["obligations"][0]["gate"], "pending")
+        # Ruleset-only requirements cannot be established by the branch-protection adapter.
+        with patch("workflow_evidence.gh", side_effect=lambda *args: (
+                (_ for _ in ()).throw(ValueError("no branch protection")) if args[-1].endswith("required_status_checks")
+                else fake_api(*args))):
+            self.assertEqual(verify_manifest(manifest, self.repo, self.repo,
+                             base_branch="main")["obligations"][0]["gate"], "pending")
+
+    def test_hosted_repository_must_match_candidate(self):
+        projection = self.hosted_projection()
+        projection["repository"] = "elsewhere/repo"
+        projection["hosted"] = {"url": "https://github.com/elsewhere/repo/actions/runs/123", "run_id": "123"}
+        with patch("workflow_evidence.gh", return_value=self.fake_run()):
+            result = verify_manifest(projection, self.repo, self.repo, projection=True)
+        self.assertEqual(result["state"], "stale")
 
     def test_hosted_other_sha_stale_for_hosted_gate(self):
         manifest = {**self.hosted_projection(), "schema": "my-ai-skills.test-evidence/v1", "command": {}, "runner": {},

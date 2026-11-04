@@ -41,6 +41,8 @@ def main():
     verify.add_argument("evidence_id")
     verify.add_argument("--from-github", metavar="ISSUE_OR_PR_URL")
     verify.add_argument("--base-branch", help="trusted protected target branch for hosted gate binding")
+    verify.add_argument("--hosted-obligation", action="append", default=[],
+                        help="consumer-required hosted obligation (repeatable; independent of producer metadata)")
     verify.add_argument("--tool", action="append", default=[])
     verify.add_argument("--env-id", action="append", default=[])
     verify.add_argument("--format", choices=("text", "json"), default="text")
@@ -83,12 +85,12 @@ def main():
                 manifest = {"evidence_id": args.evidence_id}
         result = verify_manifest(manifest, directory, checkout, tools=parse_pairs(args.tool),
                                  env_ids=parse_pairs(args.env_id), base_branch=args.base_branch,
-                                 projection=projection)
+                                 projection=projection, required_obligations=args.hosted_obligation)
         if args.format == "json":
             print(json.dumps(result, ensure_ascii=True))
         else:
             print(f"{args.evidence_id}: {result['state']} / {result['result'] or 'unknown'} — {', '.join(result['reasons'])}")
-        return 0 if (result["state"] == "verified" and result["result"] == "passed"
+        return 0 if (result["state"] == "verified" and result["result"] == "passed" and result["obligations"]
                      and all(o["gate"] == "satisfied" for o in result["obligations"])) else 3
     if args.action == "show":
         print(json.dumps(load_manifest(record_dir(checkout, args.evidence_id)), indent=2))

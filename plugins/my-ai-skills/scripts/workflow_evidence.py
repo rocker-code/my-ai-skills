@@ -35,6 +35,9 @@ NAME = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,63}")
 PROFILE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:+/-]{0,127}")
 SENSITIVE = re.compile(r"(?i)(?:token|password|secret|key|credential|ghp_|github_pat_|authorization)")
 ENV_NAME = re.compile(r"(?:CI|NODE_ENV|PYTHON[A-Z0-9_]*|[A-Z][A-Z0-9_]*)")
+MAX_BUNDLE_MEMBERS = 1024
+MAX_BUNDLE_BYTES = 256 * 1024 * 1024
+MAX_MEMBER_BYTES = 64 * 1024 * 1024
 
 
 def now():
@@ -125,14 +128,17 @@ def runner(tools, env_ids, env_names=()):
 def scrub(argv):
     result = []
     redact_next = False
+    header_value = False
     for arg in argv:
         if redact_next:
             result.append("[REDACTED]")
-            redact_next = False
+            redact_next = header_value and arg.lower() == "bearer"
+            header_value = False
             continue
         if arg.lower() == "authorization:":
             result.append("Authorization: [REDACTED]")
             redact_next = True
+            header_value = True
             continue
         if re.match(r"(?i)^--[^=]*(?:token|password|secret|key|credential)(?:=|$)", arg):
             if "=" in arg:
@@ -141,7 +147,11 @@ def scrub(argv):
                 result.append(arg)
                 redact_next = True
             continue
-        arg = re.sub(r"(?i)authorization:\s*\S+", "Authorization: [REDACTED]", arg)
+        # A header can be passed as one argv element or as "Authorization: Bearer <token>".
+        if re.search(r"(?i)\bauthorization\s*:", arg):
+            result.append("Authorization: [REDACTED]")
+            redact_next = bool(re.search(r"(?i)\bauthorization\s*:\s*bearer\s*$", arg))
+            continue
         arg = re.sub(r"(?i)\b(?:ghp_|github_pat_)[A-Za-z0-9_]+", "[REDACTED]", arg)
         arg = re.sub(r"(://)[^/@\s]+:[^/@\s]+@", r"\1[REDACTED]@", arg)
         result.append(arg)
@@ -159,6 +169,24 @@ def code_snapshot(checkout, config_paths=(), excluded_paths=()):
                                                           for entry in state.entries],
             "config_paths": configs, "excluded_paths": list(excluded_paths),
             "state": state.to_json()}
+
+
+def validate_exclusions(checkout, paths):
+    """Outputs may be ignored, but never hide code tracked in HEAD or the index."""
+    root = checkout_root(checkout)
+    tracked = set()
+    for args in (("ls-files", "--cached", "-z"), ("ls-tree", "-r", "--name-only", "-z", "HEAD")):
+        result = subprocess.run(["git", "--no-optional-locks", "-C", str(root), *args], capture_output=True)
+        if result.returncode:
+            raise ValueError("cannot inspect tracked output paths")
+        tracked.update(os.fsdecode(p) for p in result.stdout.split(b"\0") if p)
+    for path in paths:
+        if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
+            raise ValueError("unsafe declared output path")
+        directory = path[:-3] if path.endswith("/**") else None
+        if any(p == path or (directory is not None and (p == directory or p.startswith(directory + "/")))
+               for p in tracked):
+            raise ValueError(f"output exclusion contains tracked code: {path}")
 
 
 def save_manifest(directory, manifest):
@@ -225,6 +253,7 @@ def record(checkout, args):
     artifacts = [safe_relative(p, root) for p in args.artifact]
     outputs = [safe_relative(p, root).rstrip("/") + "/**" for p in args.output_dir]
     excluded = reports + artifacts + outputs
+    validate_exclusions(root, excluded)
     if set(config) & set(reports + artifacts) or any(fnmatch.fnmatchcase(p, pat) for p in config for pat in outputs):
         raise ValueError("configuration cannot be excluded as output")
     tools, env_ids = parse_pairs(args.tool), parse_pairs(args.env_id)
@@ -427,23 +456,43 @@ def gate_binding(repo, base_branch, obligation, run_id, head):
         entry = mapping["obligations"][obligation]
         workflow, check = entry["workflow"], entry["check"]
         protection = gh("api", f"repos/{repo}/branches/{base_branch}/protection/required_status_checks")
-        required = [item["context"] for item in protection.get("checks", [])] + protection.get("contexts", [])
-        if check not in required or not workflow.startswith(".github/workflows/"):
+        required = [item for item in protection.get("checks", []) if item.get("context") == check]
+        if len(required) != 1 or not workflow.startswith(".github/workflows/"):
             return False
         run = confirm_hosted(repo, run_id)
-        if run["head_sha"] != head or run.get("path") != workflow:
+        run_path = run.get("path", "").split("@", 1)[0]
+        if run["head_sha"] != head or run_path != workflow:
             return False
-        jobs = gh("api", "--paginate", f"repos/{repo}/actions/runs/{run_id}/jobs")
-        return any(job.get("name") == check and job.get("run_id") == int(run_id)
-                   and job.get("head_sha", head) == head and job.get("status") == "completed"
-                   and job.get("conclusion") == "success" for job in jobs.get("jobs", []))
-    except (ValueError, KeyError, TypeError, OSError):
+        pages = gh("api", "--paginate", "--slurp", f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
+        jobs = [job for page in pages for job in page["jobs"]]
+        matches = [job for job in jobs if job.get("name") == check and job.get("run_id") == int(run_id)
+                   and job.get("head_sha") == head and job.get("status") == "completed"
+                   and job.get("conclusion") == "success"]
+        if len(matches) != 1:
+            return False
+        # GitHub's required check may be pinned to an app. Confirm the actual
+        # check run rather than trusting the job name or the producer manifest.
+        check_url = matches[0].get("check_run_url", "")
+        match = re.fullmatch(rf"https://api\.github\.com/repos/{re.escape(repo)}/check-runs/([0-9]+)", check_url)
+        if not match:
+            return False
+        check_run = gh("api", f"repos/{repo}/check-runs/{match.group(1)}")
+        app_id = required[0].get("app_id")
+        return (check_run.get("id") == int(match.group(1)) and check_run.get("name") == check
+                and check_run.get("head_sha") == head and check_run.get("status") == "completed"
+                and check_run.get("conclusion") == "success" and
+                (app_id in (None, -1) or check_run.get("app", {}).get("id") == app_id))
+    except (ValueError, KeyError, TypeError, OSError, AttributeError):
         return False
 
 
-def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, base_branch=None, projection=False):
+def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, base_branch=None,
+                    projection=False, required_obligations=()):
     tools, env_ids = tools or {}, env_ids or {}
-    obs = manifest.get("obligations", []) if not projection else []
+    # Public projections deliberately contain no producer-owned obligations.
+    # A consumer can request a hosted gate, which only base policy can bind.
+    obs = ([{"id": oid, "required_gate": "hosted", "relevant_paths": []} for oid in required_obligations]
+           if required_obligations else ([] if projection else manifest.get("obligations", [])))
     result = {"evidence_id": manifest.get("evidence_id"), "state": "incomplete", "result": None,
               "reasons": [], "changed_paths": [], "obligations": [],
               "recovery": {"obligations": [o.get("id") for o in obs if isinstance(o, dict)], "action": "rerun"}}
@@ -495,14 +544,16 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
             for path in [item["path"] for item in code["config_paths"]] + code["excluded_paths"]:
                 if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
                     raise ValueError("unsafe declared path")
+            validate_exclusions(checkout, code["excluded_paths"])
         if projection and manifest.get("schema") != PUBLIC_SCHEMA:
             raise ValueError("unknown public schema")
-    except (ValueError, TypeError, AttributeError):
+    except (ValueError, TypeError, AttributeError, KeyError):
         return finish("incomplete", "invalid_schema_or_required_fields")
 
     kind = manifest["kind"]
     code = manifest["code"]
     state = code_state(checkout)
+    bindings = {}
     if kind == "local" and not projection:
         if code.get("fingerprint") != code.get("fingerprint_after"):
             return finish("ambiguous", "code_changed_during_execution")
@@ -548,7 +599,8 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
     else:
         if any(o.get("required_gate") == "local" for o in obs):
             return finish("not_applicable", "hosted_execution_cannot_satisfy_local_gate")
-        if code["head"] != state.head or state.entries or (not projection and not manifest["hosted"].get("clean")):
+        if (manifest["repository"] != repository(checkout) or code["head"] != state.head or state.entries
+                or (not projection and not manifest["hosted"].get("clean"))):
             return finish("stale", "hosted_head_or_cleanliness_changed")
         try:
             hosted = manifest["hosted"]
@@ -561,17 +613,23 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
         except (ValueError, KeyError, TypeError, OSError):
             return finish("metadata_only", "hosted_origin_unconfirmed", "provide_identifiers")
         result["result"] = "passed" if confirmed["conclusion"] == "success" else "failed"
-        if any(o.get("required_gate") == "hosted" for o in obs):
-            if result["result"] != "passed" or not all(gate_binding(repo, base_branch, o["id"], run_id, state.head)
-                                                         for o in obs if o.get("required_gate") == "hosted"):
-                result["state"] = "verified"
-                result["reasons"] = ["hosted_gate_binding_unconfirmed"]
-                result["obligations"] = [{"id": o["id"], "impact": "affected", "gate": "pending"} for o in obs]
-                return result
+        bindings = {o["id"]: result["result"] == "passed" and
+                    gate_binding(repo, base_branch, o["id"], run_id, state.head)
+                    for o in obs if o.get("required_gate") == "hosted"}
+        if bindings and not all(bindings.values()):
+            result["reasons"] = ["hosted_gate_binding_unconfirmed"]
     result["state"] = "verified"
     result["result"] = result["result"] or ("passed" if manifest.get("exit_code") == 0 else "failed")
-    result["obligations"] = [{"id": o["id"], "impact": "unaffected", "gate": "satisfied" if result["result"] == "passed" else "pending"} for o in obs]
-    result["recovery"]["obligations"] = [] if result["result"] == "passed" else result["recovery"]["obligations"]
+    result["obligations"] = [{"id": o["id"], "impact": "unaffected", "gate": "satisfied" if
+                              result["result"] == "passed" and (kind != "hosted" or
+                              bindings.get(o["id"], False)) and (o.get("required_gate") != "local" or
+                              not code.get("dirty") and not state.entries) else "pending"} for o in obs]
+    if not obs:
+        result["reasons"] = ["no_obligations_to_verify"]
+    elif any(o["gate"] == "pending" for o in result["obligations"]) and not result["reasons"]:
+        result["reasons"] = ["required_gate_not_satisfied"]
+    if result["result"] == "passed" and result["obligations"] and all(o["gate"] == "satisfied" for o in result["obligations"]):
+        result["recovery"]["obligations"] = []
     return result
 
 
@@ -592,38 +650,50 @@ def export_bundle(checkout, evidence_id, destination):
 
 
 def import_bundle(checkout, source):
-    with tarfile.open(source, "r:gz") as bundle:
-        members = bundle.getmembers()
-        names = [m.name for m in members]
-        if (len(names) != len(set(names)) or "SHA256SUMS" not in names or "manifest.json" not in names
-                or any(not m.isfile() or Path(m.name).is_absolute() or ".." in Path(m.name).parts
-                       or not m.name or m.name.startswith(".") for m in members)):
+    with tempfile.TemporaryDirectory(dir=store(checkout)) as temp:
+        seen = {}
+        total = 0
+        with tarfile.open(source, "r|gz") as bundle:
+            for member in bundle:
+                name = member.name
+                if (len(seen) >= MAX_BUNDLE_MEMBERS or name in seen or not member.isfile()
+                        or len(name) > 4096 or not name or name.startswith(".") or Path(name).is_absolute()
+                        or ".." in Path(name).parts or str(Path(name)) != name):
+                    raise ValueError("unsafe bundle members")
+                if member.size > MAX_MEMBER_BYTES or total + member.size > MAX_BUNDLE_BYTES:
+                    raise ValueError("bundle exceeds import size limit")
+                target = Path(temp) / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                digest = hashlib.sha256()
+                with bundle.extractfile(member) as stream, target.open("xb") as output:
+                    remaining = member.size
+                    while remaining:
+                        chunk = stream.read(min(remaining, 1024 * 1024))
+                        if not chunk:
+                            raise ValueError("truncated bundle member")
+                        output.write(chunk)
+                        digest.update(chunk)
+                        remaining -= len(chunk)
+                seen[name] = digest.hexdigest()
+                total += member.size
+        if "SHA256SUMS" not in seen or "manifest.json" not in seen:
             raise ValueError("unsafe bundle members")
-        sums = bundle.extractfile("SHA256SUMS").read().decode().splitlines()
+        if (Path(temp, "SHA256SUMS").stat().st_size > 1024 * 1024 or
+                Path(temp, "manifest.json").stat().st_size > 4 * 1024 * 1024):
+            raise ValueError("bundle metadata exceeds import size limit")
         expected = {}
-        for line in sums:
+        for line in Path(temp, "SHA256SUMS").read_text().splitlines():
             match = re.fullmatch(r"([a-f0-9]{64})  (.+)", line)
             if not match or match.group(2) in expected:
                 raise ValueError("invalid bundle checksums")
             expected[match.group(2)] = match.group(1)
-        if set(expected) != set(names) - {"SHA256SUMS"}:
-            raise ValueError("bundle member list mismatch")
-        data = {}
-        for name in expected:
-            content = bundle.extractfile(name).read()
-            if hash_bytes(content) != expected[name]:
-                raise ValueError("bundle checksum mismatch")
-            data[name] = content
-    manifest = json.loads(data["manifest.json"])
-    if manifest.get("schema") != SCHEMA:
-        raise ValueError("unknown evidence schema")
-    directory = record_dir(checkout, manifest["evidence_id"])
-    if directory.exists():
-        raise ValueError("evidence ID already exists; refusing overwrite")
-    with tempfile.TemporaryDirectory(dir=store(checkout)) as temp:
-        for name, content in data.items():
-            target = Path(temp) / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(content)
+        if set(expected) != set(seen) - {"SHA256SUMS"} or any(seen[n] != digest for n, digest in expected.items()):
+            raise ValueError("bundle checksum mismatch")
+        manifest = json.loads(Path(temp, "manifest.json").read_text())
+        if manifest.get("schema") != SCHEMA:
+            raise ValueError("unknown evidence schema")
+        directory = record_dir(checkout, manifest["evidence_id"])
+        if directory.exists():
+            raise ValueError("evidence ID already exists; refusing overwrite")
         Path(temp).rename(directory)
     return manifest["evidence_id"]
