@@ -40,6 +40,29 @@ O fingerprint SHALL reutilizar `code_state`/`drift_report` de #35, incluindo o �
 - **WHEN** o blob ou modo staged de um arquivo muda, mas HEAD, XY e bytes do working tree permanecem iguais
 - **THEN** a verificação retorna `stale` citando esse arquivo, sem recalcular um segundo fingerprint canônico
 
+### Requirement: Compatibilidade do ambiente relevante
+O manifesto local SHALL registrar Python/plataforma observados e identificadores não secretos declarados de toolchain/ambiente num digest canônico separado do código de #35. `verify` SHALL comparar todos os identificadores declarados e a plataforma observável; diferença invalida a prova, ausência impede aprovação. Nenhum valor de variável de ambiente ou hash de valor secreto SHALL ser capturado/publicado. IDs autodeclarados não atestam o ambiente real.
+
+#### Scenario: Drift ambiental com código idêntico
+- **WHEN** HEAD e diff são iguais mas Python major/minor, plataforma/arquitetura, `--env-id NAME=ID` ou `--tool NAME=VERSION` diverge na verificação
+- **THEN** o estado é `stale` com motivo `environment_changed` e obrigação `affected`
+
+#### Scenario: Identificador exigido indisponível
+- **WHEN** um registro declara `--env-id` ou `--tool` e a verificação não fornece identificador comparável
+- **THEN** o estado é `incomplete` com recuperação explícita, sem inferir compatibilidade de nomes de env ou de HEAD
+
+#### Scenario: Nome sem perfil comparável
+- **WHEN** `record` recebe `--env-name NAME` sem `--env-id NAME=ID`
+- **THEN** rejeita o registro, sem criar prova falsamente verificável
+
+#### Scenario: Digest de compatibilidade separado
+- **WHEN** o helper grava um registro local
+- **THEN** `runner.compatibility_digest` é SHA-256 de JSON canônico de Python major/minor, plataforma/arquitetura e pares ordenados de IDs não secretos; o fingerprint canônico de #35 permanece inalterado
+
+#### Scenario: Valores de ambiente nunca registrados
+- **WHEN** uma execução declara nome de env permitido e um perfil não secreto
+- **THEN** manifesto/pacote e comentário não contêm o valor da variável nem seu hash
+
 ### Requirement: Mudança concorrente durante a execução
 O helper SHALL capturar o fingerprint antes e depois da execução, excluindo da comparação os caminhos de relatório/artefato declarados e os arquivos gerados conhecidos; se diferirem, o registro MUST ser marcado `ambiguous` e nunca verificado como prova do candidato.
 
@@ -88,15 +111,19 @@ O helper SHALL exportar um registro como pacote único (manifesto, artefatos e c
 - **THEN** a verificação retorna `incomplete` citando o artefato e o escopo de recuperação
 
 ### Requirement: Publicação de metadados sem conteúdo sensível
-A publicação SHALL enviar ao GitHub apenas o manifesto (sem logs nem relatórios) num comentário estruturado oculto, idempotente por `evidence_id`, com argv e valores mascarados para padrões de segredo; variáveis de ambiente MUST ser registradas somente por nome em lista permitida.
+A publicação SHALL construir uma projeção pública de allowlist fechada, não serializar o manifesto privado, num comentário oculto idempotente por `evidence_id`. SHALL rejeitar valores inválidos de campos publicados e omitir todas as demais chaves, inclusive livres/desconhecidas. Logs, relatórios, valores de ambiente e hashes de valores secretos MUST NOT ser publicados. No manifesto local, argv sensível SHALL ser mascarado e variáveis de ambiente registradas apenas por nome permitido.
 
 #### Scenario: Metadados publicados
 - **WHEN** o implementador publica um registro numa issue
-- **THEN** existe um único comentário com o manifesto, sem conteúdo de logs, e republicar atualiza o mesmo comentário
+- **THEN** existe um único comentário com projeção `my-ai-skills.test-evidence-public/v1` contendo somente `schema`, `evidence_id`, `kind`, `repository` owner/repo, `code.head` SHA, `status` e, apenas para hosted, `hosted.run_id` decimal e URL canônica `https://github.com/<owner>/<repo>/actions/runs/<run_id>` sem query/fragment/userinfo; republicar atualiza o mesmo comentário
 
 #### Scenario: Segredo no comando
 - **WHEN** o argv contém `--token=abc123`
-- **THEN** o manifesto armazenado e publicado contém o valor mascarado
+- **THEN** o manifesto armazenado contém o valor mascarado e a projeção publicada não contém argv
+
+#### Scenario: Strings livres e extensões no manifesto
+- **WHEN** seleção, ferramenta declarada, extensions e chave desconhecida contêm strings que não devem sair do runtime
+- **THEN** nenhuma delas nem `command`, `obligations`, `runner`, `config_paths`, fingerprints/digests, `producer`, `correlation`, `artifacts`, logs ou relatórios aparece no comentário, mesmo que o manifesto privado preserve esses campos; campos incluídos malformados impedem publicação
 
 ### Requirement: Estados de verificação
 A verificação SHALL retornar exatamente um estado por registro — `verified`, `metadata_only`, `incomplete`, `stale`, `ambiguous` ou `not_applicable` — com resultado (`passed`/`failed`), motivos concretos e escopo de recuperação, em saída humana e JSON.
@@ -105,9 +132,13 @@ A verificação SHALL retornar exatamente um estado por registro — `verified`,
 - **WHEN** manifesto válido, artefatos presentes com checksum correto e fingerprint igual ao candidato
 - **THEN** o estado é `verified`
 
-#### Scenario: Metadados sem log
-- **WHEN** apenas o manifesto publicado está disponível e os artefatos não estão acessíveis
+#### Scenario: Metadados locais sem log
+- **WHEN** apenas a projeção de uma execução local está disponível e os artefatos não estão acessíveis
 - **THEN** o estado é `metadata_only` e a prova não é contada como verificada
+
+#### Scenario: Execução hospedada publicada sem artefato local
+- **WHEN** apenas a projeção hosted está disponível e `verify --from-github` confirma pela API confiável repo, run_id, resultado terminal e HEAD igual ao SHA do candidato limpo
+- **THEN** a **execução** pode ser `verified` com `passed`/`failed` derivado da API sem exigir log local; sem confirmação a execução é `metadata_only`
 
 ### Requirement: Prova incompleta ou inacessível permanece não verificada
 Registros com campos obrigatórios ausentes, exit code desconhecido, execução interrompida, artefato ausente ou checksum divergente SHALL resultar em `incomplete` ou `metadata_only` e MUST NOT ser apresentados como aprovação.
@@ -132,15 +163,19 @@ Quando o fingerprint diverge, a verificação SHALL listar os caminhos alterados
 - **THEN** todas as suas obrigações são `affected`
 
 ### Requirement: Precedência dos gates do repositório
-Gates obrigatórios SHALL ser tipados `local` ou `hosted`. Gate `local` exige registro local `verified` e `passed` com fingerprint idêntico ao candidato final. Gate `hosted` exige registro hospedado `verified` e `passed`, confirmação do resultado/HEAD pela origem e candidato limpo no SHA exato. Metadados hospedados autodeclarados MUST NOT aprovar gate; resultado hospedado nunca satisfaz gate local, nem `unaffected` equivale a aprovação.
+Gates obrigatórios SHALL ser tipados `local` ou `hosted`. O gate local exige registro local `verified`/`passed` no HEAD e fingerprint finais; o hosted exige execução confirmada na origem, candidato limpo no SHA exato e vínculo verificável à obrigação. Projeção pública sem vínculo não aprova gate. Resultado hosted nunca satisfaz gate local; `unaffected` e metadados autodeclarados não aprovam gate.
 
 #### Scenario: CI antigo para gate local (AC5)
 - **WHEN** existe apenas um resultado hospedado aprovado e a obrigação é um gate `local` obrigatório
 - **THEN** a verificação retorna `not_applicable` para essa obrigação e ela permanece pendente
 
 #### Scenario: CI do candidato exato para gate hospedado
-- **WHEN** a obrigação é um gate `hosted` e existe registro hospedado aprovado com URL/run_id/head/status confirmados na origem confiável, com `head` igual ao SHA do candidato limpo
+- **WHEN** a obrigação é um gate `hosted`, existe vínculo verificável dessa obrigação ao run (manifesto importado ou configuração confiável do workflow) e registro hospedado aprovado com URL/run_id/head/status confirmados na origem confiável, com `head` igual ao SHA do candidato limpo
 - **THEN** a verificação retorna `verified` para essa obrigação
+
+#### Scenario: Execução hospedada confirmada sem vínculo à obrigação
+- **WHEN** a execução hosted publicada é confirmada pela API mas não há manifesto importado nem configuração confiável que a associe ao gate
+- **THEN** a execução é `verified`, mas a obrigação permanece pendente
 
 #### Scenario: Resultado hospedado não confirmável
 - **WHEN** apenas metadados de um resultado hospedado estão disponíveis e sua origem/status não podem ser conferidos
@@ -153,6 +188,14 @@ Gates obrigatórios SHALL ser tipados `local` ou `hosted`. Gate `local` exige re
 #### Scenario: Gate obrigatório após mudança fora do escopo
 - **WHEN** um gate obrigatório foi registrado e o candidato altera um caminho fora dos caminhos relevantes declarados
 - **THEN** a obrigação continua exigindo nova execução
+
+#### Scenario: Archive e prepare-pr alteram HEAD após uma suíte anterior
+- **WHEN** archive/sync ou alterações de prepare-pr são commitados após um teste anterior, mesmo sem mudança do código de produção
+- **THEN** o gate local final anterior é `stale`; a suíte final SHALL ser executada/registrada novamente no HEAD limpo após o último commit e verificada antes de PASS
+
+#### Scenario: Commit posterior ao gate final
+- **WHEN** qualquer commit muda HEAD depois da suíte final, inclusive correção de PR ou alteração de template/artefato OpenSpec
+- **THEN** o gate final não é reutilizado e SHALL ser reexecutado e registrado no novo HEAD; o `evidence_id` fica fora do commit para evitar ciclo
 
 ### Requirement: Retenção explícita
 Registros locais SHALL ser mantidos até remoção explícita (`prune` por idade ou por `evidence_id`, com simulação por padrão) ou encerramento verificado do checkout; o helper MUST NOT apagar registros automaticamente durante registro ou verificação.
@@ -173,7 +216,7 @@ O registro SHALL suportar qualquer comando de teste pelo mesmo conceito, sem exi
 - **THEN** a leitura aceita o manifesto e a exportação o preserva intacto
 
 ### Requirement: Handoff de prova no workflow
-Apply SHALL encerrar com os `evidence_id` das obrigações na matriz e no handoff; prepare-pr e as auditorias SHALL verificar esses registros contra o candidato, relatar o estado por obrigação e reexecutar somente o que estiver `stale/affected`, `incomplete`, `ambiguous` ou `not_applicable`.
+Apply SHALL encerrar com os `evidence_id` na matriz e no handoff; prepare-pr e as auditorias SHALL verificar cada registro no candidato e reportar estado por obrigação. SHALL recuperar ou reexecutar prova não verificada, sem dispensar reexecução do gate final após qualquer mudança de HEAD.
 
 #### Scenario: prepare-pr com prova reaproveitável
 - **WHEN** todas as obrigações do handoff estão `verified` para o candidato
@@ -182,3 +225,7 @@ Apply SHALL encerrar com os `evidence_id` das obrigações na matriz e no handof
 #### Scenario: prepare-pr com prova inacessível
 - **WHEN** um registro do handoff não é encontrado nem importável
 - **THEN** a obrigação aparece como não verificada com o escopo de recuperação, e não como aprovada
+
+#### Scenario: Recuperação seletiva sem enfraquecer gates
+- **WHEN** a prova está `stale/affected`, `incomplete`, `ambiguous`, `not_applicable` ou local `metadata_only`
+- **THEN** o agente recupera/importa pacote quando aplicável ou reexecuta a obrigação afetada; gate final após mudança do HEAD é sempre reexecutado e hosted confirmado exige vínculo verificável à obrigação
