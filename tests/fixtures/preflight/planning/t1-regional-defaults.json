@@ -1,0 +1,1 @@
+{"change":"en_US/US/USD -> pt_BR/BR/BRL","consumers":["address fixtures","USD amounts","English text","import/CSV labels","Admin","payments","emails"],"assumptions":["old country/locale/currency values","fixture rollback","configuration scope"],"proof":["representative focused sample","broad suite","required hosted gates"]}

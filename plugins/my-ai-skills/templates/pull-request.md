@@ -20,8 +20,8 @@ Implementation based on `<change-name>` and its validated proposal/spec/design/t
 
 ## Validation
 
-- PASS: ...
-- NOT RUN: ... — reason
+- PASS|FAIL|NOT RUN: <obligation> — evidence:<id> (<verify state>)
+- NOT RUN: <obligation> — reason if no record is available
 
 ## Risks / migration / compatibility
 

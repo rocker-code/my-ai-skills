@@ -8,6 +8,8 @@ metadata:
 
 # Address PR Review
 
+For test evidence handed off as `evidence:<id>`, use `workflow-evidence verify <id> --format json` when installed, inspect `recovery` and rerun only genuinely affected obligations without bypassing the final repository gates. A correction commit invalidates the final local gate even if a prior obligation was `unaffected`: record and verify the required final suite anew on the new clean HEAD, then update the PR Validation line with the new ID outside the commit. Hosted gates require base-policy/check binding and exact-SHA API confirmation; local public metadata is not a log. Without the helper, mark helper verification NOT RUN and retain the manual proof/gates.
+
 Correct the implementation, not merely the comment count.
 
 ## Refresh live state
@@ -55,3 +57,5 @@ Inspect existing tests for the affected behavior for redundant cases or obsolete
 ## Worktree lifecycle
 
 Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Close out only verified eligible worktrees using non-forced Git operations.
+
+When installed, use `worktree-reservation reserve`/`verify` before mutating, `checkpoint` after own writes and `handoff` between returned workers; drift suspends writes until recorded acceptance. Without the helper, coordinate manually under WORKTREES and report the gap.

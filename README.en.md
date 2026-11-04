@@ -419,6 +419,7 @@ Review severities:
 ```
 
 Test coverage follows [TEST_STRATEGY.md](protocol/TEST_STRATEGY.md) automatically in planning, implementation and review. Agents select representative scenarios from acceptance criteria and concrete risks, reuse fixtures, and avoid duplicating the full rule matrix across unit, integrated and GraphQL tests. Reviewers must justify extra tests by the failure existing evidence would miss. Required checks remain mandatory; repeated failures trigger diagnosis rather than blind retries. No new skill installation or approval step is needed. Existing tests for the affected behavior are also checked for redundancy or obsolete expectations. Broader suite simplification runs as a dedicated, measured task with proof preserved for every consolidated, migrated or removed test.
+The pre-flight review identifies real consumers of shared configuration, a focused sample and fixture assumptions before the broad suite, reconciles current policy on resume, and keeps checks proportionate for changes without cross-cutting impact.
 
 Read [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol/GITHUB_CONVENTIONS.md) [REVIEW_POLICY.md](protocol/REVIEW_POLICY.md) and [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md) for the canonical rules.
 
@@ -446,6 +447,13 @@ scripts/workflow-event stage-start --issue https://github.com/owner/repo/issues/
   --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --agent codex
 scripts/workflow-event stage-end --issue https://github.com/owner/repo/issues/123 \
   --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --status completed
+scripts/workflow-event dispatch --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42
+scripts/workflow-event observe --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42 \
+  --state completed --source runtime_event --report present --log-ref runtime:job-42
+scripts/workflow-event stage-end --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42 --status completed
 scripts/workflow-event run-end --issue https://github.com/owner/repo/issues/123 \
   --run-id "$RUN_ID" --status completed
 
@@ -455,9 +463,11 @@ scripts/workflow-report https://github.com/owner/repo/milestone/7 --format json
 scripts/workflow-report https://github.com/owner/repo/milestone/7 --format csv
 ```
 
-For wait events, pass a stage and one reason: `owner_input`, `dependency`, `ci`, `review`, `runtime_capacity`, `external` or `other`. For rework, use `--reason review|ci|replan|reopened|other` and link evidence with `--evidence` (a GitHub URL or commit SHA). Optional agent/model values are recorded only when the runtime exposes them. Do not include prompts or sensitive text.
+For wait events, pass a stage and one reason: `owner_input`, `dependency`, `ci`, `tests` (local tests), `review`, `environment` (unavailable environment), `runtime_capacity`, `external` or `other`. For rework, use `--reason review|ci|replan|reopened|other` and link evidence with `--evidence` (a GitHub URL, commit SHA or `evidence:<id>`). Optional agent/model values are recorded only when the runtime exposes them. Do not include prompts or sensitive text.
 
-The report shows issue cycle time, recorded work, explicit waits, stages, rework, PR review findings and failed/pending checks. A milestone report includes state counts and per-stage medians; it shows P90 only when there are at least five samples. Use `--run-id` to get a common milestone execution. The total registered work can exceed calendar time when workers ran in parallel. Recorded work is wall-clock time within stage windows minus explicitly marked waits, not model-internal thinking time. Missing data is reported as unavailable, never inferred from issue labels or conversation text.
+`dispatch` opens an asynchronous worker stage without mistaking the immediate dispatch response for completion. `observe` accepts `--state running|completed|failed|interrupted|unknown` and `--source runtime_event|runtime_query|ci_api|process_exit|test_report` (confirming) or `agent_prose|container_state` (insufficient). Supply `--observed-at` (timezone-aware ISO-8601) for late callbacks; `at` stores effective time and `recorded_at` the write time. Pair `--execution-kind worker|process|job|test_run|ci_run` with a safe `--execution-id`, and repeat both on typed `stage-end`. For `workflow-evidence` tests, the ID emitted before execution is `--execution-kind test_run --execution-id <evidence_id>` and link `--evidence evidence:<evidence_id>`; for `ci_run` use the CI run ID. `--report present` and `evidence:` are runtime facts/references, **not** approval: only `workflow-evidence verify` verifies the proof. `--log-ref` accepts an HTTPS `github.com` URL without credentials/query, a SHA or safe typed reference (not `http`/`file`); `--next` describes the next action on one line.
+
+The report shows issue cycle time, recorded work, explicit waits, stages, rework, PR review findings and failed/pending checks. The Markdown/JSON summary (`status_summary`) shows current stage, observed state, last confirmed observation, blocker, next action and verification time; `incomplete_evidence` identifies test runs without confirmed termination/report. A milestone report includes state counts and per-stage medians; it shows P90 only when there are at least five samples. Use `--run-id` to get a common milestone execution. The total registered work can exceed calendar time when workers ran in parallel. Recorded work stops at the first confirming terminal observation for that execution and subtracts explicit waits; it is not model-internal thinking time. Missing data is unavailable, never inferred from labels or conversation text. CSV retains its previous format.
 
 Timing metrics support `kaizen`: after completion, compare recurring bottlenecks with rework and quality evidence before suggesting a process change. A single slow run does not justify changing a gate. Tokens and cost are not estimated when the runtime does not expose them.
 
@@ -544,11 +554,19 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-status .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-event .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree-reservation .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-evidence .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_evidence.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/preflight-check .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
   .ai-workflow/scripts/workflow-status \
   .ai-workflow/scripts/workflow-event \
-  .ai-workflow/scripts/workflow-report
+  .ai-workflow/scripts/workflow-report \
+  .ai-workflow/scripts/worktree-reservation \
+  .ai-workflow/scripts/workflow-evidence \
+  .ai-workflow/scripts/preflight-check
 ```
 
 | Installed files | Purpose |
@@ -561,6 +579,12 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `templates/pull-request.md`, `templates/github/*.md` | PR, question, decision, review and integration-contract formats. |
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Read-only live GitHub context helpers, requiring `gh` and `jq`. |
 | `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Optional workflow timing capture and issue/milestone reports; require `gh` and Python 3.10+. |
+| `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Cooperative write reservation, versioned fingerprint, inventory-based recovery and restricted bytecode handling; require Git and Python 3.10+ on POSIX (`fcntl`). See `protocol/WORKTREES.md`. |
+| `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py` | Test evidence capture, verification and transport; require Python 3.10+, Git and `gh` only for GitHub operations. |
+| `scripts/preflight-check` | Optional read-only Composer/npm lock-versus-installed and policy-change pre-flight; requires Python 3.10+ and Git for `policy`. If unavailable, check manually. |
+
+Example: `.ai-workflow/scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest discover -s tests` emits an ID before execution and stores its log in the Git common directory. `verify <id> --format json` checks HEAD, index/diff, configuration and declared environment IDs; `export <id> --output bundle.tar.gz` and `import bundle.tar.gz` move logs between clones. Declare a non-secret `--env-id NAME=ID` for each relevant profile (never use environment values or credentials) and `--report`/`--output-dir` for generated outputs. `publish <id> --issue URL` posts metadata only: a local comment without the package is not complete proof. Review packages before sharing; `prune --older-than 30` only previews until `--yes`. Record and verify the final local gate at the clean HEAD after the archive/PR-preparation commit; its ID stays outside the commit and any subsequent commit requires a fresh gate. This helper does not replace checkout reservations or required tests.
+Declared outputs cannot exclude tracked code. A passing untyped (`required_gate: null`) local record is inspectable as `verified/passed`, but its obligation is `not_required` and `verify` exits 3: it does not establish a required local gate. Only a typed local gate on a clean final HEAD can satisfy that gate; first confirm the requirement independently from repository policy, not from an imported producer's manifest, selection, or status claims. An imported bundle's checksum proves transport integrity, not that its producer's claims are trustworthy. A public hosted projection confirms only the execution: `verify <id> --from-github <URL> --base-branch main --hosted-obligation <ID>` requires independent binding to protected policy and the run's job/check; without an obligation or binding, it exits 3. Binding currently supports branch protection checks; a ruleset-only policy or unconfirmable check source leaves the gate pending. Import limits expanded packages (256 MiB total, 64 MiB per member, 1024 members).
 
 `scripts/sync-plugin` is a package-maintenance tool for this repository. Do not install it as an application runtime helper.
 
@@ -601,6 +625,11 @@ test -x .ai-workflow/scripts/workflow-status
 test -x .ai-workflow/scripts/workflow-event
 test -x .ai-workflow/scripts/workflow-report
 test -f .ai-workflow/scripts/workflow_metrics.py
+test -x .ai-workflow/scripts/worktree-reservation
+test -f .ai-workflow/scripts/worktree_registry.py
+test -x .ai-workflow/scripts/workflow-evidence
+test -f .ai-workflow/scripts/workflow_evidence.py
+test -x .ai-workflow/scripts/preflight-check
 python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```

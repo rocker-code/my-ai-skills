@@ -76,9 +76,11 @@ sync_directory "$repo_root/templates" "$plugin_root/templates"
 
 mkdir -p "$plugin_root/scripts"
 find "$plugin_root/scripts" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-for helper in issue-context pr-context workflow-status workflow-event workflow-report; do
+for helper in issue-context pr-context workflow-status workflow-event workflow-report worktree-reservation workflow-evidence preflight-check; do
   install -m 0755 "$repo_root/scripts/$helper" "$plugin_root/scripts/$helper"
 done
 install -m 0644 "$repo_root/scripts/workflow_metrics.py" "$plugin_root/scripts/workflow_metrics.py"
+install -m 0644 "$repo_root/scripts/worktree_registry.py" "$plugin_root/scripts/worktree_registry.py"
+install -m 0644 "$repo_root/scripts/workflow_evidence.py" "$plugin_root/scripts/workflow_evidence.py"
 
 echo "Synchronized plugin package: $plugin_root"

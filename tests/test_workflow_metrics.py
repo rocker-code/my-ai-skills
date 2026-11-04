@@ -9,6 +9,33 @@ from workflow_metrics import parse_run_comment, percentile, summarize_run
 
 
 class WorkflowMetricsTest(unittest.TestCase):
+    def test_legacy_record_report_unchanged(self):
+        record = {"schema_version": 1, "run_id": "old", "created_at": "2026-01-01T00:00:00Z",
+                  "events": [], "evidence": ["abcdef0"]}
+        body = ("<!-- my-ai-skills-workflow-run:v1 -->\n<!-- my-ai-skills-workflow-data:start -->\n"
+                + json.dumps(record) + "\n<!-- my-ai-skills-workflow-data:end -->")
+        self.assertEqual(summarize_run(parse_run_comment(body))["evidence"], ["abcdef0"])
+
+    def test_event_accepts_evidence_reference_and_rejects_path(self):
+        import os
+        import subprocess
+        import tempfile
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temp:
+            fake = Path(temp) / "gh"
+            fake.write_text("#!/usr/bin/env python3\nimport json\nprint(json.dumps([[]]))\n")
+            fake.chmod(0o755)
+            env = {**os.environ, "PATH": f"{temp}:{os.environ['PATH']}"}
+            base = [str(root / "scripts/workflow-event"), "run-start", "--issue",
+                    "https://github.com/example/repo/issues/12", "--run-id", "wf-test"]
+            good = subprocess.run([*base, "--evidence", "evidence:ev-20261104T030000Z-1a2b3c4d"],
+                                  env=env, capture_output=True, text=True)
+            bad = subprocess.run([*base, "--evidence", "/tmp/run.log"],
+                                 env=env, capture_output=True, text=True)
+            self.assertEqual(good.returncode, 0, good.stderr)
+            self.assertNotEqual(bad.returncode, 0)
+            self.assertIn("--evidence", bad.stderr)
+
     def test_parse_hidden_run_record(self):
         payload = {"schema_version": 1, "run_id": "wf-test", "events": []}
         body = (

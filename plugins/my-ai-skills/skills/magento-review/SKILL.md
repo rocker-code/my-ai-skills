@@ -23,6 +23,7 @@ Before introducing an abstraction, lifecycle, status, checkout/payment flow, rep
 - ACL, Admin routes/controllers/UI components and form keys;
 - declarative schema, patches, upgrade idempotency and historical data;
 - store/website scope and configuration fallback;
+- pre-flight for changed country, locale, currency, timezone and other shared defaults: trace real consumers in fixtures, importers/CSV, Admin, payments and emails, including assumptions about old values;
 - store timezone vs UTC persistence and serialization;
 - quote/order/payment/status lifecycle and native sales APIs;
 - transactions, lock order, atomicity, retries, idempotency and races;
