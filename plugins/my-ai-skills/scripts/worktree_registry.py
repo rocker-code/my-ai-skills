@@ -111,7 +111,12 @@ def _hash(data: bytes) -> str:
 def _canonical(value) -> bytes:
     # Preserve the existing UTF-8 payload for normal names while retaining
     # Git's undecodable filename bytes represented by surrogateescape.
-    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "surrogateescape")
+    try:
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "surrogateescape")
+    except UnicodeEncodeError as exc:
+        # JSON can contain lone surrogates that are not Git filename bytes.
+        # Never let malformed registry data escape as an uncaught traceback.
+        raise ReservationError(7, "Invalid registry string encoding; preserve it for review") from exc
 
 
 def _matching(path, patterns):
@@ -381,8 +386,12 @@ def _complete(entry):
     keys = {"path", "issue_url", "branch", "base_sha", "owner", "state", "baseline", "drift", "recovery", "last_verified_at", "verified_for", "history"}
     if not keys <= entry.keys() or entry["state"] not in STATES or not isinstance(entry["history"], list):
         return False
-    if entry["state"] == "RESERVED" and (entry["baseline"] is not None or
-        not isinstance(entry["owner"], dict)):
+    if entry["state"] == "RESERVED" and entry["baseline"] is not None:
+        return False
+    # Ownerless ACTIVE/HANDOFF is not a released checkout: an interrupted
+    # writer may still be running. Conversely, released/recovery states must
+    # not carry a writer. Reconcile inconsistent records before any grant.
+    if (entry["state"] in ("RESERVED", "ACTIVE", "HANDOFF")) != isinstance(entry["owner"], dict):
         return False
     if entry["state"] not in ("RESERVED", "REMOVED") and not isinstance(entry["baseline"], dict):
         return False

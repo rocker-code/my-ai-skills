@@ -165,6 +165,18 @@ class ReservationTest(unittest.TestCase):
         self.assertEqual(result["exit_code"], 7)
         self.assertEqual(self.registry.read_bytes(), prior)
 
+    def test_unencodable_history_event_is_controlled_registry_error(self):
+        self.planned()
+        reg = json.loads(self.registry.read_text())
+        reg["entries"][0]["history"][0]["event"] = "\ud800"
+        self.registry.write_text(json.dumps(reg))
+        prior = self.registry.read_bytes()
+        for command in ("verify", "status", "reconcile"):
+            result = self.cli(command, code=7)
+            self.assertEqual(result["exit_code"], 7)
+            self.assertIn("encoding", result["error"])
+            self.assertEqual(self.registry.read_bytes(), prior)
+
     def test_malformed_baseline_entry_fails_closed_with_or_without_drift(self):
         self.planned()
         original = json.loads(self.registry.read_text())
@@ -409,6 +421,35 @@ class ReservationTest(unittest.TestCase):
         self.assertEqual(self.data()["recovery"]["expected_owner"], "writer")
         self.assertIsNone(self.data()["owner"])
         self.reserve(code=3)
+
+    def test_owner_state_inconsistency_requires_recovery_before_new_grant(self):
+        self.planned()
+        original = json.loads(self.registry.read_text())
+        for state, owner in (("ACTIVE", None), ("HANDOFF", None), ("WAITING", original["entries"][0]["owner"])):
+            with self.subTest(state=state):
+                reg = json.loads(json.dumps(original))
+                reg["entries"][0].update(state=state, owner=owner)
+                self.registry.write_text(json.dumps(reg))
+                prior = self.registry.read_bytes()
+                denied = self.reserve(session="next", code=3)
+                self.assertIn("Incomplete", denied["error"])
+                self.cli("verify", session="writer", code=3)
+                self.assertEqual(self.registry.read_bytes(), prior)
+                recovered = self.cli("reconcile", session=None, run=None)
+                self.assertEqual(recovered["state"], "RECOVERY_REQUIRED")
+                self.assertIsNone(recovered["owner"])
+                self.assertEqual(self.data()["recovery"]["expected_owner"], "writer" if owner else "unknown")
+                digest = recovered["inventory"]["digest"]
+                for options in ((), ("--accept-external", "--reason", "reviewed")):
+                    self.reserve(*options, session="next", code=3)
+                self.cli("reconcile", "--takeover", "--expected-owner", "unknown" if owner is None else "writer",
+                         "--stopped-evidence", "worker-ended:fixture", "--inventory-digest", "stale",
+                         session="next", code=3)
+                self.assertIsNone(self.data()["owner"])
+                self.cli("reconcile", "--takeover", "--expected-owner", "unknown" if owner is None else "writer",
+                         "--stopped-evidence", "worker-ended:fixture", "--inventory-digest", digest,
+                         session="next")
+                self.assertEqual(self.data()["owner"]["session"], "next")
 
     def test_incomplete_baseline_is_recovered_without_discarding_diff(self):
         self.planned()
