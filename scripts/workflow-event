@@ -67,7 +67,7 @@ def execution_of(event: dict) -> dict | None:
 
 def opening_for(record: dict, stage: str, worker: str, execution: dict | None, at: str,
                 *, open_only: bool = False) -> dict | None:
-    """Find one matching incarnation at effective time, not callback arrival time."""
+    """Find an incarnation for a callback or an untyped FIFO stage close."""
     # The reader sorts by effective time, stably breaking ties by record order.
     # Use that same opening/closing order for FIFO and incarnation windows.
     starts = sorted((event for event in record["events"] if event.get("type") == "stage_started"
@@ -76,6 +76,15 @@ def opening_for(record: dict, stage: str, worker: str, execution: dict | None, a
     ends = sorted((event for event in record["events"] if event.get("type") in {"stage_finished", "stage_failed"}
                    and event.get("stage") == stage and (event.get("worker_id") or "orchestrator") == worker),
                   key=lambda event: event["at"])
+    if open_only and execution is None:
+        # Administrative untyped closes pair by opening order, even when
+        # openings overlap. Observation windows intentionally do not: an
+        # untyped callback may not confirm the earlier incarnation after the
+        # next opening of the pair.
+        untyped_starts = [item for item in starts if execution_of(item) is None]
+        untyped_ends = [item for item in ends if execution_of(item) is None]
+        next_start = untyped_starts[len(untyped_ends):len(untyped_ends) + 1]
+        return next_start[0] if next_start and next_start[0]["at"] <= at else None
     candidates = []
     untyped_ends = [item for item in ends if execution_of(item) is None]
     for index, start in enumerate(starts):

@@ -80,9 +80,13 @@ def correlate_observations(intervals: list[dict[str, Any]], events: list[dict[st
                 candidates.append(interval)
             else:
                 # At equal effective timestamps, the next opening still owns
-                # the boundary. The writer uses this stable opening order too.
+                # the boundary, unless untyped openings share the timestamp:
+                # neither writer nor reader can identify a unique incarnation.
                 boundary = pair[index + 1]["start"] if index + 1 < len(pair) else None
-                if (interval["closed_at"] is None or at <= interval["closed_at"]) and (boundary is None or at < boundary):
+                same_start = any(item["execution"] is None and item["start"] == interval["start"] for item in pair
+                                 if item is not interval)
+                if (not same_start and (interval["closed_at"] is None or at <= interval["closed_at"])
+                        and (boundary is None or at < boundary)):
                     candidates.append(interval)
         if len(candidates) == 1:
             candidates[0]["observations"].append(event)

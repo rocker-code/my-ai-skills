@@ -228,6 +228,33 @@ class FakeGitHub(unittest.TestCase):
         self.assertEqual(result["stages"][0]["elapsed_seconds"], 30)
         self.assertEqual(result["recorded_work_seconds"], 40)
 
+    def test_overlapping_untyped_starts_close_fifo_without_observation_reassignment(self):
+        start = datetime.fromisoformat(self.saved()["created_at"].replace("Z", "+00:00"))
+        def at(seconds):
+            return (start + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+        pair = ("--stage", "tests", "--worker-id", "worker-1")
+        self.invoke("stage-start", *pair, "--observed-at", at(10))
+        self.invoke("stage-start", *pair, "--observed-at", at(20))
+        self.invoke("stage-end", *pair, "--status", "completed", "--observed-at", at(30))
+        self.invoke("stage-end", *pair, "--status", "completed", "--observed-at", at(40))
+        # Overlap does not make every callback ambiguous: after the second
+        # opening, its unique effective-time window owns an untyped signal.
+        self.invoke("observe", *pair, "--state", "running", "--source", "runtime_event",
+                    "--observed-at", at(25))
+        self.assertEqual([e["at"] for e in self.saved()["events"] if e["type"] == "stage_finished"],
+                         [at(30), at(40)])
+        result = summarize_run(self.saved(), start + timedelta(seconds=45))
+        self.assertEqual(result["stages"][0]["elapsed_seconds"], 30)
+        self.assertEqual(result["recorded_work_seconds"], 40)  # 10→30 and 20→40
+        # A callback outside both effective-time windows remains historical.
+        self.invoke("observe", *pair, "--state", "completed", "--source", "runtime_event",
+                    "--observed-at", at(41))
+        result = summarize_run(self.saved(), start + timedelta(seconds=45))
+        self.assertEqual(result["recorded_work_seconds"], 40)
+        self.assertEqual([e["verified_state"] for e in result["stages"][0]["executions"]],
+                         ["unobserved", "working"])
+        self.assertEqual(result["status_summary"]["last_confirmed"]["at"], at(25))
+
     def test_backdated_untyped_dispatch_cannot_reassign_fifo_closures(self):
         start = datetime.fromisoformat(self.saved()["created_at"].replace("Z", "+00:00"))
         def at(seconds):
@@ -368,6 +395,16 @@ class StateMetricsTest(unittest.TestCase):
                      event("state_observed", 10, state="completed", source="runtime_event"))
         self.assertEqual(summary(run)["recorded_work_seconds"], 300)
         self.assertIsNone(summary(run)["status_summary"]["last_confirmed"])
+
+    def test_equal_time_untyped_openings_leave_ambiguous_observation_historical(self):
+        run = record(event("stage_started", 10), event("stage_started", 10),
+                     event("state_observed", 15, state="completed", source="runtime_event"),
+                     event("stage_finished", 20), event("stage_finished", 30))
+        result = summary(run)
+        self.assertEqual(result["recorded_work_seconds"], 1800)
+        self.assertEqual([item["verified_state"] for item in result["stages"][0]["executions"]],
+                         ["unobserved", "unobserved"])
+        self.assertIsNone(result["status_summary"]["last_confirmed"])
 
     def test_typed_observation_outside_closed_window_remains_historical(self):
         execution = {"kind": "job", "id": "a"}
