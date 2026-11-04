@@ -543,11 +543,14 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-status .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-event .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree-reservation .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
   .ai-workflow/scripts/workflow-status \
   .ai-workflow/scripts/workflow-event \
-  .ai-workflow/scripts/workflow-report
+  .ai-workflow/scripts/workflow-report \
+  .ai-workflow/scripts/worktree-reservation
 ```
 
 | Arquivos instalados | Finalidade |
@@ -560,6 +563,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `templates/pull-request.md`, `templates/github/*.md` | Formatos de PR, pergunta, decisão, revisão e contrato de integração. |
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Consulta de contexto atual do GitHub; exige `gh` e `jq`. |
 | `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Registro opcional de tempos e relatórios por issue/milestone; exige `gh` e Python 3.10+. |
+| `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Reserva cooperante de escrita, fingerprint versionado, retomada com inventário e tratamento restrito de bytecode; exige Git e Python 3.10+ em POSIX (`fcntl`). Consulte `protocol/WORKTREES.md`. |
 
 `scripts/sync-plugin` mantém o pacote deste repositório. Não o instale como auxiliar de execução da aplicação.
 
@@ -600,6 +604,8 @@ test -x .ai-workflow/scripts/workflow-status
 test -x .ai-workflow/scripts/workflow-event
 test -x .ai-workflow/scripts/workflow-report
 test -f .ai-workflow/scripts/workflow_metrics.py
+test -x .ai-workflow/scripts/worktree-reservation
+test -f .ai-workflow/scripts/worktree_registry.py
 python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```

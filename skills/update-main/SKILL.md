@@ -11,7 +11,7 @@ Update the current repository's local `main` from `origin/main` after a merge. P
 
 1. Locate the repository with `git rev-parse --show-toplevel`. Run all Git commands from that repository root.
 2. Inspect `git status --short --branch` and `git branch --show-current`.
-   - If the worktree has staged, unstaged, or untracked changes, stop. Do not stash, reset, clean, commit, or move those changes. Report the status and tell the user to commit or safely stash them before retrying.
+   - If the worktree has staged or unstaged changes, or unknown untracked files, stop. Report known generated untracked/ignored bytecode (`__pycache__/`, `*.pyc`, `*.pyo`) separately; by itself it does not block the update. Do not infer ownership or remove it, and never run `git clean`. If Git refuses a switch/merge because of generated files, stop and report the refusal. Preserve all other untracked files and ask the user to commit or safely stash work before retrying.
    - If a merge, rebase, cherry-pick, or revert is in progress, stop and report it.
 3. Confirm the local `main` branch and remote `origin/main` exist. If either is missing, stop and report the exact missing ref; do not create or rename branches or change remotes.
 4. Run `git fetch origin` to refresh remote refs.

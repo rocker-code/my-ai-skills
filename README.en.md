@@ -544,11 +544,14 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-status .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-event .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree-reservation .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
   .ai-workflow/scripts/workflow-status \
   .ai-workflow/scripts/workflow-event \
-  .ai-workflow/scripts/workflow-report
+  .ai-workflow/scripts/workflow-report \
+  .ai-workflow/scripts/worktree-reservation
 ```
 
 | Installed files | Purpose |
@@ -561,6 +564,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `templates/pull-request.md`, `templates/github/*.md` | PR, question, decision, review and integration-contract formats. |
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Read-only live GitHub context helpers, requiring `gh` and `jq`. |
 | `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Optional workflow timing capture and issue/milestone reports; require `gh` and Python 3.10+. |
+| `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Cooperative write reservation, versioned fingerprint, inventory-based recovery and restricted bytecode handling; require Git and Python 3.10+ on POSIX (`fcntl`). See `protocol/WORKTREES.md`. |
 
 `scripts/sync-plugin` is a package-maintenance tool for this repository. Do not install it as an application runtime helper.
 
@@ -601,6 +605,8 @@ test -x .ai-workflow/scripts/workflow-status
 test -x .ai-workflow/scripts/workflow-event
 test -x .ai-workflow/scripts/workflow-report
 test -f .ai-workflow/scripts/workflow_metrics.py
+test -x .ai-workflow/scripts/worktree-reservation
+test -f .ai-workflow/scripts/worktree_registry.py
 python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```
