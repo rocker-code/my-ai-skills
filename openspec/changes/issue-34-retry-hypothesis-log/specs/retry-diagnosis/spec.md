@@ -8,6 +8,7 @@ Torna verificável o limite de tentativas sem progresso e o diagnóstico de bloq
 
 ### Requirement: Registro de tentativas no handoff existente
 O workflow SHALL registrar cada tentativa de correção de uma falha repetida num bloco curto do handoff/registro atual (seção de validação do handoff do Apply/PR), com alvo, obrigação, assinatura, classificação, hipótese, mudança desde a tentativa anterior, resultado e referências de evidência. O bloco MUST NOT exigir documento, etapa ou aprovação adicionais.
+Na seção Validation do PR, o bloco opcional SHALL seguir as linhas de obrigação existentes, sem reestruturá-las.
 
 #### Scenario: Falha repetida é registrada no handoff
 - **WHEN** um executor repete um teste ou check que falhou
@@ -20,6 +21,28 @@ O workflow SHALL registrar cada tentativa de correção de uma falha repetida nu
 #### Scenario: Handoff sem falha repetida
 - **WHEN** nenhuma falha foi repetida durante o Apply
 - **THEN** o bloco é opcional e sua ausência não invalida o handoff
+
+### Requirement: Referências de evidência portáveis
+Cada referência em `evidence[]` para uma tentativa executada SHALL ser `evidence:<evidence_id>` quando `workflow-evidence` registrou a execução, ou URL GitHub ou SHA caso contrário. Caminho relativo com linha MUST ser aceito apenas em citações de código/definição, nunca em `evidence[]`. Caminhos absolutos ou temporários MUST ser rejeitados como prova de execução.
+
+#### Scenario: Caminho temporário como evidência
+- **WHEN** uma tentativa referencia `/tmp/run.log` ou outro caminho absoluto como evidência
+- **THEN** o verificador rejeita a referência
+
+#### Scenario: Citação de definição com linha
+- **WHEN** uma alegação de contrato cita `etc/adminhtml/system.xml#L40` como definição
+- **THEN** a citação é aceita, mas a mesma forma em evidência de execução é rejeitada
+
+#### Scenario: Referência ao registro de evidência
+- **WHEN** uma tentativa referencia `evidence:<evidence_id>` de uma execução registrada
+- **THEN** a referência é aceita sem que o verificador abra o manifesto
+
+### Requirement: Composição sem duplicar o manifesto
+A obrigação SHALL usar o mesmo ID da linha da matriz registrado por #31 em `obligations[].id`. O bloco `attempt-log` SHALL ser o único registro do raciocínio de retry; nada é gravado em `extensions.attempts`. O verificador MUST NOT copiar nem ler campos do manifesto de evidência.
+
+#### Scenario: Tentativas ligadas a uma obrigação
+- **WHEN** um grupo de tentativas cita a obrigação `R2/T1` e as execuções por suas referências portáveis
+- **THEN** o bloco preserva o raciocínio no handoff sem gravar tentativas no manifesto de cada execução
 
 ### Requirement: Agrupamento por assinatura e obrigação
 O workflow SHALL agrupar tentativas pela obrigação (requisito/cenário da matriz) e pela assinatura normalizada da falha. Comando, filtro, ordem de execução ou nome do alvo MUST NOT fazer parte da chave de agrupamento.
@@ -106,7 +129,7 @@ O limite de tentativas SHALL disparar investigação e preservar a obrigação d
 - **THEN** o verificador rejeita a resolução
 
 ### Requirement: Classificação de bloqueios
-Um relato de bloqueio SHALL classificar-se como impedimento técnico, falta de capacidade ou decisão de negócio, com evidência, e mapear para o estado existente do orquestrador (`BLOCKED`, `RESOURCE_QUEUED` ou `NEEDS_INPUT`). Decisão de negócio MUST trazer opções e impacto; fato técnico pesquisável MUST NOT ser escalado como decisão.
+Um bloqueio SHALL ser classificado como impedimento técnico, falta de capacidade ou decisão de negócio, com evidência, mapeando para estado e razão de espera existentes: técnico→`BLOCKED`/`environment`, `dependency` ou `external`; capacidade→`RESOURCE_QUEUED`/`runtime_capacity`; decisão→`NEEDS_INPUT`/`owner_input`. Decisão de negócio MUST trazer opções e impacto; fato pesquisável MUST NOT ser escalado.
 
 #### Scenario: Decisão de negócio sem opções
 - **WHEN** um bloqueio classificado como decisão de negócio não lista opções e impacto
@@ -118,10 +141,14 @@ Um relato de bloqueio SHALL classificar-se como impedimento técnico, falta de c
 
 #### Scenario: Bloqueio técnico com diagnóstico
 - **WHEN** um bloqueio é classificado como impedimento técnico e referencia diagnóstico e evidência
-- **THEN** o relato é aceito e mapeado para `BLOCKED`
+- **THEN** o relato é aceito e mapeado para `BLOCKED` com razão de espera `environment`, `dependency` ou `external`
+
+#### Scenario: Razão de espera incompatível
+- **WHEN** um bloqueio de falta de capacidade declara razão de espera `owner_input`
+- **THEN** o verificador rejeita o relato
 
 ### Requirement: Verificação determinística e distribuída
-O repositório SHALL fornecer um verificador do registro de tentativas, sem dependências externas, coberto por testes com fixtures de simulação dos cenários T1–T4, e distribuí-lo pelo mecanismo de sincronização existente.
+O repositório SHALL fornecer um verificador do registro de tentativas, sem dependências externas e sem gravar bytecode ao executar, coberto por testes com fixtures de simulação dos cenários T1–T4, e distribuí-lo pelo mecanismo de sincronização e pelas instruções de instalação existentes.
 
 #### Scenario: Fixtures de simulação
 - **WHEN** a suíte do repositório é executada
@@ -130,3 +157,7 @@ O repositório SHALL fornecer um verificador do registro de tentativas, sem depe
 #### Scenario: Distribuição sincronizada
 - **WHEN** o mecanismo de sincronização do plugin é executado
 - **THEN** o verificador e as referências de protocolo atualizadas aparecem na distribuição gerada sem diferenças pendentes
+
+#### Scenario: Execução sem bytecode
+- **WHEN** o verificador é executado no checkout
+- **THEN** nenhum diretório `__pycache__` é criado em `scripts/`
