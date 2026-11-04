@@ -445,6 +445,13 @@ scripts/workflow-event stage-start --issue https://github.com/owner/repo/issues/
   --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --agent codex
 scripts/workflow-event stage-end --issue https://github.com/owner/repo/issues/123 \
   --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --status completed
+scripts/workflow-event dispatch --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42
+scripts/workflow-event observe --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42 \
+  --state completed --source runtime_event --report present --log-ref runtime:job-42
+scripts/workflow-event stage-end --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42 --status completed
 scripts/workflow-event run-end --issue https://github.com/owner/repo/issues/123 \
   --run-id "$RUN_ID" --status completed
 
@@ -454,9 +461,11 @@ scripts/workflow-report https://github.com/owner/repo/milestone/7 --format json
 scripts/workflow-report https://github.com/owner/repo/milestone/7 --format csv
 ```
 
-Nos eventos de espera, informe a etapa e um motivo: `owner_input`, `dependency`, `ci`, `review`, `runtime_capacity`, `external` ou `other`. Para retrabalho, use `--reason review|ci|replan|reopened|other` e vincule evidências com `--evidence` (URL do GitHub ou SHA de commit). Valores opcionais de agente/modelo só são registrados quando o ambiente os fornece. Não inclua prompts ou dados sensíveis.
+Nos eventos de espera, informe a etapa e um motivo: `owner_input`, `dependency`, `ci`, `tests` (testes locais), `review`, `environment` (ambiente indisponível), `runtime_capacity`, `external` ou `other`. Para retrabalho, use `--reason review|ci|replan|reopened|other` e vincule evidências com `--evidence` (URL do GitHub, SHA de commit ou `evidence:<id>`). Valores opcionais de agente/modelo só são registrados quando o ambiente os fornece. Não inclua prompts ou dados sensíveis.
 
-O relatório mostra o tempo de ciclo da issue, trabalho registrado, esperas explícitas, etapas, retrabalho, achados de revisão e verificações reprovadas/pendentes. No milestone, inclui contagens por estado e medianas por etapa; apresenta P90 apenas com pelo menos cinco amostras. Use `--run-id` para consultar uma execução comum do milestone. A soma do trabalho pode superar o tempo de calendário quando há execução paralela. Trabalho registrado é tempo de relógio dentro das etapas, descontadas as esperas explícitas, e não tempo de raciocínio interno do modelo. Dados ausentes são informados como indisponíveis, nunca inferidos de labels ou conversas.
+`dispatch` abre a etapa de um worker assíncrono sem confundir retorno imediato com conclusão. `observe` aceita `--state running|completed|failed|interrupted|unknown` e `--source runtime_event|runtime_query|ci_api|process_exit|test_report` (confirmatórias) ou `agent_prose|container_state` (insuficientes). Informe `--observed-at` (ISO-8601 com fuso) para callbacks atrasados; `at` guarda o instante efetivo e `recorded_at` a gravação. Use `--execution-kind worker|process|job|test_run|ci_run` com `--execution-id` seguro, e repita ambos no `stage-end` tipado. Para testes com `workflow-evidence`, o ID emitido antes da execução é `--execution-kind test_run --execution-id <evidence_id>` e vincule `--evidence evidence:<evidence_id>`; para `ci_run`, use o ID do run de CI. `--report present` e `evidence:` são fatos/referências, **não** aprovação: somente `workflow-evidence verify` verifica a prova. `--log-ref` aceita URL HTTPS de `github.com` sem credenciais/consulta, SHA ou referência tipada segura (não `http`/`file`); `--next` descreve o próximo passo em uma linha.
+
+O relatório mostra o tempo de ciclo da issue, trabalho registrado, esperas explícitas, etapas, retrabalho, achados de revisão e verificações reprovadas/pendentes. O resumo Markdown/JSON (`status_summary`) traz etapa atual, estado observado, última observação confirmada, bloqueio, próximo passo e horário da verificação; `incomplete_evidence` identifica execução de teste sem término ou relatório confirmado. No milestone, inclui contagens por estado e medianas por etapa; apresenta P90 apenas com pelo menos cinco amostras. Use `--run-id` para consultar uma execução comum do milestone. A soma do trabalho pode superar o tempo de calendário quando há execução paralela. Trabalho registrado termina na primeira observação terminal confirmatória da mesma execução e desconta esperas explícitas; não é tempo de raciocínio interno do modelo. Dados ausentes são indisponíveis, nunca inferidos de labels ou conversas. CSV mantém o formato anterior.
 
 As métricas apoiam `kaizen`: após a conclusão, compare gargalos recorrentes com retrabalho e evidências de qualidade antes de sugerir mudanças no processo. Uma execução lenta isolada não justifica alterar uma etapa de validação. Tokens e custos não são estimados quando o ambiente não os fornece.
 
@@ -543,11 +552,17 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-status .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-event .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree-reservation .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-evidence .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_evidence.py .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
   .ai-workflow/scripts/workflow-status \
   .ai-workflow/scripts/workflow-event \
-  .ai-workflow/scripts/workflow-report
+  .ai-workflow/scripts/workflow-report \
+  .ai-workflow/scripts/worktree-reservation \
+  .ai-workflow/scripts/workflow-evidence
 ```
 
 | Arquivos instalados | Finalidade |
@@ -560,6 +575,11 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `templates/pull-request.md`, `templates/github/*.md` | Formatos de PR, pergunta, decisão, revisão e contrato de integração. |
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Consulta de contexto atual do GitHub; exige `gh` e `jq`. |
 | `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Registro opcional de tempos e relatórios por issue/milestone; exige `gh` e Python 3.10+. |
+| `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Reserva cooperante de escrita, fingerprint versionado, retomada com inventário e tratamento restrito de bytecode; exige Git e Python 3.10+ em POSIX (`fcntl`). Consulte `protocol/WORKTREES.md`. |
+| `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py` | Registro, verificação e transporte de evidência de testes; exige Python 3.10+, Git e `gh` apenas para GitHub. |
+
+Exemplo: `.ai-workflow/scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest discover -s tests` emite um ID antes de executar e armazena o log no diretório Git comum. `verify <id> --format json` confere HEAD, index/diff, configuração e identificadores de ambiente declarados; `export <id> --output bundle.tar.gz` e `import bundle.tar.gz` transportam logs entre clones. Declare `--env-id NAME=ID` não secreto para cada perfil relevante (não use valores de env/credenciais), e `--report`/`--output-dir` para saídas. `publish <id> --issue URL` publica apenas metadados: comentários locais sem pacote não são prova completa. Revise pacotes antes de compartilhá-los; `prune --older-than 30` apenas simula até `--yes`. O gate local final deve ser registrado e verificado no HEAD limpo depois do commit de archive/preparação da PR; seu ID fica fora do commit e qualquer commit seguinte exige novo gate. O helper não substitui a reserva de checkout nem testes obrigatórios.
+Saídas declaradas não podem excluir código rastreado. Um registro local aprovado sem gate tipado (`required_gate: null`) pode ser inspecionado como `verified/passed`, mas sua obrigação é `not_required` e `verify` retorna 3: isso não comprova gate local obrigatório. Só gate local tipado no HEAD final limpo pode satisfazê-lo; confirme antes a exigência independentemente na política do repositório, não no manifesto, seleção ou status declarados pelo produtor importado. O checksum do pacote prova a integridade do transporte, não a confiabilidade das alegações do produtor. Uma projeção pública hospedada confirma apenas a execução: `verify <id> --from-github <URL> --base-branch main --hosted-obligation <ID>` exige vínculo independente à política protegida e ao job/check do run; sem obrigação ou vínculo, o exit code é 3. O vínculo atual suporta branch protection com checks; se a política depender só de rulesets ou a API não confirmar a origem do check, o gate permanece pendente. Importação limita a expansão do pacote (256 MiB no total, 64 MiB por membro, 1024 membros).
 
 `scripts/sync-plugin` mantém o pacote deste repositório. Não o instale como auxiliar de execução da aplicação.
 
@@ -600,6 +620,10 @@ test -x .ai-workflow/scripts/workflow-status
 test -x .ai-workflow/scripts/workflow-event
 test -x .ai-workflow/scripts/workflow-report
 test -f .ai-workflow/scripts/workflow_metrics.py
+test -x .ai-workflow/scripts/worktree-reservation
+test -f .ai-workflow/scripts/worktree_registry.py
+test -x .ai-workflow/scripts/workflow-evidence
+test -f .ai-workflow/scripts/workflow_evidence.py
 python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```
