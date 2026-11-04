@@ -1,0 +1,478 @@
+#!/usr/bin/env python3
+"""Coordinate cooperative checkout writers; inspect --help for commands."""
+
+import sys
+sys.dont_write_bytecode = True
+
+import argparse
+import json
+import os
+import subprocess
+import time
+from pathlib import Path
+
+from worktree_registry import (
+    SAFE_ID, ReservationError, _bytecodes, _canonical, _check_identity,
+    _check_owner, _drift, _entry, _git, _history, _inventory, _magic,
+    _metadata, _fd_metadata, _now, _owner, _pid_alive, _receipt, _recover, _safe_file,
+    _status, code_state, drift_report, identity, is_known_generated, locked,
+    save, socket, secrets, PROVENANCE_LIMIT,
+)
+
+
+def parser():
+    cli = argparse.ArgumentParser(description=__doc__)
+    sub = cli.add_subparsers(dest="command", required=True)
+    for name in ("reserve", "cancel-planned", "verify", "checkpoint", "release",
+                 "handoff", "reconcile", "status", "list", "mark-removed",
+                 "track-generated", "clean-generated"):
+        p = sub.add_parser(name)
+        p.add_argument("--path", required=name != "list")
+        p.add_argument("--repository")
+        p.add_argument("--session")
+        p.add_argument("--run")
+        p.add_argument("--json", action="store_true")
+        p.add_argument("--lock-timeout", type=float, default=10)
+        if name == "reserve":
+            p.add_argument("--issue", required=True)
+            p.add_argument("--branch", required=True)
+            p.add_argument("--stage", default="apply")
+            p.add_argument("--base-sha")
+            p.add_argument("--owner-pid", type=int)
+            p.add_argument("--planned", action="store_true")
+            p.add_argument("--allow-primary", action="store_true")
+            p.add_argument("--accept-external", action="store_true")
+            p.add_argument("--reason")
+            p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
+        if name in ("cancel-planned", "clean-generated", "reconcile"):
+            p.add_argument("--reason")
+        if name == "checkpoint":
+            p.add_argument("--note")
+        if name == "handoff":
+            p.add_argument("--from-session", required=True)
+            p.add_argument("--to-session", required=True)
+            p.add_argument("--stage", default="apply")
+            p.add_argument("--owner-pid", type=int)
+        if name == "release":
+            p.add_argument("--state", choices=("WAITING", "RETAINED", "CLEANUP_ELIGIBLE"), required=True)
+        if name == "reconcile":
+            p.add_argument("--accept-external", action="store_true")
+            p.add_argument("--takeover", action="store_true")
+            p.add_argument("--expected-owner")
+            p.add_argument("--stopped-evidence")
+            p.add_argument("--inventory-digest")
+            p.add_argument("--owner-pid", type=int)
+        if name == "clean-generated":
+            p.add_argument("--apply", action="store_true")
+            p.add_argument("--paths", nargs="+")
+        if name == "track-generated":
+            p.add_argument("args", nargs=argparse.REMAINDER)
+    return cli
+
+
+def validate(args, cli):
+    for name in ("session", "run", "from_session", "to_session"):
+        value = getattr(args, name, None)
+        if value is not None and not SAFE_ID.fullmatch(value):
+            cli.error(f"--{name.replace('_', '-')} must match SAFE_ID")
+    if args.lock_timeout < 0:
+        cli.error("--lock-timeout must be nonnegative")
+    if args.command in ("reserve", "cancel-planned") and (not args.session or not args.run):
+        cli.error("--session and --run are required")
+    if args.command in ("verify", "checkpoint", "release", "track-generated") and not args.session:
+        cli.error("--session is required")
+    if args.command == "reserve":
+        if args.planned and not args.repository:
+            cli.error("--planned requires --repository")
+        if args.accept_external and not args.reason:
+            cli.error("--accept-external requires --reason")
+        if any("=" not in value or value.split("=", 1)[0] not in ("proposal_sha", "pr_url", "pr_head", "sandbox") for value in args.set):
+            cli.error("--set accepts only proposal_sha, pr_url, pr_head, sandbox")
+    if args.command == "list" and not args.repository:
+        cli.error("list requires --repository <existing-checkout>")
+    if getattr(args, "owner_pid", None) is not None and args.owner_pid <= 0:
+        cli.error("--owner-pid must be positive")
+    if args.command == "cancel-planned" and (not args.repository or not args.reason):
+        cli.error("cancel-planned requires --repository and --reason")
+    if args.command == "reconcile":
+        if args.accept_external and (args.takeover or not args.session or not args.reason):
+            cli.error("--accept-external requires --session and --reason, without --takeover")
+        if args.takeover and not all((args.session, args.run, args.expected_owner,
+                                      args.stopped_evidence, args.inventory_digest)):
+            cli.error("--takeover requires --session, --run, --expected-owner, --stopped-evidence and --inventory-digest")
+    if args.command == "clean-generated" and args.apply and (not args.session or not args.paths or not args.reason):
+        cli.error("--apply requires --session, --paths and --reason")
+    if args.command == "track-generated" and (not args.args or args.args[0] != "--" or len(args.args) < 2):
+        cli.error("track-generated requires -- <command>")
+
+
+def response(entry=None, current=None, *, path=None, error=None, code=0, extra=None):
+    entry = entry or {}
+    statuses = _status(path) if path and Path(path).exists() and current else {}
+    result = {"ok": code == 0, "exit_code": code, "error": error, "path": path,
+              "issue_url": entry.get("issue_url"), "branch": entry.get("branch"),
+              "state": entry.get("state"), "owner": entry.get("owner"),
+              "head": current.head if current else (entry.get("baseline") or {}).get("head"),
+              "digest": current.digest if current else (entry.get("baseline") or {}).get("digest"),
+              "drift": entry.get("drift"),
+              "generated_paths": list(current.generated) if current else [],
+              "unknown_untracked_paths": sorted(p for p, xy in statuses.items()
+                                                if xy in ("??", "!!") and not is_known_generated(p)),
+              "last_verified_at": entry.get("last_verified_at")}
+    if extra:
+        result.update(extra)
+    return result
+
+
+def candidates_for(entry, current, checkout):
+    records = {e["path"]: e for e in (entry or {}).get("generated_provenance", [])}
+    candidates = []
+    for rel in current.generated:
+        file = _safe_file(checkout, rel)
+        record = records.get(rel)
+        owner = (entry or {}).get("owner")
+        eligible = bool(file and record and owner and record["session"] == owner["session"]
+                        and record["run"] == owner["run"] and _metadata(file) ==
+                        {k: record[k] for k in ("sha256", "dev", "ino", "uid", "mode", "size", "mtime_ns", "ctime_ns")}
+                        and _magic(file))
+        candidates.append({"path": rel, "eligible": eligible,
+                           "reason": "recorded" if eligible else "missing, altered or unsafe provenance"})
+    return candidates
+
+
+def execute(args, reg, path, ident, current):
+    command = args.command
+    checkout = str(Path(args.path).resolve()) if args.path else None
+    entry = next((e for e in reg["entries"] if e["path"] == checkout and e.get("state") != "REMOVED"), None)
+    if command == "list":
+        return {"entries": [response(e, path=e["path"]) for e in reg["entries"]]}
+    if command == "status":
+        result = response(entry, current, path=checkout, extra={"inventory": _inventory(args.repository or checkout, checkout, ident, current) if current else None})
+        if entry and entry.get("baseline") and current and not entry.get("drift"):
+            result["drift"] = drift_report(entry["baseline"], current, checkout=checkout)
+        return result
+    if command == "reserve" and args.planned:
+        if Path(checkout).exists():
+            raise ReservationError(6, "Planned destination already exists", entry=entry)
+        worktrees = _inventory(args.repository, checkout)["worktrees"].splitlines()
+        if any(line == f"worktree {checkout}" for line in worktrees):
+            raise ReservationError(6, "Destination already in worktree inventory", entry=entry)
+        if f"branch refs/heads/{args.branch}" in worktrees:
+            raise ReservationError(6, "Planned branch already checked out", entry=entry)
+        if entry:
+            if entry["state"] == "RESERVED" and entry["owner"]["session"] == args.session and entry["owner"]["run"] == args.run:
+                return response(entry, path=checkout)
+            raise ReservationError(3, "Destination already reserved", entry=entry)
+        other = next((e for e in reg["entries"] if e.get("issue_url") == args.issue and e["path"] != checkout and e.get("state") != "REMOVED"), None)
+        if other:
+            raise ReservationError(3, f"Issue already reserved at {other['path']}", entry=other)
+        entry = _entry(checkout, args.issue, args.branch, args.base_sha, _owner(args.session, args.run, args.stage, args.owner_pid), "RESERVED", None)
+        for pair in args.set:
+            key, value = pair.split("=", 1)
+            entry[key] = value
+        _history(entry, "planned", args.session)
+        reg["entries"].append(entry)
+        return response(entry, path=checkout)
+    if command == "cancel-planned":
+        if not entry or entry["state"] != "RESERVED" or entry["owner"]["session"] != args.session or entry["owner"]["run"] != args.run:
+            raise ReservationError(3, "Not the exact owner of a planned reservation", entry=entry)
+        inventory = _inventory(args.repository, checkout)
+        if Path(checkout).exists() or any(line == f"worktree {checkout}" for line in inventory["worktrees"].splitlines()):
+            raise ReservationError(6, "Destination exists or is registered; inspect partial creation", entry=entry)
+        _history(entry, "cancel_planned", args.session, reason=args.reason)
+        entry.update(state="REMOVED", owner=None, generated_provenance=[])
+        return response(entry, path=checkout)
+    if command == "reserve":
+        if ident["primary"] and not args.allow_primary:
+            raise ReservationError(6, "Primary checkout refused; use an issue worktree or explicit --allow-primary", entry=entry)
+        if ident["branch"] != args.branch:
+            raise ReservationError(6, "Branch differs from requested branch", entry=entry)
+        other = next((e for e in reg["entries"] if e.get("issue_url") == args.issue and e["path"] != checkout and e.get("state") != "REMOVED"), None)
+        if other:
+            raise ReservationError(3, f"Issue already reserved at {other['path']}", entry=other)
+        if not entry:
+            entry, inventory = _recover(reg, checkout, ident, current, anchor=args.repository)
+            entry["issue_url"] = args.issue
+            raise ReservationError(3, "Pre-existing checkout requires reviewed takeover", entry=entry, inventory=inventory)
+        if not __import__("worktree_registry")._complete(entry):
+            raise ReservationError(3, "Incomplete registry entry; run reconcile before takeover", entry=entry)
+        if entry["state"] == "RECOVERY_REQUIRED":
+            raise ReservationError(3, "Recovery required, no implicit ownership", entry=entry, inventory=_inventory(args.repository or checkout, checkout, ident, current))
+        if entry["issue_url"] != args.issue or entry["branch"] != args.branch:
+            raise ReservationError(6, "Issue or branch differs from reservation", entry=entry)
+        if entry["state"] == "RESERVED":
+            if entry["owner"]["session"] != args.session or entry["owner"]["run"] != args.run:
+                raise ReservationError(3, "Planned checkout belongs to another owner", entry=entry)
+            entry.update(state="ACTIVE", baseline=current.to_json(), last_verified_at=_now())
+            for pair in args.set:
+                key, value = pair.split("=", 1)
+                entry[key] = value
+            _history(entry, "activate", args.session)
+            return response(entry, current, path=checkout)
+        if entry["owner"] and (entry["owner"]["session"], entry["owner"]["run"]) != (args.session, args.run):
+            raise ReservationError(3, "Checkout belongs to another owner", entry=entry)
+        report = entry.get("drift") or drift_report(entry["baseline"], current, checkout=checkout)
+        if report:
+            if not (args.accept_external and not entry["owner"]):
+                entry["drift"] = report
+                entry["verified_for"] = None
+                raise ReservationError(4, "External changes require explicit acceptance", entry=entry, drift=report)
+            _history(entry, "accept_external", args.session, reason=args.reason, report=report)
+            entry.update(baseline=current.to_json(), drift=None, verified_for=None, generated_provenance=[])
+        elif args.accept_external:
+            raise ReservationError(3, "No external drift to accept", entry=entry)
+        if not entry["owner"]:
+            entry.update(owner=_owner(args.session, args.run, args.stage, args.owner_pid), state="ACTIVE", verified_for=None)
+            _history(entry, "reserve", args.session)
+        for pair in args.set:
+            key, value = pair.split("=", 1)
+            entry[key] = value
+        return response(entry, current, path=checkout)
+    if not entry or not __import__("worktree_registry")._complete(entry):
+        if command == "reconcile" and not args.takeover and not args.accept_external:
+            entry, inventory = _recover(reg, checkout, ident, current, entry, anchor=args.repository)
+            return response(entry, current, path=checkout, extra={"inventory": inventory})
+        if command == "mark-removed" and entry:
+            pass
+        elif entry and not __import__("worktree_registry")._complete(entry):
+            raise ReservationError(3, "Incomplete registry entry; run reconcile first", entry=entry)
+        else:
+            raise ReservationError(3, "No reservation for checkout; run reconcile", entry=entry)
+    if command == "mark-removed":
+        if entry["owner"] or entry["state"] != "CLEANUP_ELIGIBLE":
+            raise ReservationError(3, "Only an ownerless CLEANUP_ELIGIBLE checkout may be marked removed", entry=entry)
+        inventory = _inventory(args.repository, checkout)
+        if any(line == f"worktree {checkout}" for line in inventory["worktrees"].splitlines()):
+            raise ReservationError(3, "Checkout remains registered in Git", entry=entry)
+        _history(entry, "removed")
+        entry.update(state="REMOVED", generated_provenance=[])
+        return response(entry, path=checkout)
+    if command == "clean-generated" and not args.apply:
+        return response(entry, current, path=checkout, extra={"candidates": candidates_for(entry, current, checkout)})
+    if command == "reconcile" and not args.accept_external and not args.takeover:
+        if entry["state"] == "RECOVERY_REQUIRED":
+            inventory = _inventory(args.repository or checkout, checkout, ident, current)
+            entry["recovery"]["inventory_digest"] = inventory["digest"]
+            return response(entry, current, path=checkout, extra={"inventory": inventory})
+        return response(entry, current, path=checkout, extra={"inventory": _inventory(checkout, checkout, ident, current)})
+    _check_identity(entry, ident, checkout)
+    if command == "reconcile" and args.takeover:
+        previous = entry.get("recovery", {}).get("expected_owner") if entry["state"] == "RECOVERY_REQUIRED" else (entry["owner"] or {}).get("session")
+        if args.expected_owner != (previous or "unknown"):
+            raise ReservationError(3, "Expected owner mismatch", entry=entry)
+        prior = entry.get("recovery", {}).get("prior_owner") if entry["state"] == "RECOVERY_REQUIRED" else entry["owner"]
+        if prior and prior.get("host") == socket.gethostname() and _pid_alive(prior.get("pid")):
+            raise ReservationError(3, "Prior owner PID is still alive", entry=entry)
+        inventory = _inventory(args.repository or checkout, checkout, ident, current)
+        if inventory["digest"] != args.inventory_digest:
+            raise ReservationError(3, "Inventory changed; inspect again before takeover", entry=entry, inventory=inventory)
+        _history(entry, "takeover", args.session, expected_owner=previous or "unknown",
+                 stopped_evidence=args.stopped_evidence, inventory_digest=inventory["digest"])
+        entry.update(owner=_owner(args.session, args.run, "apply", args.owner_pid), state="ACTIVE",
+                     baseline=current.to_json(), drift=None, recovery=None, verified_for=None,
+                     generated_provenance=[], last_verified_at=_now())
+        return response(entry, current, path=checkout)
+    _check_owner(entry, args.from_session if command == "handoff" else args.session)
+    if command == "reconcile" and args.accept_external:
+        report = entry.get("drift") or drift_report(entry["baseline"], current, checkout=checkout)
+        if not report:
+            raise ReservationError(3, "No external drift to accept", entry=entry)
+        _history(entry, "accept_external", args.session, reason=args.reason, report=report)
+        entry.update(baseline=current.to_json(), drift=None, verified_for=None,
+                     generated_provenance=[], last_verified_at=_now())
+        return response(entry, current, path=checkout)
+    if command == "checkpoint":
+        if entry.get("drift"):
+            _drift(entry, current, checkout)
+        _receipt(entry, args.session)
+        entry.update(baseline=current.to_json(), verified_for=None, last_verified_at=_now())
+        _history(entry, "checkpoint", args.session, note=args.note)
+        return response(entry, current, path=checkout)
+    _drift(entry, current, checkout)
+    if command == "verify":
+        entry["verified_for"] = {"session": args.session, "digest": entry["baseline"]["digest"]}
+        entry["last_verified_at"] = _now()
+        return response(entry, current, path=checkout)
+    if command == "handoff":
+        entry.update(owner=_owner(args.to_session, args.run, args.stage, args.owner_pid),
+                     state="ACTIVE", verified_for=None, generated_provenance=[])
+        _history(entry, "handoff", args.from_session, to_session=args.to_session)
+        return response(entry, current, path=checkout)
+    if command == "release":
+        entry.update(owner=None, state=args.state, verified_for=None, generated_provenance=[])
+        _history(entry, "release", args.session, state=args.state)
+        return response(entry, current, path=checkout)
+    if command == "clean-generated":
+        records = {e["path"]: e for e in entry.get("generated_provenance", [])}
+        candidates = candidates_for(entry, current, checkout)
+        if args.apply:
+            _receipt(entry, args.session)
+            selected = set(args.paths)
+            if len(selected) != len(args.paths) or not selected or not selected <= {e["path"] for e in candidates if e["eligible"]}:
+                raise ReservationError(3, "Selection contains unrecorded, altered or unsafe files", entry=entry)
+            # Validate every candidate before unlinking any candidate.
+            opened = []
+            try:
+                for rel in args.paths:
+                    file = _safe_file(checkout, rel)
+                    fd = os.open(file, os.O_RDONLY | os.O_NOFOLLOW)
+                    opened.append((rel, file, fd))
+                    actual = _fd_metadata(fd)
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    if (actual != {k: records[rel][k] for k in actual} or
+                            os.read(fd, 4) != __import__("importlib").util.MAGIC_NUMBER):
+                        raise ReservationError(3, "Candidate changed before unlink", entry=entry)
+                for rel, file, fd in opened:
+                    # fstat/bytes are checked again at the final boundary.
+                    if (_fd_metadata(fd) != {k: records[rel][k] for k in ("sha256", "dev", "ino", "uid", "mode", "size", "mtime_ns", "ctime_ns")} or
+                            file.is_symlink() or file.lstat().st_ino != records[rel]["ino"]):
+                        raise ReservationError(3, "Candidate changed before unlink", entry=entry)
+                    file.unlink()
+                    entry["generated_provenance"] = [e for e in entry["generated_provenance"] if e["path"] != rel]
+                    if file.parent.name == "__pycache__":
+                        try:
+                            file.parent.rmdir()
+                        except OSError:
+                            pass
+                _history(entry, "clean_generated", args.session, paths=args.paths, reason=args.reason)
+                current = code_state(checkout)
+            finally:
+                for _, _, fd in opened:
+                    os.close(fd)
+        return response(entry, current, path=checkout, extra={"candidates": candidates})
+    raise ReservationError(2, "Unsupported command")
+
+
+def track(args, reg, path, ident, current):
+    checkout = str(Path(args.path).resolve())
+    entry = next((e for e in reg["entries"] if e["path"] == checkout and e.get("state") != "REMOVED"), None)
+    if not entry:
+        raise ReservationError(3, "No reservation")
+    _check_identity(entry, ident, checkout)
+    _check_owner(entry, args.session)
+    _drift(entry, current, checkout)
+    _receipt(entry, args.session)
+    before = _bytecodes(checkout)
+    return before, entry["owner"].copy(), entry["baseline"]["digest"]
+
+
+def pending_children(group):
+    """Inspect known Linux process-group children; escaped daemons are out of scope."""
+    pending = []
+    if Path("/proc").is_dir():
+        for process in Path("/proc").iterdir():
+            if process.name.isdigit():
+                try:
+                    parts = (process / "stat").read_text().rsplit(") ", 1)[1].split()
+                    if int(parts[2]) == group and parts[0] != "Z":
+                        pending.append(process.name)
+                except (OSError, ValueError, IndexError):
+                    pass
+    return pending
+
+
+def main():
+    cli = parser()
+    args = cli.parse_args()
+    validate(args, cli)
+    checkout = str(Path(args.path).resolve()) if args.path else None
+    if args.command in ("cancel-planned", "mark-removed") and not args.repository:
+        cli.error("--repository is required")
+    anchor = args.repository or checkout
+    ident = None
+    current = None
+    reg = None
+    try:
+        ident = identity(anchor)
+        if args.command != "list" and Path(checkout).exists() and not (args.command == "reserve" and args.planned):
+            actual = identity(checkout)
+            if actual["common_dir"] != ident["common_dir"] or actual["remote"] != ident["remote"]:
+                raise ReservationError(6, "Checkout repository differs from anchor")
+            ident = actual
+        elif args.command not in ("reserve", "cancel-planned", "mark-removed", "list"):
+            raise ReservationError(6, "Checkout does not exist")
+        with locked(ident["common_dir"], ident["remote"], args.lock_timeout) as (reg, path):
+            if args.command != "list" and Path(checkout).exists() and not (args.command == "reserve" and args.planned):
+                actual = identity(checkout)
+                if actual["common_dir"] != ident["common_dir"] or actual["remote"] != ident["remote"]:
+                    raise ReservationError(6, "Checkout repository changed during inspection")
+                ident = actual
+                current = code_state(checkout)
+            before = _canonical(reg)
+            try:
+                if args.command == "track-generated":
+                    start, owner, baseline = track(args, reg, path, ident, current)
+                    # Do not hold the lock while the cooperative command runs.
+                    result = None
+                else:
+                    result = execute(args, reg, path, ident, current)
+            except ReservationError as exc:
+                if _canonical(reg) != before:
+                    save(reg, path)
+                raise
+            if _canonical(reg) != before:
+                save(reg, path)
+        if args.command == "track-generated":
+            command = args.args[1:]
+            try:
+                child = subprocess.Popen(command, cwd=checkout, start_new_session=True)
+            except OSError as exc:
+                raise ReservationError(3, f"Cooperative command could not start; no provenance recorded: {exc.strerror}") from exc
+            code = child.wait()
+            if code:
+                raise ReservationError(3, f"Cooperative command failed (exit {code}); no provenance recorded")
+            # Wait briefly for known children to quiesce, without killing them.
+            deadline = time.monotonic() + .5
+            while (pending := pending_children(child.pid)) and time.monotonic() < deadline:
+                time.sleep(.05)
+            if pending:
+                raise ReservationError(3, "Cooperative command left a known child running; no provenance recorded")
+            after = _bytecodes(checkout)
+            new = {p: meta for p, meta in after.items() if p not in start and _magic(Path(checkout) / p)}
+            with locked(ident["common_dir"], ident["remote"], args.lock_timeout) as (reg, path):
+                entry = next((e for e in reg["entries"] if e["path"] == checkout and e.get("state") != "REMOVED"), None)
+                if not entry:
+                    raise ReservationError(3, "Reservation disappeared during cooperative command")
+                actual = identity(checkout)
+                _check_identity(entry, actual, checkout)
+                if actual["remote"] != ident["remote"] or actual["common_dir"] != ident["common_dir"]:
+                    raise ReservationError(6, "Repository identity changed")
+                _check_owner(entry, args.session)
+                if entry["owner"] != owner or entry["baseline"]["digest"] != baseline:
+                    raise ReservationError(3, "Owner or baseline changed during command")
+                if entry.get("drift"):
+                    _drift(entry, code_state(checkout), checkout)
+                _receipt(entry, args.session)
+                if len(entry.get("generated_provenance", [])) + len(new) > PROVENANCE_LIMIT:
+                    raise ReservationError(3, "Generated provenance capacity exceeded; nothing recorded")
+                confirmed = _bytecodes(checkout)
+                if any(confirmed.get(rel) != meta for rel, meta in new.items()):
+                    raise ReservationError(3, "Generated candidate changed before checkpoint; nothing recorded")
+                current = code_state(checkout)
+                ref = secrets.token_hex(16)
+                entry["baseline"] = current.to_json()
+                entry["verified_for"] = None
+                entry["last_verified_at"] = _now()
+                entry["generated_provenance"].extend(
+                    {"path": p, **meta, "session": owner["session"], "run": owner["run"], "execution_ref": ref}
+                    for p, meta in new.items()
+                )
+                _history(entry, "tracked_execution", args.session, execution_ref=ref, count=len(new))
+                save(reg, path)
+                result = response(entry, current, path=checkout, extra={"execution_ref": ref, "recorded_paths": sorted(new)})
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    except ReservationError as exc:
+        result = response(exc.entry, current, path=checkout, error=str(exc), code=exc.code,
+                          extra={"inventory": exc.inventory} if exc.inventory else None)
+        if exc.drift:
+            result["drift"] = exc.drift
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True) if args.json else str(exc), file=sys.stdout if args.json else sys.stderr)
+        return exc.code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
