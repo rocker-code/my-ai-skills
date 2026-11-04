@@ -22,7 +22,7 @@ O helper SHALL produzir, para cada execução registrada, um manifesto JSON com 
 - **THEN** o manifesto registra o artefato como `missing` e o registro não pode ser verificado como prova completa
 
 ### Requirement: Identidade do código testado
-O fingerprint SHALL combinar HEAD, conteúdo das alterações rastreadas (staged e unstaged), arquivos não rastreados não ignorados e arquivos de configuração declarados (inclusive ignorados), registrando a lista de caminhos alterados com o hash de cada um. HEAD sozinho MUST NOT identificar um working tree modificado.
+O fingerprint SHALL reutilizar `code_state`/`drift_report` de #35, incluindo o índice Git, com `exclude_paths` para saídas e `include_ignored` para configs declaradas. SHALL acrescentar hash explícito das configs. HEAD ou apenas o conteúdo do working tree MUST NOT identificar sozinho um checkout modificado.
 
 #### Scenario: Mesmo HEAD com diff diferente (T2)
 - **WHEN** um registro foi feito com o arquivo `a.py` modificado e o candidato tem o mesmo HEAD com outro conteúdo em `a.py`
@@ -36,12 +36,27 @@ O fingerprint SHALL combinar HEAD, conteúdo das alterações rastreadas (staged
 - **WHEN** um arquivo de configuração declarado e ignorado pelo Git muda após o registro
 - **THEN** a verificação retorna `stale` citando esse arquivo
 
+#### Scenario: Índice alterado sem mudança de conteúdo atual
+- **WHEN** o blob ou modo staged de um arquivo muda, mas HEAD, XY e bytes do working tree permanecem iguais
+- **THEN** a verificação retorna `stale` citando esse arquivo, sem recalcular um segundo fingerprint canônico
+
 ### Requirement: Mudança concorrente durante a execução
-O helper SHALL capturar o fingerprint antes e depois da execução; se diferirem, o registro MUST ser marcado `ambiguous` e nunca verificado como prova do candidato.
+O helper SHALL capturar o fingerprint antes e depois da execução, excluindo da comparação os caminhos de relatório/artefato declarados e os arquivos gerados conhecidos; se diferirem, o registro MUST ser marcado `ambiguous` e nunca verificado como prova do candidato.
 
 #### Scenario: Arquivo alterado durante o teste
 - **WHEN** um arquivo rastreado muda enquanto o comando registrado executa
 - **THEN** o manifesto registra ambos os fingerprints e a verificação retorna `ambiguous`
+
+#### Scenario: Relatório gerado dentro da árvore
+- **WHEN** o comando grava o relatório JUnit declarado e bytecode dentro da árvore de trabalho
+- **THEN** o registro não é marcado `ambiguous` por esses arquivos
+
+### Requirement: Identificador emitido antes da execução
+`record` SHALL gerar o `evidence_id` e emiti-lo (primeira linha em stderr, ou linha JSON) antes de executar o comando, para que o orquestrador correlacione uma execução em andamento.
+
+#### Scenario: Execução longa observável
+- **WHEN** `record` inicia um comando que ainda não terminou
+- **THEN** o `evidence_id` já foi emitido e o registro local existe com estado em execução
 
 ### Requirement: Vínculo com requisito e seleção
 Cada registro SHALL declarar as obrigações provadas (IDs de cenário/requisito da matriz do OpenSpec) e a seleção executada, e opcionalmente o change OpenSpec e os caminhos relevantes por obrigação, para que o revisor ligue a prova ao requisito.
@@ -55,7 +70,7 @@ Cada registro SHALL declarar as obrigações provadas (IDs de cenário/requisito
 - **THEN** o helper rejeita o registro com erro explícito
 
 ### Requirement: Armazenamento acessível entre sessões
-Registros e artefatos SHALL ser armazenados fora da árvore de trabalho, no diretório Git comum do clone, de modo que qualquer worktree ou sessão do mesmo clone os encontre pelo `evidence_id`; um caminho absoluto de outro ambiente MUST NOT ser a única referência.
+Registros e artefatos SHALL ser armazenados fora da árvore de trabalho, em `<git-common-dir>/ai-workflow/evidence/<evidence_id>/`, de modo que qualquer worktree ou sessão do mesmo clone os encontre pelo `evidence_id`; um caminho absoluto de outro ambiente MUST NOT ser a única referência.
 
 #### Scenario: Outra worktree verifica a prova (T1)
 - **WHEN** Apply registra a prova numa worktree e prepare-pr verifica o mesmo `evidence_id` em outra worktree do mesmo clone com código idêntico
@@ -106,7 +121,7 @@ Registros com campos obrigatórios ausentes, exit code desconhecido, execução 
 - **THEN** o manifesto registra a interrupção e o estado é `incomplete`
 
 ### Requirement: Invalidação com motivo concreto e escopo por obrigação
-Quando o fingerprint diverge, a verificação SHALL listar os caminhos alterados e, por obrigação, marcar `affected` se algum caminho cruzar os caminhos relevantes declarados (ou se nenhum foi declarado) e `unaffected` caso contrário, indicando qual obrigação precisa nova execução.
+Quando o fingerprint diverge, a verificação SHALL listar os caminhos alterados (inclusive alteração de índice) e, por obrigação, marcar `affected` se algum caminho cruzar os caminhos relevantes declarados (ou se nenhum foi declarado) e `unaffected` caso contrário, indicando qual obrigação precisa nova execução. O registro divergente permanece `stale` mesmo se uma obrigação for `unaffected`; essa classificação não equivale a `verified` nem substitui os gates finais.
 
 #### Scenario: Alteração afeta apenas uma obrigação (T4)
 - **WHEN** dois registros declaram caminhos relevantes distintos e o candidato altera apenas um deles
@@ -117,11 +132,23 @@ Quando o fingerprint diverge, a verificação SHALL listar os caminhos alterados
 - **THEN** todas as suas obrigações são `affected`
 
 ### Requirement: Precedência dos gates do repositório
-Obrigações marcadas como gate obrigatório do repositório SHALL ser satisfeitas apenas por registro local `verified` com fingerprint idêntico ao candidato final; resultado hospedado, histórico ou `unaffected` MUST NOT substituí-las.
+Gates obrigatórios SHALL ser tipados `local` ou `hosted`. Gate `local` exige registro local `verified` e `passed` com fingerprint idêntico ao candidato final. Gate `hosted` exige registro hospedado `verified` e `passed`, confirmação do resultado/HEAD pela origem e candidato limpo no SHA exato. Metadados hospedados autodeclarados MUST NOT aprovar gate; resultado hospedado nunca satisfaz gate local, nem `unaffected` equivale a aprovação.
 
 #### Scenario: CI antigo para gate local (AC5)
-- **WHEN** existe apenas um resultado hospedado aprovado e a obrigação é um gate local obrigatório
+- **WHEN** existe apenas um resultado hospedado aprovado e a obrigação é um gate `local` obrigatório
 - **THEN** a verificação retorna `not_applicable` para essa obrigação e ela permanece pendente
+
+#### Scenario: CI do candidato exato para gate hospedado
+- **WHEN** a obrigação é um gate `hosted` e existe registro hospedado aprovado com URL/run_id/head/status confirmados na origem confiável, com `head` igual ao SHA do candidato limpo
+- **THEN** a verificação retorna `verified` para essa obrigação
+
+#### Scenario: Resultado hospedado não confirmável
+- **WHEN** apenas metadados de um resultado hospedado estão disponíveis e sua origem/status não podem ser conferidos
+- **THEN** o estado permanece `metadata_only` e o gate `hosted` continua pendente
+
+#### Scenario: CI de outro SHA para gate hospedado
+- **WHEN** a obrigação é um gate `hosted` e o registro hospedado tem `head` diferente do candidato
+- **THEN** a verificação retorna `stale` e a obrigação permanece pendente
 
 #### Scenario: Gate obrigatório após mudança fora do escopo
 - **WHEN** um gate obrigatório foi registrado e o candidato altera um caminho fora dos caminhos relevantes declarados
@@ -135,14 +162,14 @@ Registros locais SHALL ser mantidos até remoção explícita (`prune` por idade
 - **THEN** o helper lista o que removeria e não remove nada
 
 ### Requirement: Independência de produtor
-O registro SHALL suportar qualquer comando de teste pelo mesmo conceito, sem exigir Magento ou M2T; dados de um produtor externo SHALL ficar num bloco `producer` opcional, e campos ou extensões desconhecidos MUST ser preservados na leitura e reescrita.
+O registro SHALL suportar qualquer comando de teste pelo mesmo conceito, sem exigir Magento ou M2T. O bloco `producer` é provisório e MUST ser null ou ausente e não validado nesta versão; campos e `extensions` desconhecidos MUST ser preservados na leitura e reescrita.
 
 #### Scenario: Comando não M2T
 - **WHEN** um projeto sem M2T registra `npm test`
 - **THEN** o registro e a verificação funcionam sem nenhum campo de produtor
 
 #### Scenario: Extensão desconhecida preservada
-- **WHEN** um manifesto contém `extensions.retry_log` criado por outra versão
+- **WHEN** um manifesto contém `extensions.example_tool` criado por outra versão
 - **THEN** a leitura aceita o manifesto e a exportação o preserva intacto
 
 ### Requirement: Handoff de prova no workflow
@@ -150,7 +177,7 @@ Apply SHALL encerrar com os `evidence_id` das obrigações na matriz e no handof
 
 #### Scenario: prepare-pr com prova reaproveitável
 - **WHEN** todas as obrigações do handoff estão `verified` para o candidato
-- **THEN** prepare-pr reaproveita a prova sem reexecução e inclui os estados no corpo do PR
+- **THEN** prepare-pr reaproveita a prova sem reexecução e a seção Validation do PR traz uma linha por obrigação no formato `PASS|FAIL|NOT RUN: <obrigação> — evidence:<id> (<estado>)`
 
 #### Scenario: prepare-pr com prova inacessível
 - **WHEN** um registro do handoff não é encontrado nem importável

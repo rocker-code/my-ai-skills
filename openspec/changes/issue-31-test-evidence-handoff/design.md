@@ -6,7 +6,7 @@ Ver proposal.md (Why). Estado observado em `main @ 5825a9c`:
 
 - `scripts/workflow-event` L113-115 aceita `--evidence` só como `https://github.com/...` ou SHA; grava strings em `event.evidence` e `record.evidence`.
 - `scripts/workflow_metrics.py` `parse_run_comment` exige `schema_version == 1`; `summarize_run` repassa `evidence`; `scripts/workflow-report` L208-209 concatena as strings.
-- `skills/prepare-pr/SKILL.md` L91, `skills/apply-issue/SKILL.md` ("Before commit…"), `skills/pr-audit/SKILL.md` L26 e `skills/post-pr-audit/SKILL.md` L12 descrevem em prosa prova do código exato e reuso restrito, sem mecanismo.
+- `skills/prepare-pr/SKILL.md` (seção "Pre-PR self-review", parágrafo "Run permitted validations…"), `skills/apply-issue/SKILL.md` ("Before commit…"), `skills/pr-audit/SKILL.md` L26 e `skills/post-pr-audit/SKILL.md` L12 descrevem em prosa prova do código exato e reuso restrito, sem mecanismo.
 - `protocol/TEST_STRATEGY.md` define a matriz Scenario | Critério/risco | Camada | Teste; `scripts/sync-plugin` empacota-o em 8 skills e copia helpers para `plugins/my-ai-skills/scripts/`.
 - Sem CI hospedado (`.github/` ausente). Gate local: `python3 -m unittest discover -s tests`.
 - Helpers existentes usam só stdlib + `git`/`gh` por subprocess; testes usam `gh` falso em `PATH` e diretórios temporários.
@@ -16,7 +16,8 @@ Ver proposal.md (Why). Estado observado em `main @ 5825a9c`:
 **Goals:**
 - Registro genérico e verificação completos para comandos não M2T (inclui comandos M2T executados como comando comum).
 - Transporte entre worktrees/sessões do mesmo clone sem passo manual; entre runtimes via pacote portátil ou metadados publicados.
-- Registro extensível por #32 (correlação com execução/estado) e #34 (tentativas/hipóteses) sem bifurcar o formato.
+- Registro estável e referenciável por `evidence:<evidence_id>` (#32 correlaciona execuções pelo seu próprio `execution {kind,id}`; #34 referencia a prova pelo `evidence:<id>` e pelo ID de obrigação), sem que irmãs alterem o manifesto.
+- Reusar o estado canônico do checkout de #35 (`scripts/worktree_registry.py`) em vez de definir outro fingerprint.
 
 **Non-Goals:**
 - Adaptador/leitura do registro nativo M2T (follow-up bloqueado por M2T #12 — ver "Contract handoff").
@@ -28,22 +29,24 @@ Ver proposal.md (Why). Estado observado em `main @ 5825a9c`:
 ## Decisions
 
 ### D1. Helper novo `scripts/workflow-evidence` + biblioteca `scripts/workflow_evidence.py`
-Segue o padrão `workflow-event` + `workflow_metrics.py` (CLI fino, lógica importável e testável). Biblioteca expõe `code_fingerprint(repo, config_paths)` e `load_manifest/verify_manifest` para reuso por #32/#34/#35.
+Segue o padrão `workflow-event` + `workflow_metrics.py` (CLI fino, lógica importável e testável). A biblioteca importa `code_state(checkout, *, exclude_paths=(), include_ignored=())`, `drift_report(baseline, current, *, checkout)`, `FINGERPRINT_VERSION` e `is_known_generated` de `scripts/worktree_registry.py`, conforme o contrato aprovado de #35 em `75b8740`; não redefine o estado canônico. `CodeState` contém `head`, `digest` (`sha256:v1:<hex>`), `entries` com `path`/`status`/`sha256`/`deleted`/**`index`** (blob, modo e stage) e `generated`; expõe `load_manifest/verify_manifest`. O CLI define `sys.dont_write_bytecode = True` antes de importar módulos irmãos (R6). `worktree_registry.py` passa a ser companheiro obrigatório de `workflow-evidence`. **Dependência rígida: #35 implementado, validado e mergeado antes do Apply de #31**; conferir API real após merge, sem editar código da #35 nesta mudança.
 Alternativa rejeitada: estender `workflow-event` — mistura registro de tempo (single-writer orquestrador, GitHub) com prova local do implementador e aumentaria conflito com #32.
 
-Subcomandos: `record` (executa `-- <cmd...>`), `register-hosted` (resultado de CI: URL, SHA, status; sem log), `verify`, `export`, `import`, `publish`, `list`, `show`, `prune`. Saída `--format text|json`; exit codes: `record` propaga o do comando; `verify` retorna 0 somente se todos os registros pedidos estiverem `verified` e `passed`, 3 para não verificado, 2 para erro de uso.
+Subcomandos: `record` (executa `-- <cmd...>`), `register-hosted` (resultado de CI: URL, SHA, status; sem log), `verify`, `export`, `import`, `publish`, `list`, `show`, `prune`. `record` gera o `evidence_id`, cria o diretório do registro com `status: running` e emite `{"evidence_id": …}` como primeira linha em stderr **antes** de executar o comando (R3: o orquestrador pode usar `observe --execution-kind test_run --execution-id <evidence_id>` em #32). Saída `--format text|json`; exit codes: `record` propaga o do comando; `verify` retorna 0 somente se todos os registros pedidos estiverem `verified` e `passed`, 3 para não verificado, 2 para erro de uso.
+
+`register-hosted` aceita URL/run_id de um run GitHub Actions no repositório declarado; consulta somente leitura à API GitHub via `gh` (autenticada, testada com `gh` falso) para obter `head_sha`, conclusão, `created_at`/`updated_at` e estado terminal, sem tomar status/head digitados como prova. `verify` consulta novamente a origem para confirmar run_id, repo, head e conclusão; indisponibilidade de API, fonte não suportada ou resultado não terminal → `metadata_only`/`incomplete` e gate pendente, não `verified`. Para hosted, `exit_code` é derivado (`0` para sucesso, `1` para falha terminal; **não** é alegação de exit code original do comando do CI), `counts.source: none` salvo relatório acessível, `artifacts: []` quando não há log; a confirmação externa é a prova do gate hospedado. Esse caminho não enfraquece as obrigações locais nem faz chamadas de CI pagas.
 
 ### D2. Manifesto `my-ai-skills.test-evidence/v1`
-Campos (obrigatórios em negrito): **`schema`**, **`evidence_id`** (`ev-<UTC>-<8 hex>`, mesmo padrão de `new-run-id`), **`kind`** (`local`|`hosted`), **`repository`** (owner/repo do `origin`, se houver, e toplevel relativo não publicado), **`code`** {**`head`**, **`fingerprint`**, `dirty`, `changed_paths` [{path, sha256|deleted}], `config_paths` [{path, sha256|missing}], `fingerprint_after`}, **`command`** {argv mascarado, cwd relativo ao toplevel}, **`selection`** (string livre: filtro/caminhos), **`obligations`** [{**`id`**, `required_gate`: bool, `relevant_paths`: [glob]}], `openspec_change`, **`runner`** {python, os, hostname-hash, ferramentas declaradas via `--tool name=version`, nomes de env permitidos}, **`started_at`**, **`finished_at`**, **`exit_code`** (null se interrompido), **`status`** (`passed`|`failed`|`interrupted`), `counts` {tests, failures, errors, skipped, source: `junit`|`declared`|`none`}, **`artifacts`** [{name, role: `log`|`report`, sha256, bytes, state: `present`|`missing`}], `hosted` {url, run_id, head} (kind hosted), `correlation` {run_id, issue_url, stage, worker_id} (opcional; ponto de extensão para #32), `producer` (opcional, null; reservado — ver D9), `extensions` {} (namespaced; #34 usa p.ex. `extensions.attempts`).
+Campos (obrigatórios em negrito): **`schema`**, **`evidence_id`** (`ev-<UTC>-<8 hex>`, mesmo padrão de `new-run-id`), **`kind`** (`local`|`hosted`), **`repository`** (owner/repo do `origin`, se houver, e toplevel relativo não publicado), **`code`** {**`head`**, **`fingerprint`**, `registry_digest` (`sha256:v1:…` de #35), `dirty`, `changed_paths` [{path, status, sha256|deleted, index}], `config_paths` [{path, sha256|missing}], `excluded_paths` [declarados], `fingerprint_after`}, **`command`** {argv mascarado, cwd relativo ao toplevel}, **`selection`** (string livre: filtro/caminhos), **`obligations`** [{**`id`** (mesmo ID da linha da matriz; é o que #34 referencia), `required_gate`: `local`|`hosted`|null, `relevant_paths`: [glob]}], `openspec_change`, **`runner`** {python, os, hostname-hash, ferramentas declaradas via `--tool name=version`, nomes de env permitidos}, **`started_at`**, **`finished_at`**, **`exit_code`** (null se interrompido), **`status`** (`running`|`passed`|`failed`|`interrupted`), `counts` {tests, failures, errors, skipped, source: `junit`|`declared`|`none`}, **`artifacts`** [{name, role: `log`|`report`, sha256, bytes, state: `present`|`missing`}], `hosted` {url, run_id (= id `ci_run` de #32), head, clean: bool} (kind hosted), `correlation` {run_id, issue_url, stage, worker_id} (opcional; definido e mantido por esta mudança — #32 não o altera), `producer` (**provisório e não validado**: null ou ausente nesta versão — ver D9), `extensions` {} (genérico, namespaced, preservado; nada atribuído nesta mudança).
 Leitores ignoram e preservam chaves desconhecidas; mudança incompatível exige `v2`.
 
-### D3. Fingerprint
-`sha256` sobre JSON canônico de: HEAD; para cada caminho em `git status --porcelain=v1 -z --untracked-files=all` (rastreados alterados + não rastreados não ignorados), `sha256` do conteúdo atual ou `deleted`; para cada `--config PATH` declarado (pode ser ignorado pelo Git), `sha256` ou `missing`. Ordenado por caminho. Capturado antes e depois de `record`; divergência → `status_note: concurrent_change` e verificação `ambiguous`. Custo proporcional ao diff, não à árvore inteira.
-Comparação no `verify`: recalcula o fingerprint do candidato; se igual → corresponde. Se diferente, caminhos divergentes = `git diff --name-only <head_registro> <HEAD_candidato>` ∪ caminhos sujos de qualquer lado cujo hash difira ∪ configs com hash diferente.
-Alternativa rejeitada: `git stash create`/árvore temporária — escreve objetos no repositório e não cobre configs ignoradas.
+### D3. Fingerprint (camada sobre #35)
+Base: `code_state(checkout, exclude_paths=saídas_declaradas, include_ignored=configs_declaradas)` de #35 — `head`, digest versionado e entradas por caminho incluindo índice; gerados conhecidos classificados por `is_known_generated` ficam fora do digest. `exclude_paths` recebe globs relativos das saídas declaradas (`--report`, `--artifact`, `--output-dir`); `include_ignored` recebe caminhos/globs relativos das configurações ignoradas declaradas, além das configurações rastreadas já incluídas pelo Git. Camada de evidência: `sha256` sobre JSON canônico de {`FINGERPRINT_VERSION`, `CodeState.digest`, lista ordenada de (`--config PATH`, `sha256|missing`)} — o hash explícito detecta também desaparecimento de configuração e é deliberadamente redundante quando #35 já a incluiu. Configuração declarada não pode ser excluída como saída. Persistir os dois `CodeState.to_json()` (ou suas entradas equivalentes) para comparar paths em outro runtime. Capturado antes e depois de `record` com as mesmas exclusões; divergência → `status_note: concurrent_change` e verificação `ambiguous`. Saídas declaradas e gerados conhecidos **nunca** causam `ambiguous` por si. Custo proporcional ao diff.
+Comparação no `verify`: recalcula a camada no candidato com as exclusões/configurações do registro; se igual → corresponde. Se diferente, usar `drift_report(baseline, current, checkout=…)` de #35 para HEAD e entradas completas (inclusive `index`) e unir com configs cujo hash explícito diferir. Não comparar somente hash do arquivo da working tree: blob/modo/stage no índice podem mudar sem mudança no conteúdo atual.
+Alternativas rejeitadas: fingerprint próprio (duplicaria #35, ruling R1); `git stash create` (escreve objetos e não cobre configs ignoradas).
 
 ### D4. Armazenamento e transporte
-- Local: `$(git rev-parse --git-common-dir)/my-ai-skills/evidence/<evidence_id>/{manifest.json,artifacts/…}`, comum a todas as worktrees do clone (T1 mesmo host). Nunca dentro da árvore de trabalho; nada é commitado.
+- Local: `$(git rev-parse --git-common-dir)/ai-workflow/evidence/<evidence_id>/{manifest.json,artifacts/…}` (namespace `ai-workflow/` de WORKTREES.md, também usado por #35), comum a todas as worktrees do clone (T1 mesmo host). Nunca dentro da árvore de trabalho; nada é commitado.
 - Outro runtime: `export` gera `<evidence_id>.tar.gz` (manifesto + artefatos + `SHA256SUMS`); `import` valida membros (sem caminhos absolutos, `..` ou links) e checksums antes de gravar no armazenamento local. O orquestrador transporta o pacote pelo meio já autorizado do runtime (cópia para a sessão seguinte); o helper não envia logs a terceiros.
 - GitHub: `publish --issue|--pr URL` grava só o manifesto (sem logs) num comentário oculto `<!-- my-ai-skills-test-evidence:v1 -->` por `evidence_id` (atualiza se existir, como `workflow-event`); `verify --from-github URL` lê o manifesto e, sem artefatos locais, resulta `metadata_only`. Escopo de escrita idêntico ao já usado por `workflow-event`. Limite: manifesto > 60 000 bytes é rejeitado para publicação.
 Alternativas rejeitadas: refs Git customizadas no `origin` (efeito remoto novo, retenção difícil); gist (exposição por URL); commit no branch (polui PR).
@@ -54,27 +57,28 @@ Logs e relatórios ficam apenas locais/no pacote. argv mascarado para `--*token*
 ### D6. Estados de verificação (ordem de precedência)
 1. Manifesto ilegível/campos obrigatórios ausentes/schema desconhecido → `incomplete`.
 2. `fingerprint != fingerprint_after` → `ambiguous`.
-3. `status: interrupted` ou `exit_code` null → `incomplete`.
-4. `kind: hosted` para obrigação `required_gate` → `not_applicable` (AC5).
-5. Fingerprint ≠ candidato → `stale` com `changed_paths` e impacto por obrigação (`affected`/`unaffected`); obrigação `required_gate` é sempre `affected`.
-6. Artefato `missing` ou ausente localmente/checksum divergente → `incomplete` (se veio do GitHub sem artefatos → `metadata_only`).
-7. Caso contrário → `verified`, com `result` = `passed` se `exit_code == 0`, senão `failed` (prova verificada de falha).
+3. `status: running|interrupted` ou `exit_code` null → `incomplete` (uma execução ainda em curso nunca passa).
+4. Gate `required_gate: local` atendido por registro `kind: hosted` → `not_applicable` (AC5; hospedado nunca satisfaz gate local). Gate `hosted` com registro `kind: local` → `not_applicable`.
+5. Registro `kind: local` com fingerprint ≠ candidato → `stale` com `changed_paths` e impacto por obrigação (`affected`/`unaffected`); obrigação com `required_gate` (qualquer tipo) é sempre `affected`. Registro `kind: hosted` com `hosted.head` ≠ SHA do candidato, candidato com `CodeState.entries` não vazio, ou `hosted.clean` falso → `stale`; com `head` = SHA do candidato limpo → segue para 6/7 (pode ser `verified` e satisfazer gate `hosted`, R8). Cabe ao registro hospedado comprovar URL/run_id/head/status da execução na origem confiável do projeto, não apenas aceitar uma afirmação digitada; se não for possível conferir origem/status, `metadata_only`, não PASS.
+6. Artefato local `missing` ou ausente/checksum divergente → `incomplete` (se veio do GitHub sem artefatos locais → `metadata_only`). Para hosted, que não contém log local por design, a confirmação da execução hospedada na origem substitui a exigência de log local; comentário com somente metadados hospedados sem confirmação da origem é `metadata_only`.
+7. Caso contrário → `verified`, com `result` = `passed` se `exit_code == 0`, senão `failed` (prova verificada de falha; só `verified` + `passed` satisfaz gate).
 Cada estado inclui `reasons[]` e `recovery` {obligations, action: `rerun`|`import_bundle`|`restore_artifact`}.
 
 ### D7. Invalidação por obrigação (T4)
-`relevant_paths` declarados por obrigação no `record` (`--obligation T2:scripts/**,tests/test_x.py`). Interseção com caminhos divergentes → `affected`. Sem declaração → `affected` (conservador). `unaffected` é informativo: a decisão de reuso continua das regras de `pr-audit`/`post-pr-audit` (nunca reutilizar através de mudanças de runtime/build/dependência/teste relevantes) e o gate final obrigatório sempre roda no candidato final.
+`relevant_paths` declarados por obrigação no `record` (`--obligation T2:scripts/**,tests/test_x.py`). Interseção com caminhos divergentes → `affected`. Sem declaração → `affected` (conservador). Um registro local divergente continua `stale` como um todo, inclusive quando uma obrigação é classificada `unaffected` (informativo, **não** `verified`); a decisão de reuso continua das regras de `pr-audit`/`post-pr-audit` (nunca reutilizar através de mudanças de runtime/build/dependência/teste relevantes) e o gate final obrigatório sempre roda no candidato final. Se mudança de HEAD não puder ser atribuída com segurança a paths, classificar `affected`.
 
 ### D8. Integração ao workflow (prosa)
-- TEST_STRATEGY: coluna `Evidence` na matriz (`evidence_id` + estado); seção curta "Evidence handoff" com estados, transporte, retenção e precedência dos gates.
-- apply-issue: registrar as execuções focais e a suíte final via `workflow-evidence record`, exportar/publicar conforme o runtime, listar IDs no handoff.
+- TEST_STRATEGY: coluna `Evidence` na matriz (`evidence_id` + estado); nova seção "Evidence handoff" **depois de "Review and stop"** (R9) com estados, transporte, retenção, sensível e precedência de gates `local|hosted`.
+- `templates/pull-request.md` (seção Validation): uma linha por obrigação `PASS|FAIL|NOT RUN: <obligation> — evidence:<id> (<verify state>)`; #34 acrescenta depois o bloco opcional `attempt-log`.
+- apply-issue (parágrafo "Before commit…", R9): registrar as execuções focais e a suíte final via `workflow-evidence record`, exportar/publicar conforme o runtime, listar IDs no handoff. A posse do checkout e o `verify`/`checkpoint` de #35 continuam obrigatórios para comandos com efeitos; a prova não substitui reserva de escrita.
 - prepare-pr / pr-audit / post-pr-audit: `workflow-evidence verify` no candidato; reportar estado por obrigação; `metadata_only`/`incomplete`/`ambiguous`/`not_applicable` = não verificado; reexecutar apenas obrigações em `recovery`.
 - address-pr-review: após correção, verificar e reexecutar só o afetado.
-- milestone-orchestrator: transportar `evidence_id`/pacote no handoff do worker; `workflow-event --evidence evidence:<id>`.
-- update-ai-workflow: incluir `workflow_evidence.py` como arquivo companheiro.
+- milestone-orchestrator (seção "Durable handoff", R9): transportar `evidence_id`/pacote no handoff do worker; `workflow-event --evidence evidence:<id>`.
+- update-ai-workflow: incluir `workflow_evidence.py` e `worktree_registry.py` como companheiros obrigatórios de `workflow-evidence`.
 - Quando o helper não estiver instalado, manter o comportamento atual em prosa e marcar a prova como não verificada pelo helper (sem bloquear projetos que não o instalaram).
 
 ### D9. Fronteira M2T (contract-handoff design-review)
-O registro M2T (#12) ainda não existe nem tem schema congelado. Esta mudança não lê nem mapeia campos M2T. `producer` fica reservado com a forma mínima `{name, schema, record_ref, digest}` que o adaptador futuro preencherá após `CONTRACT FROZEN`; até lá vale null. O follow-up (adaptador M2T + teste de contrato) fica CONTRACT_BLOCKED em M2T #12. Requisitos do consumidor que o produtor precisa cobrir (insumo para M2T #12, não contrato):
+O registro M2T (#12) ainda não existe nem tem schema congelado. Esta mudança não lê nem mapeia campos M2T. `producer` é **provisório e não validado**: a forma sugerida `{name, schema, record_ref, digest}` é só um marcador para o adaptador futuro e pode mudar após `CONTRACT FROZEN`; nesta versão MUST ser null ou ausente, e o helper não o valida nem o interpreta. O follow-up (adaptador M2T + teste de contrato) fica CONTRACT_BLOCKED em M2T #12. Requisitos do consumidor que o produtor precisa cobrir (insumo para M2T #12, não contrato):
 
 | Cenário do consumidor | Operação/campos necessários do produtor | Estado/erro | Ponto de validação | Evidência / lacuna |
 |---|---|---|---|---|
@@ -86,52 +90,57 @@ O registro M2T (#12) ainda não existe nem tem schema congelado. Esta mudança n
 Resultado: `CONTRACT GAP — integração nativa M2T` (apenas esse cenário). Caminho genérico não depende do produtor: `CONTRACT DESIGN READY` não se aplica porque não há contrato a consumir nesta mudança.
 
 ### D10. Retrocompatibilidade de métricas
-`workflow-event` acrescenta o padrão `^evidence:ev-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$` à validação de `--evidence`; nada mais muda em `workflow_metrics.py`/`workflow-report` (strings continuam strings, `schema_version` continua 1). Edição de uma linha para minimizar conflito com #32.
+Esta mudança é dona da allowlist de `--evidence` (R4): URL `https://github.com/…`, SHA, ou `EVIDENCE_REF_PATTERN = ^evidence:ev-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$` (constante nomeada em `workflow-event`); qualquer outro valor é rejeitado. #32 pode mover os validadores para `workflow_metrics.py` mantendo a semântica; `test_event_accepts_evidence_reference_and_rejects_path` guarda a regra, e o esquema tipado de `--log-ref` (#32) não amplia `--evidence`. A linha `sys.dont_write_bytecode = True` de #35 em `workflow-event` é preservada. Nada mais muda em `workflow_metrics.py`/`workflow-report` (strings continuam strings, `schema_version` continua 1).
 
 ## Matriz requisito → código → teste (TEST_STRATEGY)
 
 | ID | Critério de aceite / risco | Código | Camada | Teste (novo/existente) |
 |---|---|---|---|---|
 | T1 | AC1: outra sessão/diretório verifica sem repetir teste | armazenamento comum, `export`/`import`, `verify` | Fixture helper (Git temporário + `git worktree add`; segundo clone) | novo `test_record_verified_from_other_worktree`, `test_bundle_import_in_other_clone` |
-| T2 | AC2: mesmo HEAD, diff diferente; mudança posterior de código | `code_fingerprint`, `verify` | Unit/helper | novo `test_same_head_different_diff_is_stale`, `test_later_commit_is_stale`, `test_ignored_config_change_is_stale` |
+| T2 | AC2: mesmo HEAD, diff diferente; mudança posterior de código ou do índice | `code_state`/`drift_report` (#35) + camada, `verify` | Unit/helper | novo `test_same_head_different_diff_is_stale`, `test_later_commit_is_stale`, `test_ignored_config_change_is_stale`, `test_staged_index_change_is_stale` |
 | T2b | AC2: mudança concorrente | fingerprint antes/depois | Helper (comando que altera arquivo) | novo `test_concurrent_change_is_ambiguous` |
+| T2c | Falso `ambiguous` por saída própria/gerados | exclusões D3 | Helper (comando grava JUnit e `__pycache__` na árvore) | novo `test_in_tree_report_not_ambiguous` |
+| R3b | ID emitido antes da execução | `record` | Helper (comando que espera sinal) | novo `test_evidence_id_emitted_before_command_runs` |
 | T3 | AC4: log ausente / checksum divergente / relatório ausente / interrompido | `verify` estados | Unit/helper | novo `test_missing_log_incomplete`, `test_tampered_bundle_incomplete`, `test_missing_report_incomplete`, `test_interrupted_incomplete` |
 | T3b | AC4: só metadados | `publish`, `verify --from-github` | Helper com `gh` falso | novo `test_published_metadata_only_without_logs` (também prova ausência de log no comentário e idempotência) |
 | T4 | Reexecução justificada só da obrigação afetada; gates respeitados | invalidação D7, `required_gate` | Simulação de handoff | novo `test_change_affects_only_one_obligation`, `test_required_gate_always_affected` |
 | AC3 | Revisor liga prova a requisito e seleção | `obligations`, `list --obligation` | Helper | novo `test_list_by_obligation_shows_selection`; `test_record_requires_obligation` |
-| AC5 | Histórico/CI não substitui gate local | `register-hosted`, D6 regra 4 | Unit | novo `test_hosted_result_not_applicable_for_required_gate` |
+| AC5 | Histórico/CI não substitui gate local | `register-hosted`, D6 regra 4 | Unit | novo `test_hosted_result_not_applicable_for_local_gate` |
+| R8 | Gate hospedado exige SHA exato do candidato limpo e confirmação na origem | D6 regras 4-6 | Unit com `gh` falso | novo `test_hosted_exact_sha_satisfies_hosted_gate`, `test_hosted_other_sha_stale_for_hosted_gate`, `test_hosted_unconfirmed_is_metadata_only` (gate local já coberto em AC5) |
+| R6 | Helper não grava bytecode | `sys.dont_write_bytecode` | Subprocesso | existente de #35 `test_helpers_do_not_write_bytecode` descobre automaticamente o novo helper em `sync-plugin`; confirmar que `workflow-evidence --help` foi coberto |
 | T5 | AC6: formato anterior de métricas legível | `workflow-event` regex | Testes de métricas | existente `test_parse_hidden_run_record`, `test_event_cli_updates_one_github_comment_for_a_run` reutilizados; novo `test_legacy_record_report_unchanged`, `test_event_accepts_evidence_reference_and_rejects_path` |
 | R1 | Sensível: segredo em argv, env | mascaramento D5 | Unit | novo `test_secret_argv_masked`, `test_env_values_not_recorded` |
 | R2 | Pacote malicioso (path traversal) | `import` | Unit | novo `test_import_rejects_path_traversal` |
-| R3 | Extensões preservadas (#32/#34) | load/export | Unit | novo `test_unknown_extensions_preserved` |
+| R3 | Extensões genéricas preservadas | load/export | Unit | novo `test_unknown_extensions_preserved` |
 | R4 | Exit code propagado / registro em falha | `record` | Helper | novo `test_failing_command_recorded_and_exit_propagated`, `test_junit_counts_extracted` |
 | R5 | Retenção explícita | `prune` | Helper | novo `test_prune_dry_run_by_default` |
-| AC6b | Distribuição sincronizada | `scripts/sync-plugin` | Check de pacote | `scripts/sync-plugin` + `git diff --exit-code` após regenerar; `test -x plugins/my-ai-skills/scripts/workflow-evidence` |
+| AC6b | Distribuição sincronizada | `scripts/sync-plugin` | Check de pacote | `scripts/sync-plugin` + verificar diff só dos gerados esperados; segunda execução sem diff adicional; `test -x plugins/my-ai-skills/scripts/workflow-evidence`; `test -f plugins/my-ai-skills/scripts/worktree_registry.py` |
 
-Comandos: foco `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_workflow_evidence -v`; gate final `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests`; `openspec validate issue-31-test-evidence-handoff --strict`. Pré-requisitos: Python 3.10+, `git` ≥ 2.25 (worktree); sem serviços externos; `gh` sempre falso nos testes.
+Comandos: foco `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_workflow_evidence -v`; gate final `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests`; `openspec validate issue-31-test-evidence-handoff --strict`. Pré-requisitos: #35 mergeado em `main` (fornece `scripts/worktree_registry.py` e `test_helpers_do_not_write_bytecode`); Python 3.10+, `git` ≥ 2.25 (worktree); sem serviços externos; `gh` sempre falso nos testes.
 
 ## Arquivos esperados
 
 Novos: `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `tests/test_workflow_evidence.py`.
-Alterados: `scripts/workflow-event`, `scripts/sync-plugin`, `tests/test_workflow_metrics.py`, `protocol/TEST_STRATEGY.md`, `protocol/AI_WORKFLOW.md`, `skills/apply-issue/SKILL.md`, `skills/prepare-pr/SKILL.md`, `skills/pr-audit/SKILL.md`, `skills/post-pr-audit/SKILL.md`, `skills/address-pr-review/SKILL.md`, `skills/milestone-orchestrator/SKILL.md`, `skills/update-ai-workflow/SKILL.md`, `README.md`, `README.en.md`.
-Gerados por `scripts/sync-plugin` (não editar à mão): `skills/*/references/TEST_STRATEGY.md`, `skills/*/references/AI_WORKFLOW.md`, `plugins/my-ai-skills/**` (inclui `scripts/workflow-evidence`, `scripts/workflow_evidence.py`).
+Alterados: `scripts/workflow-event`, `scripts/sync-plugin`, `tests/test_workflow_metrics.py`, `templates/pull-request.md`, `protocol/TEST_STRATEGY.md`, `protocol/AI_WORKFLOW.md`, `skills/apply-issue/SKILL.md`, `skills/prepare-pr/SKILL.md`, `skills/pr-audit/SKILL.md`, `skills/post-pr-audit/SKILL.md`, `skills/address-pr-review/SKILL.md`, `skills/milestone-orchestrator/SKILL.md`, `skills/update-ai-workflow/SKILL.md`, `README.md`, `README.en.md`. O teste de #35 `test_helpers_do_not_write_bytecode` cobre automaticamente os helpers adicionados à lista de distribuição; editá-lo só se a implementação mergeada não mantiver essa descoberta.
+Gerados por `scripts/sync-plugin` (não editar à mão): `skills/*/references/TEST_STRATEGY.md`, `skills/*/references/AI_WORKFLOW.md`, `skills/prepare-pr/references/pull-request.md`, `plugins/my-ai-skills/**` (inclui `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py`).
 Closeout OpenSpec: `openspec/changes/archive/*-issue-31-test-evidence-handoff/**`, `openspec/specs/test-evidence/spec.md`, `openspec/specs/workflow-metrics/spec.md`.
-Fora: `scripts/workflow_metrics.py` e `scripts/workflow-report` não devem mudar.
+Fora: `scripts/workflow_metrics.py`, `scripts/workflow-report` e `scripts/worktree_registry.py` (propriedade de #35) não devem mudar.
 
 ## Risks / Trade-offs
 
 - [Outro runtime sem acesso ao diretório Git comum nem pacote] → estado `metadata_only` explícito, recuperação = importar pacote ou reexecutar a obrigação; nunca aprovação implícita.
 - [Custo de hash em diffs grandes] → só caminhos alterados e configs declaradas; sem cópia da árvore.
 - [Mascaramento incompleto de segredos] → logs nunca publicados; argv mascarado por padrões conhecidos; documentação proíbe segredos em argv.
-- [`unaffected` usado para pular reexecução indevida] → informativo; `required_gate` sempre `affected`; regras de reuso de `pr-audit`/`post-pr-audit` prevalecem.
-- [Conflito com #32 em `workflow-event`] → alteração de uma linha de validação; #32 deve rebasear e manter o padrão `evidence:`.
+- [`unaffected` usado para pular reexecução indevida] → informativo; obrigações com `required_gate` sempre `affected`; regras de reuso de `pr-audit`/`post-pr-audit` prevalecem.
+- [Conflito com #32 em `workflow-event`] → só a constante `EVIDENCE_REF_PATTERN` e a validação; #32 rebaseia e mantém a semântica (R4).
 - [Conflito com #33 em `TEST_STRATEGY.md`] → coluna da matriz + seção própria "Evidence handoff"; #33 altera seções de planejamento/retomada.
-- [Bifurcação por #34] → #34 usa `extensions.attempts` / `correlation`; não cria outro formato.
-- [Fingerprint duplicado por #35] → #35 deve importar `code_fingerprint` de `workflow_evidence.py`.
+- [Bifurcação por #34] → #34 mantém o raciocínio de retry só no bloco `attempt-log` e referencia a prova por `evidence:<id>` + ID de obrigação; não lê nem grava o manifesto (R2).
+- [API de #35 diferente da aprovada em `75b8740`] → dependência rígida em #35 mergeado; confirmar `code_state`/`drift_report`/`FINGERPRINT_VERSION`/`is_known_generated` e entradas do índice no código real; se não forem entregues, parar e revisar o plano (não reimplementar o fingerprint).
+- [Saídas não declaradas dentro da árvore] → continuam podendo gerar `ambiguous` (conservador); documentação orienta declarar `--report/--artifact/--output-dir`.
 
 ## Migration Plan
 
-Aditivo: registros de run antigos continuam válidos; projetos sem o novo helper seguem o comportamento em prosa. Rollback: remover o helper e a linha de validação; registros locais em `.git/my-ai-skills/evidence` podem ser apagados com `prune` sem afetar o repositório.
+Aditivo: registros de run antigos continuam válidos; projetos sem o novo helper seguem o comportamento em prosa. Rollback: remover o helper e a linha de validação; registros locais em `<git-common-dir>/ai-workflow/evidence` podem ser apagados com `prune` sem afetar o repositório.
 
 ## Open Questions
 
