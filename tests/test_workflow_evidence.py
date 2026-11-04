@@ -245,6 +245,27 @@ class EvidenceTests(unittest.TestCase):
                          (3, "verified", "pending"))
         self.assertEqual(result["recovery"]["obligations"], ["T1"])
 
+    def test_untyped_local_evidence_is_not_a_required_gate_on_dirty_or_clean_head(self):
+        for dirty in (True, False):
+            with self.subTest(dirty=dirty):
+                if dirty:
+                    (self.repo / "a.py").write_text("dirty")
+                else:
+                    (self.repo / "a.py").write_text("a\n")
+                evidence_id, _ = self.record()
+                status, result = self.verify(evidence_id)
+                self.assertEqual((status, result["state"], result["result"]), (3, "verified", "passed"))
+                self.assertEqual(result["obligations"][0]["gate"], "not_required")
+                self.assertEqual(result["reasons"], ["no_required_gate"])
+                self.assertEqual(result["recovery"]["obligations"], [])
+                self.assertIn("gates: T1=not_required", self.cli("verify", evidence_id).stdout)
+
+    def test_typed_local_gate_satisfied_only_on_clean_head(self):
+        evidence_id, _ = self.record("--required-gate", "local")
+        status, result = self.verify(evidence_id)
+        self.assertEqual((status, result["state"], result["result"], result["obligations"][0]["gate"]),
+                         (0, "verified", "passed", "satisfied"))
+
     def test_record_verified_from_other_worktree(self):
         evidence_id, _ = self.record()
         other = Path(self.temp.name) / "other"
@@ -253,13 +274,35 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["state"], "verified")
 
     def test_bundle_import_in_other_clone(self):
-        evidence_id, _ = self.record()
+        evidence_id, _ = self.record("--required-gate", "local")
         package = Path(self.temp.name) / "bundle.tar.gz"
         export_bundle(self.repo, evidence_id, package)
         clone = Path(self.temp.name) / "clone"
         subprocess.run(["git", "clone", "-q", str(self.repo), str(clone)], check=True)
+        subprocess.run(["git", "-C", str(clone), "remote", "set-url", "origin",
+                        "https://github.com/example/repo.git"], check=True)
         self.assertEqual(import_bundle(clone, package), evidence_id)
         self.assertEqual(self.cli("verify", evidence_id, "--format", "json", repo=clone).returncode, 0)
+
+    def test_import_export_import_regenerates_single_checksum_file(self):
+        evidence_id, _ = self.record("--required-gate", "local")
+        first = Path(self.temp.name) / "first.tar.gz"
+        export_bundle(self.repo, evidence_id, first)
+        second_clone = Path(self.temp.name) / "second-clone"
+        third_clone = Path(self.temp.name) / "third-clone"
+        for clone in (second_clone, third_clone):
+            subprocess.run(["git", "clone", "-q", str(self.repo), str(clone)], check=True)
+            subprocess.run(["git", "-C", str(clone), "remote", "set-url", "origin",
+                            "https://github.com/example/repo.git"], check=True)
+        self.assertEqual(import_bundle(second_clone, first), evidence_id)
+        second = Path(self.temp.name) / "second.tar.gz"
+        export_bundle(second_clone, evidence_id, second)
+        with tarfile.open(second, "r:gz") as bundle:
+            names = bundle.getnames()
+            self.assertEqual(names.count("SHA256SUMS"), 1)
+            self.assertNotIn("SHA256SUMS", bundle.extractfile("SHA256SUMS").read().decode())
+        self.assertEqual(import_bundle(third_clone, second), evidence_id)
+        self.assertEqual(self.cli("verify", evidence_id, "--format", "json", repo=third_clone).returncode, 0)
 
     def test_tampered_bundle_incomplete(self):
         evidence_id, _ = self.record()
@@ -464,8 +507,8 @@ class EvidenceTests(unittest.TestCase):
         save_manifest(record_dir(self.repo, projection["evidence_id"]), hosted)
         cli = self.cli("verify", projection["evidence_id"], "--format", "json", env=env)
         self.assertEqual(cli.returncode, 3, cli.stderr)
-        self.assertEqual(json.loads(cli.stdout)["obligations"][0]["gate"], "pending")
-        self.assertEqual(json.loads(cli.stdout)["recovery"]["obligations"], ["T1"])
+        self.assertEqual(json.loads(cli.stdout)["obligations"][0]["gate"], "not_required")
+        self.assertEqual(json.loads(cli.stdout)["reasons"], ["no_required_gate"])
 
     def test_published_hosted_unconfirmed_metadata_only(self):
         with patch("workflow_evidence.gh", side_effect=ValueError("unavailable")):

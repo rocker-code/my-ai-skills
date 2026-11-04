@@ -658,15 +658,21 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
             result["reasons"] = ["hosted_gate_binding_unconfirmed"]
     result["state"] = "verified"
     result["result"] = result["result"] or ("passed" if manifest.get("exit_code") == 0 else "failed")
-    result["obligations"] = [{"id": o["id"], "impact": "unaffected", "gate": "satisfied" if
-                              result["result"] == "passed" and (kind != "hosted" or
-                              bindings.get(o["id"], False)) and (o.get("required_gate") != "local" or
-                              not code.get("dirty") and not state.entries) else "pending"} for o in obs]
+    result["obligations"] = [{"id": o["id"], "impact": "unaffected",
+                              "gate": "not_required" if o.get("required_gate") is None else
+                              ("satisfied" if result["result"] == "passed" and
+                               (kind != "hosted" or bindings.get(o["id"], False)) and
+                               (o.get("required_gate") != "local" or
+                                not code.get("dirty") and not state.entries) else "pending")}
+                             for o in obs]
     if not obs:
         result["reasons"] = ["no_obligations_to_verify"]
+    elif not any(o.get("required_gate") for o in obs):
+        result["reasons"] = ["no_required_gate"]
     elif any(o["gate"] == "pending" for o in result["obligations"]) and not result["reasons"]:
         result["reasons"] = ["required_gate_not_satisfied"]
-    if result["result"] == "passed" and result["obligations"] and all(o["gate"] == "satisfied" for o in result["obligations"]):
+    if result["result"] == "passed" and result["obligations"] and all(
+            o["gate"] in ("satisfied", "not_required") for o in result["obligations"]):
         result["recovery"]["obligations"] = []
     return result
 
@@ -674,7 +680,10 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
 def export_bundle(checkout, evidence_id, destination):
     directory = record_dir(checkout, evidence_id)
     load_manifest(directory)
-    members = sorted(p for p in directory.rglob("*") if p.is_file())
+    # An imported directory contains the old checksum file. It describes the
+    # previous archive, not a member of the newly generated one.
+    members = sorted(p for p in directory.rglob("*")
+                     if p.is_file() and p.relative_to(directory).as_posix() != "SHA256SUMS")
     if any(p.is_symlink() for p in directory.rglob("*")):
         raise ValueError("symlink in evidence directory")
     sums = "".join(f"{hash_file(p)}  {p.relative_to(directory)}\n" for p in members).encode()

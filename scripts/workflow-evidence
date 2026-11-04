@@ -37,7 +37,7 @@ def main():
     hosted.add_argument("--required-gate", choices=("local", "hosted"))
     hosted.add_argument("--selection", default="")
 
-    verify = commands.add_parser("verify", help="compare evidence against current checkout")
+    verify = commands.add_parser("verify", help="inspect execution; exit 0 only for a satisfied required gate")
     verify.add_argument("evidence_id")
     verify.add_argument("--from-github", metavar="ISSUE_OR_PR_URL")
     verify.add_argument("--base-branch", help="trusted protected target branch for hosted gate binding")
@@ -89,9 +89,14 @@ def main():
         if args.format == "json":
             print(json.dumps(result, ensure_ascii=True))
         else:
-            print(f"{args.evidence_id}: {result['state']} / {result['result'] or 'unknown'} — {', '.join(result['reasons'])}")
-        return 0 if (result["state"] == "verified" and result["result"] == "passed" and result["obligations"]
-                     and all(o["gate"] == "satisfied" for o in result["obligations"])) else 3
+            gates = ", ".join(f"{o['id']}={o['gate']}" for o in result["obligations"])
+            print(f"{args.evidence_id}: {result['state']} / {result['result'] or 'unknown'} — "
+                  f"{', '.join(result['reasons'])}; gates: {gates or 'none'}")
+        # A producer's untyped obligation is inspectable evidence, not a
+        # consumer-approved required gate (even when the execution passed).
+        return 0 if (result["state"] == "verified" and result["result"] == "passed"
+                     and any(o["gate"] == "satisfied" for o in result["obligations"])
+                     and all(o["gate"] in ("satisfied", "not_required") for o in result["obligations"])) else 3
     if args.action == "show":
         print(json.dumps(load_manifest(record_dir(checkout, args.evidence_id)), indent=2))
     elif args.action == "export":
