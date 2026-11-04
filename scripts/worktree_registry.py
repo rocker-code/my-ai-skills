@@ -222,9 +222,95 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _invalid(label):
+    raise ReservationError(7, f"Invalid registry {label}; preserve it for review")
+
+
+def _fields(obj, types, label):
+    """Missing fields are recoverable; present fields must have their declared shape."""
+    if not isinstance(obj, dict):
+        _invalid(label)
+    for key, valid in types.items():
+        if key in obj and not valid(obj[key]):
+            _invalid(f"{label} {key}")
+
+
+def _optional(valid):
+    return lambda value: value is None or valid(value)
+
+
+def _string(value):
+    return isinstance(value, str)
+
+
+def _number(value):
+    return type(value) is int and value >= 0
+
+
+def _hex(value):
+    return _string(value) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _digest(value):
+    return _string(value) and re.fullmatch(r"sha256:v1:[0-9a-f]{64}", value) is not None
+
+
+def _oid(value):
+    return _string(value) and re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", value) is not None
+
+
+def _owner_shape(owner):
+    _fields(owner, {"session": _string, "run": _string, "stage": _string,
+                    "host": _string, "pid": _optional(lambda v: _number(v) and v > 0)}, "owner")
+
+
+def _baseline_shape(baseline):
+    _fields(baseline, {"head": _optional(_oid), "digest": _digest,
+                       "entries": lambda v: isinstance(v, list),
+                       "generated": lambda v: isinstance(v, list) and all(_string(p) for p in v)}, "baseline")
+    seen = set()
+    for item in baseline.get("entries", []):
+        _fields(item, {"path": lambda v: _string(v) and bool(v) and not Path(v).is_absolute() and
+                       not any(part in (".", "..") for part in Path(v).parts),
+                       "status": lambda v: _string(v) and len(v) == 2,
+                       "sha256": _optional(_hex), "deleted": lambda v: type(v) is bool,
+                       "index": lambda v: isinstance(v, list)}, "baseline entry")
+        if "path" in item:
+            if item["path"] in seen:
+                _invalid("duplicate baseline path")
+            seen.add(item["path"])
+        for index in item.get("index", []):
+            _fields(index, {"stage": lambda v: _number(v) and v <= 3,
+                            "mode": lambda v: _string(v) and re.fullmatch(r"[0-7]{6}", v) is not None,
+                            "oid": _oid}, "baseline index entry")
+    # The digest is the canonical v1 payload, not a claim supplied by the registry.
+    if _baseline_complete(baseline):
+        payload = {"v": FINGERPRINT_VERSION, "head": baseline["head"], "entries": baseline["entries"]}
+        if baseline["digest"] != "sha256:v1:" + _hash(_canonical(payload)):
+            _invalid("baseline digest")
+
+
+def _baseline_complete(baseline):
+    return ({"head", "digest", "entries"} <= baseline.keys() and
+            all(isinstance(item, dict) and {"path", "status", "sha256", "deleted", "index"} <= item.keys()
+                and all(isinstance(index, dict) and {"stage", "mode", "oid"} <= index.keys()
+                        for index in item["index"]) for item in baseline["entries"]))
+
+
+def _owner_complete(owner):
+    return owner is None or {"session", "run", "stage", "host", "pid"} <= owner.keys()
+
+
+def _drift_complete(report):
+    return report is None or {"head_before", "head_after", "commits", "diverged", "committed_paths", "changed_paths", "detected_at"} <= report.keys()
+
+
 def _validate_registry(reg, repo):
-    if not isinstance(reg, dict) or reg.get("schema_version") != 1 or not isinstance(reg.get("entries"), list):
+    if (not isinstance(reg, dict) or type(reg.get("schema_version")) is not int or
+            reg["schema_version"] != 1 or not isinstance(reg.get("entries"), list)):
         raise ReservationError(7, "Invalid registry schema; review and reconstruct ownership explicitly")
+    if "repository" in reg:
+        _fields(reg["repository"], {"remote": _string, "common_dir": _string}, "repository identity")
     if reg.get("repository") != repo:
         raise ReservationError(6, "Registry repository identity differs")
     active_paths = set()
@@ -234,10 +320,39 @@ def _validate_registry(reg, repo):
             raise ReservationError(7, "Invalid registry entry")
         if not Path(entry["path"]).is_absolute():
             raise ReservationError(7, "Registry path must be absolute")
-        if "state" in entry and entry["state"] not in STATES:
-            raise ReservationError(7, "Invalid registry lifecycle state")
-        if "history" in entry and not isinstance(entry["history"], list):
-            raise ReservationError(7, "Invalid registry entry history")
+        _fields(entry, {"issue_url": _optional(_string), "branch": _string,
+                        "base_sha": _optional(_string), "proposal_sha": _optional(_string),
+                        "pr_url": _optional(_string), "pr_head": _optional(_string),
+                        "sandbox": _optional(_string), "state": lambda v: _string(v) and v in STATES,
+                        "last_verified_at": _optional(_string), "owner": _optional(lambda v: isinstance(v, dict)),
+                        "baseline": _optional(lambda v: isinstance(v, dict)),
+                        "drift": _optional(lambda v: isinstance(v, dict)),
+                        "recovery": _optional(lambda v: isinstance(v, dict)),
+                        "verified_for": _optional(lambda v: isinstance(v, dict)),
+                        "history": lambda v: isinstance(v, list)}, "entry")
+        if isinstance(entry.get("owner"), dict):
+            _owner_shape(entry["owner"])
+        if isinstance(entry.get("baseline"), dict):
+            _baseline_shape(entry["baseline"])
+        if isinstance(entry.get("verified_for"), dict):
+            _fields(entry["verified_for"], {"session": _string, "digest": _digest}, "verification receipt")
+        if isinstance(entry.get("drift"), dict):
+            _fields(entry["drift"], {"head_before": _optional(_string), "head_after": _optional(_string),
+                                     "commits": lambda v: isinstance(v, list) and all(_string(p) for p in v),
+                                     "diverged": lambda v: type(v) is bool,
+                                     "committed_paths": lambda v: isinstance(v, list) and all(_string(p) for p in v),
+                                     "changed_paths": lambda v: isinstance(v, list) and all(_string(p) for p in v),
+                                     "detected_at": _string}, "drift report")
+        if isinstance(entry.get("recovery"), dict):
+            recovery = entry["recovery"]
+            _fields(recovery, {"reason": _string, "expected_owner": _string,
+                               "prior_owner": _optional(lambda v: isinstance(v, dict)),
+                               "inventory_digest": _digest}, "recovery record")
+            if isinstance(recovery.get("prior_owner"), dict):
+                _owner_shape(recovery["prior_owner"])
+        for record in entry.get("history", []):
+            _fields(record, {"at": _string, "event": _string, "session": _optional(_string),
+                             "detail": lambda v: isinstance(v, dict)}, "entry history record")
         if entry.get("state") != "REMOVED":
             if entry["path"] in active_paths:
                 raise ReservationError(7, "Duplicate active checkout entries in registry")
@@ -247,28 +362,14 @@ def _validate_registry(reg, repo):
                 if issue in active_issues:
                     raise ReservationError(7, "Duplicate active issue entries in registry")
                 active_issues.add(issue)
-        baseline = entry.get("baseline")
-        if baseline is not None and (not isinstance(baseline, dict) or
-                                     ("entries" in baseline and not isinstance(baseline["entries"], list)) or
-                                     ("head" in baseline and baseline["head"] is not None and not isinstance(baseline["head"], str)) or
-                                     ("digest" in baseline and (not isinstance(baseline["digest"], str) or
-                                      not re.fullmatch(r"sha256:v1:[0-9a-f]{64}", baseline["digest"])))):
-            raise ReservationError(7, "Invalid registry baseline")
-        receipt = entry.get("verified_for")
-        if receipt is not None and (not isinstance(receipt, dict) or
-                                    ("session" in receipt and not isinstance(receipt["session"], str)) or
-                                    ("digest" in receipt and not isinstance(receipt["digest"], str))):
-            raise ReservationError(7, "Invalid registry verification receipt")
-        if entry.get("recovery") is not None and not isinstance(entry["recovery"], dict):
-            raise ReservationError(7, "Invalid registry recovery record")
         if "generated_provenance" in entry:
             provenance = entry["generated_provenance"]
             if not isinstance(provenance, list) or len(provenance) > PROVENANCE_LIMIT or any(
                 not isinstance(item, dict) or set(item) != {"path", "sha256", "dev", "ino", "uid", "mode", "size", "mtime_ns", "ctime_ns", "execution_ref", "session", "run"}
-                or not isinstance(item.get("path"), str)
+                or not isinstance(item.get("path"), str) or not item["path"]
                 or Path(item["path"]).is_absolute() or ".." in Path(item["path"]).parts
-                or not re.fullmatch(r"[0-9a-f]{64}", str(item.get("sha256")))
-                or any(not isinstance(item[key], int) or item[key] < 0 for key in ("dev", "ino", "uid", "mode", "size", "mtime_ns", "ctime_ns"))
+                or not _hex(item.get("sha256"))
+                or any(not _number(item[key]) for key in ("dev", "ino", "uid", "mode", "size", "mtime_ns", "ctime_ns"))
                 or any(not isinstance(item[key], str) for key in ("execution_ref", "session", "run"))
                 for item in provenance
             ):
@@ -280,18 +381,24 @@ def _complete(entry):
     keys = {"path", "issue_url", "branch", "base_sha", "owner", "state", "baseline", "drift", "recovery", "last_verified_at", "verified_for", "history"}
     if not keys <= entry.keys() or entry["state"] not in STATES or not isinstance(entry["history"], list):
         return False
-    if entry["state"] == "RESERVED":
-        return entry["baseline"] is None and isinstance(entry["owner"], dict)
-    if entry["state"] != "REMOVED" and not isinstance(entry["baseline"], dict):
+    if entry["state"] == "RESERVED" and (entry["baseline"] is not None or
+        not isinstance(entry["owner"], dict)):
         return False
-    if entry["baseline"] is not None and not {"head", "digest", "entries"} <= entry["baseline"].keys():
+    if entry["state"] not in ("RESERVED", "REMOVED") and not isinstance(entry["baseline"], dict):
         return False
-    if entry["state"] == "RECOVERY_REQUIRED" and not isinstance(entry.get("recovery"), dict):
+    if entry["baseline"] is not None and not _baseline_complete(entry["baseline"]):
+        return False
+    if entry["state"] == "RECOVERY_REQUIRED" and entry.get("recovery") is None:
+        return False
+    if entry.get("recovery") is not None and (
+        not {"reason", "expected_owner", "prior_owner", "inventory_digest"} <= entry["recovery"].keys()):
+        return False
+    if not _drift_complete(entry["drift"]):
         return False
     if entry.get("verified_for") is not None and not {"session", "digest"} <= entry["verified_for"].keys():
         return False
     owner = entry["owner"]
-    return owner is None or (isinstance(owner, dict) and {"session", "run", "stage", "host", "pid"} <= owner.keys())
+    return _owner_complete(owner)
 
 
 @contextlib.contextmanager

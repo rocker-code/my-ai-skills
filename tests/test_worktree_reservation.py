@@ -47,6 +47,7 @@ class ReservationTest(unittest.TestCase):
         argv += args
         result = subprocess.run(argv, capture_output=True, text=True)
         self.assertEqual(result.returncode, code, f"{argv}\n{result.stdout}\n{result.stderr}")
+        self.assertNotIn("Traceback", result.stderr)
         return json.loads(result.stdout) if result.stdout.startswith("{") else result
 
     @property
@@ -162,6 +163,94 @@ class ReservationTest(unittest.TestCase):
         result = self.cli("reconcile", session=None, run=None, code=7)
         self.assertIn("history", result["error"])
         self.assertEqual(result["exit_code"], 7)
+        self.assertEqual(self.registry.read_bytes(), prior)
+
+    def test_malformed_baseline_entry_fails_closed_with_or_without_drift(self):
+        self.planned()
+        original = json.loads(self.registry.read_text())
+        for drifted in (False, True):
+            with self.subTest(drifted=drifted):
+                reg = json.loads(json.dumps(original))
+                reg["entries"][0]["baseline"]["entries"] = [None]
+                self.registry.write_text(json.dumps(reg))
+                if drifted:
+                    (self.path / "file.txt").write_text("external")
+                prior = self.registry.read_bytes()
+                for command, options in (("verify", ()), ("status", ()), ("reconcile", ())):
+                    result = self.cli(command, *options, code=7)
+                    self.assertEqual(result["exit_code"], 7)
+                    self.assertIn("baseline", result["error"])
+                    self.assertEqual(self.registry.read_bytes(), prior)
+                (self.path / "file.txt").write_text("first")
+
+    def test_present_malformed_registry_fields_never_recover_or_grant(self):
+        self.planned()
+        original = json.loads(self.registry.read_text())
+        # Each case changes one present field; absent fields remain recoverable.
+        cases = (
+            ("entry path", lambda e: e.update(issue_url=[])),
+            ("branch", lambda e: e.update(branch=0)),
+            ("owner session", lambda e: e["owner"].update(session=[])),
+            ("owner pid", lambda e: e["owner"].update(pid="123")),
+            ("receipt", lambda e: e.update(verified_for={"session": [], "digest": "x"})),
+            ("history item", lambda e: e["history"].append(None)),
+            ("history detail", lambda e: e["history"][0].update(detail=[])),
+            ("recovery", lambda e: e.update(recovery={"prior_owner": []})),
+            ("drift", lambda e: e.update(drift={"changed_paths": [None]})),
+            ("provenance", lambda e: e.update(generated_provenance=[None])),
+            ("baseline path", lambda e: e["baseline"]["entries"].append({"path": None})),
+            ("baseline status", lambda e: e["baseline"]["entries"].append({"status": 1})),
+            ("baseline hash", lambda e: e["baseline"]["entries"].append({"sha256": []})),
+            ("baseline deleted", lambda e: e["baseline"]["entries"].append({"deleted": "false"})),
+            ("baseline index list", lambda e: e["baseline"]["entries"].append({"index": None})),
+            ("baseline index item", lambda e: e["baseline"]["entries"].append({"index": [None]})),
+            ("baseline index stage", lambda e: e["baseline"]["entries"].append({"index": [{"stage": True}]})),
+        )
+        for label, corrupt in cases:
+            with self.subTest(field=label):
+                reg = json.loads(json.dumps(original))
+                corrupt(reg["entries"][0])
+                self.registry.write_text(json.dumps(reg))
+                prior = self.registry.read_bytes()
+                for command in ("verify", "reconcile"):
+                    result = self.cli(command, code=7)
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(result["exit_code"], 7)
+                    self.assertEqual(self.registry.read_bytes(), prior)
+
+    def test_baseline_digest_must_match_canonical_v1_payload(self):
+        self.planned()
+        reg = json.loads(self.registry.read_text())
+        baseline = reg["entries"][0]["baseline"]
+        baseline["entries"].append({"path": "invented.txt", "status": "??", "sha256": "0" * 64,
+                                    "deleted": False, "index": []})
+        self.registry.write_text(json.dumps(reg))
+        prior = self.registry.read_bytes()
+        for command in ("verify", "reconcile", "status"):
+            result = self.cli(command, code=7)
+            self.assertIn("baseline digest", result["error"])
+            self.assertEqual(self.registry.read_bytes(), prior)
+
+    def test_missing_nested_baseline_field_requires_recovery(self):
+        self.planned()
+        (self.path / "partial.txt").write_text("work to preserve")
+        reg = json.loads(self.registry.read_text())
+        reg["entries"][0]["baseline"]["entries"].append({"path": "partial.txt", "status": "??"})
+        self.registry.write_text(json.dumps(reg))
+        self.cli("verify", code=3)
+        self.assertEqual(self.cli("reconcile")["state"], "RECOVERY_REQUIRED")
+        self.assertEqual((self.path / "partial.txt").read_text(), "work to preserve")
+
+    def test_incomplete_planned_owner_cannot_be_granted(self):
+        target = self.root / "planned"
+        opts = ("--planned", "--repository", str(self.primary), "--issue", self.issue, "--branch", "feature")
+        self.cli("reserve", *opts, path=target)
+        reg = json.loads(self.registry.read_text())
+        del reg["entries"][0]["owner"]["session"]
+        self.registry.write_text(json.dumps(reg))
+        prior = self.registry.read_bytes()
+        result = self.cli("reserve", *opts, path=target, code=3)
+        self.assertIn("Incomplete", result["error"])
         self.assertEqual(self.registry.read_bytes(), prior)
 
     def test_lock_timeout_leaves_registry_unchanged(self):

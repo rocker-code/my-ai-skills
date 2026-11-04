@@ -148,7 +148,7 @@ def execute(args, reg, path, ident, current):
         return {"entries": [response(e, path=e["path"]) for e in reg["entries"]]}
     if command == "status":
         result = response(entry, current, path=checkout, extra={"inventory": _inventory(args.repository or checkout, checkout, ident, current) if current else None})
-        if entry and entry.get("baseline") and current and not entry.get("drift"):
+        if entry and __import__("worktree_registry")._complete(entry) and entry.get("baseline") and current and not entry.get("drift"):
             result["drift"] = drift_report(entry["baseline"], current, checkout=checkout)
         return result
     if command == "reserve" and args.planned:
@@ -160,6 +160,8 @@ def execute(args, reg, path, ident, current):
         if f"branch refs/heads/{args.branch}" in worktrees:
             raise ReservationError(6, "Planned branch already checked out", entry=entry)
         if entry:
+            if not __import__("worktree_registry")._complete(entry):
+                raise ReservationError(3, "Incomplete registry entry; run reconcile before takeover", entry=entry)
             if (entry["state"] == "RESERVED" and entry["owner"]["session"] == args.session
                     and entry["owner"]["run"] == args.run and entry["issue_url"] == args.issue
                     and entry["branch"] == args.branch):
@@ -176,6 +178,8 @@ def execute(args, reg, path, ident, current):
         reg["entries"].append(entry)
         return response(entry, path=checkout)
     if command == "cancel-planned":
+        if entry and not __import__("worktree_registry")._complete(entry):
+            raise ReservationError(3, "Incomplete registry entry; run reconcile before cancellation", entry=entry)
         if not entry or entry["state"] != "RESERVED" or entry["owner"]["session"] != args.session or entry["owner"]["run"] != args.run:
             raise ReservationError(3, "Not the exact owner of a planned reservation", entry=entry)
         inventory = _inventory(args.repository, checkout)
@@ -236,9 +240,7 @@ def execute(args, reg, path, ident, current):
         if command == "reconcile" and not args.takeover and not args.accept_external:
             entry, inventory = _recover(reg, checkout, ident, current, entry, anchor=args.repository)
             return response(entry, current, path=checkout, extra={"inventory": inventory})
-        if command == "mark-removed" and entry:
-            pass
-        elif entry and not __import__("worktree_registry")._complete(entry):
+        if entry and not __import__("worktree_registry")._complete(entry):
             raise ReservationError(3, "Incomplete registry entry; run reconcile first", entry=entry)
         else:
             raise ReservationError(3, "No reservation for checkout; run reconcile", entry=entry)
@@ -354,6 +356,8 @@ def track(args, reg, path, ident, current):
     entry = next((e for e in reg["entries"] if e["path"] == checkout and e.get("state") != "REMOVED"), None)
     if not entry:
         raise ReservationError(3, "No reservation")
+    if not __import__("worktree_registry")._complete(entry):
+        raise ReservationError(3, "Incomplete registry entry; run reconcile first", entry=entry)
     _check_identity(entry, ident, checkout)
     _check_owner(entry, args.session)
     _drift(entry, current, checkout)
@@ -439,6 +443,8 @@ def main():
                 entry = next((e for e in reg["entries"] if e["path"] == checkout and e.get("state") != "REMOVED"), None)
                 if not entry:
                     raise ReservationError(3, "Reservation disappeared during cooperative command")
+                if not __import__("worktree_registry")._complete(entry):
+                    raise ReservationError(3, "Incomplete registry entry; run reconcile first", entry=entry)
                 actual = identity(checkout)
                 _check_identity(entry, actual, checkout)
                 if actual["remote"] != ident["remote"] or actual["common_dir"] != ident["common_dir"]:
