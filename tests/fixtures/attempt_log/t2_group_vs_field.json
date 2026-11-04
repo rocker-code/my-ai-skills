@@ -1,0 +1,1 @@
+{"attempt_log":1,"entries":[{"kind":"contract_claim","seq":1,"definition_ref":"etc/adminhtml/system.xml#L40","cited_path":"section/general/group/locale","field_path":"section/general/group/locale/field/timezone","scope":"store","observation":"group shows showInStore=0","inference":"field cannot be store scoped","confirmation":"read group","inheritance_proof":null}]}
