@@ -36,7 +36,7 @@ Ver proposal.md — Why. Estado atual relevante (main @ `5825a9c`):
 **Composição (normativa):**
 - O bloco cercado ` ```attempt-log ` é o **único** registro de raciocínio de tentativas; vive na seção Validation existente do PR/handoff do Apply. #31 não reserva `extensions.attempts`; nada de #34 entra no manifesto.
 - `evidence[]` de uma tentativa executada = `evidence:<evidence_id>` quando `workflow-evidence` (#31) registrou a execução; caso contrário URL GitHub ou SHA. `path#Lnn` relativo ao repositório é permitido **apenas** em citações de código/definição (`definition_ref`, `runtime_proof`, `inheritance_proof`), nunca como evidência de execução. Caminhos absolutos ou temporários (`/tmp/…`, `/home/…`) nunca são evidência (`E_EVIDENCE_REF`).
-- `obligation` usa o mesmo ID da linha da matriz que #31 grava em `obligations[].id`.
+- `obligation` usa o mesmo ID da linha da matriz de validação, compartilhado com o handoff de #31; o verificador não consulta os campos do manifesto.
 - O verificador trata referências como strings com validação sintática; nunca abre manifestos nem resolve `evidence:` (independente do schema de #31 e de M2T).
 
 **Alternativa rejeitada:** gravar tentativas em `extensions` do manifesto ou resolver `evidence:` dentro do verificador — acoplaria #34 ao schema de #31 e fragmentaria um grupo entre manifestos.
@@ -50,9 +50,10 @@ Bloco cercado ` ```attempt-log ` contendo JSON, dentro da seção **Validation**
 ```json
 {"attempt_log": 1, "entries": [
   {"kind": "attempt", "seq": 1, "obligation": "R2/T1", "target": "AddressTest::testSave",
-   "signature": "validator read country=US", "class": "fixture/isolation",
-   "hypothesis": "override de config no escopo default", "change": "n/a (primeira)",
-   "change_target": "fixture", "result": "fail", "evidence": ["evidence:ev-20261104T120000Z-1a2b3c4d"]},
+    "signature": "validator read country=US", "class": "fixture/isolation",
+    "hypothesis": "override de config no escopo default", "change": "n/a (primeira)",
+    "change_target": "fixture", "observed_effect": "validador ainda lê US no escopo default",
+    "result": "fail", "evidence": ["evidence:ev-20261104T120000Z-1a2b3c4d"]},
   {"kind": "diagnosis", "seq": 3, "group": {"obligation": "R2/T1", "signature": "validator read country=US"},
    "class": "fixture/isolation", "checked": {"phase": "...", "scope": "...", "lifecycle": "...", "consumers": "..."},
    "runtime_proof": ["evidence:ev-20261104T121500Z-5e6f7a8b", "app/code/Vendor/Module/etc/config.xml#L12"], "simplest_alternative": "fixture BR", "choice_rationale": "...",
@@ -61,14 +62,16 @@ Bloco cercado ` ```attempt-log ` contendo JSON, dentro da seção **Validation**
    "cited_path": "section/general/group/locale", "field_path": "section/general/group/locale/field/timezone",
    "scope": "store", "observation": "...", "inference": "...", "confirmation": "...", "inheritance_proof": null},
   {"kind": "replan", "seq": 6, "basis": ["claim:5"], "openspec_revision": "requested"},
-  {"kind": "blocker", "seq": 7, "type": "technical|capacity|business_decision", "wait_reason": "environment", "evidence": ["https://github.com/owner/repo/actions/runs/123"],
-   "diagnosis": "seq:3", "options": [], "impact": "", "researchable": false},
-  {"kind": "resolution", "group": {...}, "outcome": "passed|blocked", "via_seq": 4}
+   {"kind": "blocker", "seq": 7, "group": {"obligation": "R2/T1", "signature": "validator read country=US"}, "type": "technical", "wait_reason": "environment", "evidence": ["https://github.com/owner/repo/actions/runs/123"],
+    "diagnosis": "seq:3", "options": [], "impact": "", "researchable": false},
+   {"kind": "resolution", "group": {...}, "outcome": "blocked", "via_seq": 7}
 ]}
 ```
 
 - **Chave de grupo** = (`obligation`, `normalize(signature)`), onde `normalize` = minúsculas + espaços colapsados. `target`, comando e filtro ficam fora da chave (requisito de agrupamento). O executor escreve a assinatura sem partes voláteis (timestamps, caminhos temporários); o verificador não tenta inferir isso.
-- **Progresso**: `result` ∈ {`pass`, `fail`}. Uma tentativa `fail` com assinatura diferente na mesma obrigação abre novo grupo (progresso do anterior).
+- **Progresso**: `result` ∈ {`pass`, `fail`}. Uma tentativa `fail` com assinatura diferente na mesma obrigação abre novo grupo (progresso do anterior). `observed_effect` registra o efeito factual da execução (incluindo valor/escopo/fase de runtime quando relevantes), não o ID nem a interpretação da evidência. Para comparar textos, `normalize` = minúsculas + espaços colapsados; diferenças apenas de caixa/espaço não constituem mudança. Uma nova referência não prova efeito diferente por si só.
+- **Hipótese repetida**: a tentativa após a primeira do grupo tem `change` e `observed_effect`. Quando `normalize(hypothesis)` já apareceu no grupo, exige `observed_change` não vazio descrevendo concretamente a diferença entre a observação anterior dessa hipótese e a atual, `evidence[]` com ao menos uma referência ainda não usada no grupo que sustente essa diferença e `normalize(observed_effect)` diferente do efeito daquela tentativa anterior. A mesma assinatura de grupo pode coexistir com efeito observado diferente (por exemplo, valor ou fase efetiva mudou sem eliminar a falha), portanto não rejeitar só porque a assinatura é igual. Se assinatura e efeito permanecerem iguais, hipótese repetida não passa apenas por novo ID; hipótese genuinamente nova pode ser testada mesmo com o mesmo efeito. O verificador confere presença, refs e comparação normalizada; o revisor confere que o resumo e a evidência realmente sustentam a mudança, sem abrir o manifesto de #31.
+- **Terceira tentativa**: contar `fail` anteriores na mesma chave sem progresso. Assim que houver duas, qualquer tentativa seguinte nessa chave exige `diagnosis` completa com `seq` menor, inclusive uma tentativa declarada `pass`; o resultado posterior não cura retroativamente a falta de diagnóstico.
 - `class` ∈ classes de `apply-issue`, agrupadas nas três de TEST_STRATEGY (aplicação: `implementation`; assertion/fixture: `assertion/contract`, `fixture/isolation`; ambiente/setup: `environment/bootstrap`) + `intermittent`.
 - `change_target` ∈ {`application`, `test`, `fixture`, `environment`, `plan`, `none`}.
 
@@ -77,19 +80,19 @@ Bloco cercado ` ```attempt-log ` contendo JSON, dentro da seção **Validation**
 | Código | Regra | Critério/Cenário |
 |---|---|---|
 | `E_FIELD` | campo obrigatório ausente/vazio | registro |
-| `E_EVIDENCE_REF` | item de `evidence[]` (tentativa/bloqueio) que não seja `evidence:ev-<8 dígitos>T<6 dígitos>Z-<hex8>` (padrão da allowlist de #31), URL `https://github.com/…` ou SHA hex 7–64; caminho absoluto/temporário ou `path#Lnn` como evidência de execução é rejeitado. Citações (`definition_ref`, `runtime_proof`, `inheritance_proof`) aceitam também `path#Lnn` relativo, nunca absoluto; `basis` de replan usa `claim:<seq>` ou referência nova de evidência | registro, R2 |
-| `E_RETRY_LIMIT` | 3ª+ tentativa `fail`-group sem `diagnosis` de `seq` menor após a 2ª falha | AC1, T1 |
-| `E_NO_NEW_EVIDENCE` | tentativa ≥2 com `hypothesis` normalizada já usada no grupo e sem `evidence` nova (refs não vistas antes no grupo) | AC2 |
+| `E_EVIDENCE_REF` | item de `evidence[]` (tentativa/bloqueio) que não seja `evidence:ev-<8 dígitos>T<6 dígitos>Z-<hex8>` (referência portável de #31, sem consulta ao schema), URL `https://github.com/…` ou SHA hex 7–64; caminho absoluto/temporário ou `path#Lnn` como evidência de execução é rejeitado. Citações (`definition_ref`, `runtime_proof`, `inheritance_proof`) aceitam também `path#Lnn` relativo, nunca absoluto; `basis` de replan usa `claim:<seq>` ou referência nova de evidência | registro, R2 |
+| `E_RETRY_LIMIT` | qualquer tentativa posterior a duas falhas equivalentes no grupo sem `diagnosis` completa de `seq` anterior à tentativa e posterior à 2ª falha, independentemente de `result=pass|fail` | AC1, T1 |
+| `E_NO_NEW_EVIDENCE` | hipótese repetida sem `observed_change` concreto, sem ref nova que sustente a mudança ou com `observed_effect` normalizado igual ao da tentativa anterior dessa hipótese; ID novo isolado não basta, efeito de fato diferente com ref nova pode passar mesmo sob assinatura igual | AC2 |
 | `E_DIAG_INCOMPLETE` | diagnóstico sem `checked.{phase,scope,lifecycle,consumers}`, `runtime_proof` (ou `"not_applicable: <motivo>"`), `simplest_alternative`, `choice_rationale`, `next_hypothesis` | T1 |
 | `E_FOCUS` | grupo classificado `environment/bootstrap` e tentativa seguinte com `change_target=application` sem diagnóstico que reclassifique | T4 |
 | `E_CLAIM_ANCESTOR` | `cited_path` é ancestral estrito de `field_path` e `inheritance_proof` vazio | AC3, T2 |
 | `E_CLAIM_INCOMPLETE` | alegação sem `definition_ref`/`scope`/`observation`/`inference`/`confirmation` | AC3 |
 | `E_REPLAN_BASIS` | `replan` cujo `basis` não aponta alegação aceita nem evidência nova | AC4, T3 |
-| `E_UNRESOLVED` | (modo `--final`) grupo cuja última tentativa é `fail` sem `resolution` `blocked` válida | AC5 |
-| `E_WEAKENED` | `resolution.outcome` fora de {`passed`,`blocked`} (ex.: `skipped`, `assertion_relaxed`) ou `passed` sem tentativa `pass` referenciada | AC5 |
+| `E_UNRESOLVED` | (modo `--final`) grupo cuja última tentativa é `fail` sem `resolution` `blocked` válida; grupo continua não aprovado | AC5 |
+| `E_WEAKENED` | `resolution.outcome` fora de {`passed`,`blocked`} (ex.: `skipped`, `assertion_relaxed`), `passed` sem `via_seq` da última tentativa `pass` do grupo (um `pass` anterior não apaga falha posterior) ou `blocked` sem `blocker` válido do mesmo grupo referenciado por `via_seq` | AC5 |
 | `E_BLOCKER` | `type` inválido; `wait_reason` incompatível com o tipo (tabela R7); `business_decision` sem ≥2 `options` e `impact`, ou com `researchable=true`; `technical` sem `diagnosis`/`evidence`; `capacity` sem `missing_capability` | AC6, R7 |
 
-Saída: JSON `{ok, groups:[{key, attempts, status: open|resolved|blocked, replan_required}], violations:[{code, seq, message}], blocker_state}`; exit 0 se `ok`, 1 se violações, 2 para entrada malformada. `blocker_state` segue a tabela R7 (sem novos estados do orquestrador; enum de razões de espera pertence a #32):
+Saída: JSON `{valid, ready, groups:[{key, attempts, status: open|resolved|blocked, replan_required}], violations:[{code, seq, message}], blocker_state}`. `valid` significa apenas estrutura/regras corretas (`violations` vazio); `ready` no `--final` significa todas as obrigações aprovadas pela última tentativa `pass` do respectivo grupo com resolução `passed` referenciando essa tentativa, sem grupos pendentes, `blocked` nem replan pendente. Sem `--final`, `ready=null` e exit 0/1 seguem `valid`; com `--final`, exit 0 somente se `valid && ready`, 1 se violações **ou** bloqueio/replan válido porém não aprovado, 2 para entrada malformada. Um `resolution.blocked` com `via_seq` apontando `blocker` válido da mesma chave preserva `valid=true`, `status=blocked`, `ready=false` e exit 1; `prepare-pr` MUST NOT tratar esse exit como aprovação. `blocker_state` segue a tabela R7 (sem novos estados do orquestrador; enum de razões de espera pertence a #32):
 
 | Tipo (#34) | Estado do orquestrador | Razão de espera `workflow-event` |
 |---|---|---|
@@ -105,8 +108,8 @@ Saída: JSON `{ok, groups:[{key, attempts, status: open|resolved|blocked, replan
 ### D5 — Integração nas skills (sem nova etapa)
 
 - `TEST_STRATEGY.md`: estende apenas a seção "Implement and diagnose" (R9; #31 adiciona coluna Evidence e "Evidence handoff" após "Review and stop"; #33 insere pré-flight antes de "Choose the proving layer") com o formato, a regra de referências de D1, as regras e o comando; continua sendo a única fonte (bundled).
-- `apply-issue`: apenas o parágrafo "On failure…" (R9), registrar o bloco, rodar `attempt-log check` antes da 3ª tentativa e de declarar contradição/bloqueio; exigir prova de campo; reclassificar antes de mudar de camada.
-- `prepare-pr`/template: incluir o bloco opcional no Validation do PR, após as linhas de obrigação de #31, quando houver falha repetida e rodar `attempt-log check --final`; violação = `NOT READY FOR PR`.
+- `apply-issue`: apenas o parágrafo "On failure…" (R9), registrar o bloco, rodar `attempt-log check` antes de qualquer tentativa após duas falhas (inclusive a que se espera passar) e antes de declarar contradição/bloqueio; exigir prova de campo; reclassificar antes de mudar de camada.
+- `prepare-pr`/template: incluir o bloco opcional no Validation do PR, após as linhas de obrigação de #31, quando houver falha repetida e rodar `attempt-log check --final`; exit 1 por violação **ou bloqueio válido** = `NOT READY FOR PR`. Revisor distingue `valid` de `ready`, sem interpretar classificação de bloqueio como liberação.
 - `milestone-orchestrator`: apenas a linha "Exceptional states" (R9) — relato de bloqueio usa a classificação e a tabela R7 de estados/razões de espera; fatos pesquisáveis são investigados pelo worker.
 - `AI_WORKFLOW.md` linha de test coverage e READMEs: uma frase cada, em paridade.
 - `pr-audit`/`post-pr-audit`/`address-pr-review` recebem a regra via `references/TEST_STRATEGY.md` regenerado — sem edição direta.
@@ -116,13 +119,17 @@ Saída: JSON `{ok, groups:[{key, attempts, status: open|resolved|blocked, replan
 | Cenário | Critério/risco | Camada | Prova (nova/existente) |
 |---|---|---|---|
 | T1 override sem efeito ×2 → 3ª sem diagnóstico | AC1 | Unit (fixture de execução) | novo `test_t1_retry_limit_requires_diagnosis` + `t1_override_no_effect.json` |
+| T1 duas falhas → 3ª marcada `pass` sem diagnóstico; com diagnóstico anterior passa | AC1, vedar aprovação retroativa | Unit | novo `test_third_pass_still_requires_diagnosis` + caso positivo diagnosticado |
 | T1 com diagnóstico completo + hipótese nova (fixture BR) passa | AC1, AC2, alternativa simples | Unit | novo `test_t1_diagnosed_alternative_accepted` |
 | Comando/filtro renomeado mantém grupo | agrupamento | Unit | novo `test_grouping_ignores_command_and_target` |
 | Hipótese repetida sem evidência | AC2 | Unit | novo `test_repeated_hypothesis_rejected` |
+| Hipótese repetida, ref nova mas assinatura/efeito iguais; mudança real de efeito com resumo e ref nova | AC2, prova substantiva sem rejeição indiscriminada | Unit | novos `test_new_id_same_effect_rejected`, `test_repeated_hypothesis_changed_effect_accepted`, `test_observed_change_missing_or_uncited_rejected` |
 | T2 grupo × campo | AC3 | Unit (fixture de revisão) | novo `test_t2_group_vs_field_claim_rejected` + `t2_group_vs_field.json` |
 | T3 alegação aceita → replan | AC4 | Unit (simulação handoff) | novo `test_t3_replan_with_basis` / `test_replan_without_basis_rejected` |
 | T4 falha de serviço → muda app | foco | Unit (fixture de execução) | novo `test_t4_environment_focus` + `t4_service_before_phpunit.json` |
 | Grupo pendente no `--final`; resolução por skip | AC5 | Unit | novo `test_final_unresolved_not_approval`, `test_weakened_resolution_rejected` |
+| `passed` de tentativa anterior seguido de `fail` | AC5, sucesso não apaga falha posterior | Unit | novo `test_old_pass_cannot_resolve_last_fail` |
+| Bloqueio válido associado ao grupo no `--final` | AC5, estrutural ≠ pronto para PR | Unit + CLI subprocess | novo `test_valid_blocked_final_not_ready_exit_one` (`valid=true`, `ready=false`, `violations=[]`, `blocker_state` preservado) |
 | Bloqueios 3 tipos + pesquisável | AC6 | Unit | novo `test_blocker_classification` |
 | CLI exit codes e JSON | integração do helper | Integração leve (subprocess) | novo `test_cli_check_exit_codes` |
 | Referência absoluta/`/tmp` ou `path#Lnn` como evidência de execução | R2, #31 "Caminho /tmp … insuficiente" | Unit | novo `test_evidence_ref_rejects_paths` |
@@ -143,7 +150,7 @@ Arquivo OpenSpec: archive em `openspec/changes/archive/*-issue-34-retry-hypothes
 ## Risks / Trade-offs
 
 - [Assinatura escrita pelo agente pode variar artificialmente e reiniciar contagem] → `TEST_STRATEGY` exige assinatura = classe de erro + primeira mensagem relevante sem partes voláteis; revisor confere; normalização mínima evita falsos agrupamentos.
-- [Verificador estrutural não prova semântica do XML] → o T2 é detectado pela relação ancestral entre caminhos citados; a confirmação da leitura continua obrigatória em prosa e revisada.
+- [Verificador estrutural não prova semântica do XML nem veracidade da mudança observada] → T2 detectado pela relação ancestral entre caminhos citados; `observed_change` exige resumo, efeito normalizado diferente e ref nova, mas a confirmação da leitura/efeito e da ref continua obrigatória em revisão humana.
 - [Conflito textual com #31/#32/#33/#35 em arquivos compartilhados] → Apply por último (#35 → #31 → #32 → #33 → #34); seções disjuntas conforme R9; rebase e reconciliação textual antes de `/opsx-apply`; cópias só via `scripts/sync-plugin`.
 - [Burocracia em falhas triviais] → bloco só obrigatório com falha repetida; uma tentativa única não exige registro.
 - [`sync-plugin` reescreve todas as referências] → rodar após rebase final para não reverter mudanças de siblings.

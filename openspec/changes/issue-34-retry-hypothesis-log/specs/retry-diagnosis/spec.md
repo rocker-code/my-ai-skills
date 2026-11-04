@@ -7,7 +7,7 @@ Torna verificável o limite de tentativas sem progresso e o diagnóstico de bloq
 ## ADDED Requirements
 
 ### Requirement: Registro de tentativas no handoff existente
-O workflow SHALL registrar cada tentativa de correção de uma falha repetida num bloco curto do handoff/registro atual (seção de validação do handoff do Apply/PR), com alvo, obrigação, assinatura, classificação, hipótese, mudança desde a tentativa anterior, resultado e referências de evidência. O bloco MUST NOT exigir documento, etapa ou aprovação adicionais.
+O workflow SHALL registrar cada tentativa de correção de uma falha repetida num bloco curto do handoff/registro atual (seção de validação do handoff do Apply/PR), com alvo, obrigação, assinatura, classificação, hipótese, mudança desde a tentativa anterior, efeito observado, resultado e referências de evidência. O bloco MUST NOT exigir documento, etapa ou aprovação adicionais.
 Na seção Validation do PR, o bloco opcional SHALL seguir as linhas de obrigação existentes, sem reestruturá-las.
 
 #### Scenario: Falha repetida é registrada no handoff
@@ -38,7 +38,7 @@ Cada referência em `evidence[]` para uma tentativa executada SHALL ser `evidenc
 - **THEN** a referência é aceita sem que o verificador abra o manifesto
 
 ### Requirement: Composição sem duplicar o manifesto
-A obrigação SHALL usar o mesmo ID da linha da matriz registrado por #31 em `obligations[].id`. O bloco `attempt-log` SHALL ser o único registro do raciocínio de retry; nada é gravado em `extensions.attempts`. O verificador MUST NOT copiar nem ler campos do manifesto de evidência.
+A obrigação SHALL usar o mesmo ID da linha da matriz de validação no handoff de #31. O bloco `attempt-log` SHALL ser o único registro do raciocínio de retry; nada é gravado em `extensions.attempts`. O verificador MUST NOT copiar nem ler campos do manifesto de evidência.
 
 #### Scenario: Tentativas ligadas a uma obrigação
 - **WHEN** um grupo de tentativas cita a obrigação `R2/T1` e as execuções por suas referências portáveis
@@ -56,22 +56,42 @@ O workflow SHALL agrupar tentativas pela obrigação (requisito/cenário da matr
 - **THEN** a tentativa é contada como progresso do grupo anterior e inicia um novo grupo
 
 ### Requirement: Diagnóstico obrigatório após duas tentativas sem progresso
-Quando um grupo acumular duas tentativas falhas sem progresso, o workflow SHALL exigir um diagnóstico registrado antes de qualquer nova tentativa desse grupo, contendo classificação, verificação de fase/escopo/lifecycle/consumidores efetivos, prova de runtime ou justificativa de não aplicabilidade e a próxima hipótese.
+Depois de duas falhas sem progresso no mesmo grupo, o workflow SHALL exigir diagnóstico antes de qualquer nova tentativa, mesmo que ela declare `pass`. O diagnóstico SHALL registrar classificação, fase/escopo/lifecycle/consumidores efetivos, prova de runtime ou não aplicabilidade justificada e a próxima hipótese.
 
 #### Scenario: Terceira tentativa sem diagnóstico
 - **WHEN** um grupo tem duas tentativas falhas equivalentes e uma terceira tentativa é registrada sem diagnóstico anterior a ela
 - **THEN** o verificador reporta violação do limite de tentativas
+
+#### Scenario: Terceira tentativa declarada aprovada sem diagnóstico
+- **WHEN** um grupo acumula duas falhas e a terceira tentativa é marcada `pass` sem diagnóstico registrado entre a segunda e a terceira
+- **THEN** o verificador reporta a mesma violação e não aprova o handoff final
+
+#### Scenario: Terceira tentativa após diagnóstico
+- **WHEN** o diagnóstico completo é registrado depois da segunda falha e antes da terceira tentativa do mesmo grupo
+- **THEN** o limite de tentativas não é violado, independentemente de a terceira tentativa passar ou falhar
 
 #### Scenario: Override que não altera a configuração lida (T1)
 - **WHEN** duas tentativas aplicam overrides temporários e o validador continua lendo o mesmo valor
 - **THEN** o diagnóstico registrado aponta fase/escopo efetivo da configuração e a próxima tentativa testa uma hipótese diferente
 
 ### Requirement: Nova tentativa declara evidência ou hipótese nova
-Toda tentativa após a primeira de um grupo SHALL declarar a mudança realizada e uma evidência nova ou uma hipótese ainda não testada no grupo. Repetir uma hipótese já testada sem evidência nova MUST ser reportado como violação.
+Cada nova tentativa do grupo SHALL declarar a mudança realizada e hipótese inédita ou evidência nova substantiva. Se repetir hipótese, SHALL registrar `observed_change` concreto, `observed_effect` diferente do da tentativa anterior dessa hipótese após normalizar minúsculas/espaços e uma referência nova em `evidence[]` que sustente a mudança. O verificador SHALL comparar efeito e refs; a revisão SHALL confirmar o conteúdo citado sem ler o manifesto de execução.
 
 #### Scenario: Hipótese repetida sem evidência nova
 - **WHEN** uma tentativa repete a hipótese de uma tentativa anterior do mesmo grupo e não referencia evidência nova
 - **THEN** o verificador reporta violação
+
+#### Scenario: Novo ID sem mudança de observação
+- **WHEN** uma hipótese é repetida com referência nova, mas assinatura e efeito observado normalizados permanecem iguais aos da tentativa anterior dessa hipótese
+- **THEN** o verificador reporta violação mesmo com o ID novo; sucesso ou novo nome de arquivo não substitui mudança observada
+
+#### Scenario: Mudança observada não resumida ou não citada
+- **WHEN** uma hipótese é repetida com efeito observado diferente, mas sem resumo concreto da mudança ou sem referência nova que a sustente
+- **THEN** o verificador reporta violação
+
+#### Scenario: Mesma assinatura com efeito alterado
+- **WHEN** a hipótese e a assinatura de falha se repetem, mas o efeito observado muda de fato, é resumido e cita evidência nova
+- **THEN** a tentativa satisfaz a regra de evidência substantiva mesmo sob a mesma assinatura, sujeita à confirmação da citação e aos demais gates do grupo
 
 #### Scenario: Hipótese nova explícita
 - **WHEN** uma tentativa após o diagnóstico declara hipótese distinta das anteriores
@@ -118,15 +138,38 @@ O workflow SHALL acionar a revisão OpenSpec existente apenas quando uma alegaç
 - **THEN** o verificador rejeita o pedido
 
 ### Requirement: Limite de tentativas não vira aprovação
-O limite de tentativas SHALL disparar investigação e preservar a obrigação de corrigir e validar. Um grupo cuja última tentativa falhou MUST permanecer não resolvido, e uma resolução que pule teste, enfraqueça asserção ou declare sucesso sem tentativa aprovada MUST ser rejeitada.
+O limite de tentativas SHALL disparar investigação, não aprovação. Um grupo com última tentativa `fail` MUST permanecer não aprovado; `blocked` SHALL referenciar bloqueio válido do mesmo grupo. Resolução por skip, asserção enfraquecida ou `passed` sem referência à última tentativa `pass` do grupo MUST ser rejeitada.
 
 #### Scenario: Grupo pendente no handoff final
 - **WHEN** o handoff para `prepare-pr` contém um grupo cuja última tentativa falhou
-- **THEN** o verificador, no modo de handoff final, reporta o grupo como não resolvido e o resultado não é aprovação
+- **THEN** o verificador, no modo de handoff final, reporta o grupo como pendente ou bloqueado, nunca aprovado para PR
+
+#### Scenario: Bloqueio corretamente classificado no handoff final
+- **WHEN** um grupo com última tentativa falha tem resolução `blocked` referenciando um bloqueio válido do mesmo grupo
+- **THEN** `--final` retorna `valid=true`, `ready=false`, `status=blocked`, `blocker_state` correspondente, nenhuma violação e exit 1; `prepare-pr` não prossegue
+
+#### Scenario: Bloqueio de outro grupo não resolve a falha
+- **WHEN** uma resolução `blocked` aponta um bloqueio de obrigação ou assinatura diferente
+- **THEN** a resolução é inválida e não libera o handoff
+
+#### Scenario: Aprovação antiga seguida de falha
+- **WHEN** `passed` referencia uma tentativa `pass` anterior, mas a última tentativa do grupo falhou
+- **THEN** a resolução é inválida e o grupo não é aprovado
 
 #### Scenario: Resolução por enfraquecimento
 - **WHEN** um grupo é marcado resolvido por pular o teste ou enfraquecer a asserção
 - **THEN** o verificador rejeita a resolução
+
+### Requirement: Validade estrutural não é prontidão para PR
+O verificador SHALL emitir `valid` para estrutura/regras e `ready` para aprovação de todas as obrigações. No `--final`, grupo pendente, bloqueado ou replan pendente SHALL produzir `ready=false`, exit 1 e `NOT READY FOR PR`, mesmo com `valid=true`. Somente `valid=true && ready=true` SHALL retornar exit 0; entrada malformada retorna exit 2.
+
+#### Scenario: Bloqueio estruturalmente válido sem aprovação
+- **WHEN** um bloqueio bem formado mantém a obrigação não aprovada no modo `--final`
+- **THEN** `valid=true`, `ready=false`, `violations=[]`, estado/razão de espera preservados e exit 1
+
+#### Scenario: Handoff sem bloqueios nem pendências
+- **WHEN** todos os grupos têm tentativa `pass` e resolução `passed`, sem violações nem replan pendente
+- **THEN** `--final` retorna `valid=true`, `ready=true` e exit 0
 
 ### Requirement: Classificação de bloqueios
 Um bloqueio SHALL ser classificado como impedimento técnico, falta de capacidade ou decisão de negócio, com evidência, mapeando para estado e razão de espera existentes: técnico→`BLOCKED`/`environment`, `dependency` ou `external`; capacidade→`RESOURCE_QUEUED`/`runtime_capacity`; decisão→`NEEDS_INPUT`/`owner_input`. Decisão de negócio MUST trazer opções e impacto; fato pesquisável MUST NOT ser escalado.
