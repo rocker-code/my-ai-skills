@@ -17,6 +17,17 @@ O registro de eventos SHALL permitir associar run, issue, etapa e worker a um id
 - **WHEN** um evento informa identificador de execução com espaço, `?`, `=` ou `&`
 - **THEN** o comando falha com erro de validação e o registro não é alterado
 
+### Requirement: Fechamento preserva identidade da execução
+Uma abertura com execução tipada SHALL ser fechada somente por `stage-end` com a mesma dupla `(kind, id)` e o mesmo par etapa/worker. Um término sem execução SHALL fechar somente abertura sem execução, preservando o emparelhamento legado. Execuções tipadas do mesmo par MUST ter IDs distintos durante todo o run, inclusive após fechamento. Término divergente e abertura que reutilize um ID MUST falhar sem alterar o registro.
+
+#### Scenario: Término de outra execução recusado
+- **WHEN** a etapa/worker abre a execução A e recebe `stage-end` com execução B ou sem identificador
+- **THEN** o comando falha sem alterar o registro nem fechar A
+
+#### Scenario: ID de execução não é reutilizado
+- **WHEN** o mesmo par etapa/worker tenta iniciar outra execução com o mesmo `(kind, id)` no mesmo run
+- **THEN** o comando recusa a nova abertura sem alterar o registro
+
 ### Requirement: Fonte e horário da observação
 Toda observação SHALL registrar estado (`running`, `completed`, `failed`, `interrupted`, `unknown`), fonte, horário observado e horário de gravação. Um horário informado MUST ser ISO-8601 com fuso (`Z` ou offset), normalizado para UTC, não posterior ao horário de gravação além de uma tolerância curta e não anterior ao início do run; caso contrário o comando MUST falhar.
 
@@ -44,10 +55,10 @@ Um despacho assíncrono SHALL abrir a etapa do worker no horário do despacho e 
 
 #### Scenario: Worker retorna imediatamente e conclui depois
 - **WHEN** o worker é despachado às 10:00, a chamada retorna às 10:00:02 e o callback de término confirma conclusão às 10:30
-- **THEN** a etapa do worker tem 30 minutos de duração, o despacho e a conclusão ficam ligados ao mesmo identificador de execução, e nenhuma duração de 2 segundos é reportada como trabalho do worker
+- **THEN** a etapa do worker registra 30 minutos de trabalho, o despacho e a conclusão ficam ligados ao mesmo identificador de execução, e nenhuma duração de 2 segundos é reportada como trabalho do worker
 
 ### Requirement: Execução encerrada ou desconhecida é reconciliada
-Quando a observação confirmatória mais recente de uma etapa aberta indicar `completed`, `failed`, `interrupted` ou `unknown`, o trabalho registrado SHALL parar no horário dessa observação e a etapa MUST aparecer como pendente de reconciliação, nunca como ativa. Etapas sem nenhuma observação mantêm a medição até o relatório, marcadas como sem observação.
+Quando uma observação confirmatória correlacionada a uma incarnação de etapa indicar `completed`, `failed`, `interrupted` ou `unknown`, uma etapa ainda aberta SHALL aparecer como pendente de reconciliação, nunca como ativa. Uma observação posterior `running` da mesma incarnação MUST NOT reativá-la sem nova abertura. Etapas sem observação correlacionada SHALL manter a medição legada até o fechamento ou relatório, marcadas como sem observação.
 
 #### Scenario: Processo some sem relatório
 - **WHEN** uma etapa aberta recebe observação confirmatória `unknown` ou `interrupted` às 10:10 e o relatório é gerado às 11:00
@@ -56,6 +67,31 @@ Quando a observação confirmatória mais recente de uma etapa aberta indicar `c
 #### Scenario: Processo encerrado antes de novo anúncio
 - **WHEN** a observação confirmatória mais recente é `completed` mas a etapa ainda não foi encerrada
 - **THEN** o estado verificado não é `working` e o bloqueio exibido é reconciliação pendente
+
+### Requirement: Trabalho termina no horário terminal observado
+O trabalho de intervalo aberto ou fechado SHALL terminar na primeira observação terminal confirmatória correlacionada, ou antes se a etapa fechar primeiro. Seu fim efetivo SHALL ser o menor entre observação terminal, `stage-end` (se fechado) e horário do relatório (se aberto). A sobreposição de esperas usada para descontar trabalho SHALL respeitar esse fim. `elapsed_seconds` de etapa fechada SHALL continuar medindo o tempo de parede até o fechamento administrativo.
+
+#### Scenario: Fechamento tardio após callback terminal
+- **WHEN** a etapa inicia às 10:00, recebe callback confirmatório `completed` às 10:30 e `stage-end` é registrado às 10:40
+- **THEN** o trabalho da etapa é 30 minutos, inclusive após seu fechamento; `elapsed_seconds` pode mostrar 40 minutos de parede, e uma espera posterior a 10:30 não reduz o trabalho já encerrado
+
+### Requirement: Observações pertencem à incarnação da execução
+Cada abertura de etapa/worker SHALL ser uma incarnação distinta. Observação tipada SHALL confirmar somente a incarnação da mesma etapa, worker, tipo e ID; ausência de ID MUST NOT atuar como curinga para abertura tipada. Callback atrasado de outra execução MUST NOT alterar estado, duração, evidência incompleta, `last_confirmed`, `verified_at` ou próximo passo da incarnação atual, mesmo se chegar após seu início; MAY atualizar apenas a incarnação anterior identificável.
+
+#### Scenario: Callback de A chega após abertura de B no mesmo par
+- **WHEN** A e B usam a mesma etapa/worker com IDs distintos, A abre às 10:00 e fecha às 10:40, B inicia às 10:45 e um callback de A observado às 10:30 é gravado às 10:50
+- **THEN** a observação é atribuída somente a A; B mantém seu estado sem observação, sua duração, próximo passo e campos de última confirmação sem dados de A
+
+#### Scenario: Observação sem ID não confirma execução tipada
+- **WHEN** B está aberto com ID tipado e chega uma observação sem ID ou com ID não correspondente à execução de B
+- **THEN** B permanece sem confirmação, mesmo que a etapa e o worker coincidam
+
+### Requirement: Observação sem execução exige janela inequívoca
+Uma observação sem execução SHALL confirmar somente uma abertura sem execução da mesma etapa/worker cujo horário observado esteja entre a abertura e seu fechamento, sem ultrapassar a próxima abertura do par. Se não houver correspondência inequívoca, a observação SHALL permanecer histórica, sem alterar o estado ou a duração de nenhuma incarnação. Registros legados sem observações SHALL manter o emparelhamento e as métricas anteriores.
+
+#### Scenario: Horário efetivo não identifica uma única abertura sem ID
+- **WHEN** uma observação sem execução cai fora da janela de qualquer abertura sem execução ou em janela ambígua
+- **THEN** nenhuma incarnação recebe confirmação, e o evento permanece no histórico
 
 ### Requirement: Classificação de esperas
 O registro SHALL aceitar os motivos de espera `owner_input`, `dependency`, `ci`, `tests`, `review`, `environment`, `runtime_capacity`, `external` e `other`. Tempo em espera MUST ser excluído do trabalho da etapa e somado ao motivo correspondente; ao terminar a espera a etapa volta ao estado observado anterior, ou permanece sem confirmação quando não houver observação confirmatória.
