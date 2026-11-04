@@ -72,8 +72,9 @@ def correlate_observations(intervals: list[dict[str, Any]], events: list[dict[st
         for interval in pair:
             if interval["execution"] != event.get("execution") or at < interval["start"]:
                 continue
-            if interval["execution"]:
-                # A unique typed ID remains associated even after administrative close.
+            if interval["execution"] and (interval["closed_at"] is None or at <= interval["closed_at"]):
+                # Typed IDs remain unique, but a callback outside the execution's
+                # effective-time window cannot confirm it after administrative close.
                 candidates.append(interval)
             else:
                 later = [item["start"] for item in pair if item["start"] > interval["start"]]
@@ -144,7 +145,8 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
     ]
     for (stage, worker, reason), queue in wait_starts.items():
         while queue:
-            waits.append({"stage": stage, "worker_id": worker, "reason": reason, "start": queue.popleft(), "end": as_of})
+            waits.append({"stage": stage, "worker_id": worker, "reason": reason, "start": queue.popleft(),
+                          "end": min(as_of, run_finished) if run_finished else as_of})
 
     correlate_observations(intervals, events)
     for interval in intervals:
@@ -218,13 +220,20 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
     for item in intervals:
         if (item["execution"] or {}).get("kind") == "test_run":
             terminal = item["terminal"]
-            if terminal is None or terminal.get("report") != "present":
+            # Unknown/interrupted is a work cut-off, not a confirmed test
+            # outcome. A later confirming terminal observation can reconcile
+            # report availability without reviving the same work interval.
+            proven_report = any(e.get("source") in CONFIRMING_SOURCES
+                                and e.get("state") in {"completed", "failed"}
+                                and e.get("report") == "present" for e in item["observations"])
+            if not proven_report:
                 incomplete.append({"stage": item["stage"], "worker_id": item["worker_id"],
-                                   "execution": item["execution"], "reason": "missing_terminal" if terminal is None else "missing_report"})
-    if open_waits:
-        activity = f"waiting:{open_waits[-1]['reason']}"
-    elif record.get("finished_at"):
+                                   "execution": item["execution"],
+                                   "reason": "missing_terminal" if terminal is None or terminal["state"] in {"unknown", "interrupted"} else "missing_report"})
+    if record.get("finished_at"):
         activity = record.get("status", "completed")
+    elif open_waits:
+        activity = f"waiting:{open_waits[-1]['reason']}"
     elif current:
         activity = (current["terminal"]["state"] if current["terminal"] and current["terminal"]["state"] in {"unknown", "interrupted"}
                     else current["verified_state"])
@@ -240,7 +249,9 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
               "at": last.get("at")} if last else None)
     weak = next((e for e in reversed(relevant["observations"]) if e.get("source") not in CONFIRMING_SOURCES), None) if relevant else None
     next_action = next((e["next"] for e in reversed(linked_events) if e and e.get("next")), None)
-    blocker = open_waits[-1]["reason"] if open_waits else ("needs_reconciliation" if current and current["terminal"] else None)
+    blocker = (None if record.get("finished_at") else
+               open_waits[-1]["reason"] if open_waits else
+               "needs_reconciliation" if current and current["terminal"] else None)
     status_summary = {"current_stage": current_stage, "activity_state": activity, "last_confirmed": proof,
                       "insufficient_signal": {"state": weak.get("state"), "source": weak.get("source"), "at": weak.get("at")} if weak else None,
                       "blocker": blocker, "next_action": next_action,
