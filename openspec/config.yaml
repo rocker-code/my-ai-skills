@@ -1,0 +1,35 @@
+schema: spec-driven
+
+context: |
+  Language: pt-BR
+  All artifacts must be written in pt-BR.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+  Project: AI Engineering Workflow (rocker-code/my-ai-skills) — reusable agent
+  skills, shared protocol documents and helper scripts.
+  Sources of truth: skills/*/SKILL.md, protocol/*.md, scripts/, templates/.
+  plugins/my-ai-skills/ is a generated distribution; regenerate it with
+  scripts/sync-plugin instead of editing it by hand.
+  Tests: python3 -m unittest discover -s tests (plus targeted helper tests).
+  README.md (pt-BR) and README.en.md must stay in parity.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
