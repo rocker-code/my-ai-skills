@@ -103,6 +103,31 @@ class ReservationTest(unittest.TestCase):
         self.cli("reserve", "--planned", "--repository", str(self.primary), "--issue", self.issue,
                  "--branch", "other", path=self.root / "other", code=3)
 
+    def test_planned_idempotency_requires_same_issue_and_branch(self):
+        target = self.root / "planned"
+        opts = ("--planned", "--repository", str(self.primary))
+        self.cli("reserve", *opts, "--issue", self.issue, "--branch", "feature", path=target)
+        self.cli("reserve", *opts, "--issue", self.issue, "--branch", "feature", path=target)
+        for issue, branch in ((self.issue + "-other", "feature"), (self.issue, "other")):
+            self.cli("reserve", *opts, "--issue", issue, "--branch", branch, path=target, code=3)
+            self.assertEqual((self.data()["issue_url"], self.data()["branch"]), (self.issue, "feature"))
+
+    def test_planned_checkout_cannot_be_used_before_activation(self):
+        target = self.root / "planned"
+        self.cli("reserve", "--planned", "--repository", str(self.primary), "--issue", self.issue,
+                 "--branch", "feature", path=target)
+        self.git("worktree", "add", "-qb", "feature", str(target), cwd=self.primary)
+        for command, args, session in (
+            ("verify", (), "writer"),
+            ("handoff", ("--from-session", "writer", "--to-session", "next"), None),
+            ("release", ("--state", "WAITING"), "writer"),
+            ("track-generated", ("--", sys.executable, "-c", "print('should not run')"), "writer"),
+        ):
+            self.cli(command, *args, path=target, session=session, code=3)
+            self.assertEqual(self.data()["state"], "RESERVED")
+        self.cli("reserve", "--issue", self.issue, "--branch", "feature", path=target)
+        self.cli("verify", path=target)
+
     def test_cancel_planned_requires_same_owner_absent_destination_and_reason(self):
         target = self.root / "not-created"
         opts = ("--repository", str(self.primary))
@@ -207,6 +232,15 @@ class ReservationTest(unittest.TestCase):
         self.assertEqual(result["owner"]["session"], "next")
         self.assertIn("accept_external", [e["event"] for e in self.data()["history"]])
 
+    def test_cleanup_eligible_cannot_be_reacquired_by_reserve(self):
+        self.owned()
+        self.cli("release", "--state", "CLEANUP_ELIGIBLE")
+        for args in ((), ("--accept-external", "--reason", "reviewed")):
+            result = self.reserve(*args, session="next", code=3)
+            self.assertEqual(result["state"], "CLEANUP_ELIGIBLE")
+            self.assertIsNone(result["owner"])
+        self.assertEqual(self.data()["state"], "CLEANUP_ELIGIBLE")
+
     def test_handoff_planning_to_apply_keeps_checkout_and_revokes_previous(self):
         self.owned()
         (self.path / "file.txt").write_text("partial")
@@ -298,6 +332,49 @@ class ReservationTest(unittest.TestCase):
         private.write_bytes(importlib.util.MAGIC_NUMBER + b"0" * 20)
         self.assertIn("scripts/__pycache__/safe.pyc", wr._bytecodes(self.path))
         self.assertNotIn(str(private.relative_to(self.path)), wr._bytecodes(self.path))
+
+    def test_unknown_in_ignored_pycache_is_fingerprinted_and_reported(self):
+        (self.path / ".gitignore").write_text("__pycache__/\n.venv/\n*.pyc\n")
+        self.git("add", ".gitignore")
+        self.git("commit", "-qm", "ignore caches")
+        self.owned()
+        baseline = wr.code_state(self.path)
+        self.pyc("generated.pyc")
+        private = self.path / ".venv/lib/private.txt"
+        private.parent.mkdir(parents=True)
+        private.write_text("not part of checkout fingerprint")
+        self.assertEqual(wr.code_state(self.path).digest, baseline.digest)
+        unknown = self.path / "scripts/__pycache__/nested/notes.txt"
+        unknown.parent.mkdir(parents=True)
+        unknown.write_text("user work")
+        state = wr.code_state(self.path)
+        self.assertNotEqual(state.digest, baseline.digest)
+        self.assertIn("scripts/__pycache__/nested/notes.txt", [e.path for e in state.entries])
+        self.assertNotIn(".venv/lib/private.txt", [e.path for e in state.entries])
+        status = self.cli("status", session=None, run=None)
+        self.assertIn("scripts/__pycache__/nested/notes.txt", status["unknown_untracked_paths"])
+        self.assertIn("scripts/__pycache__/generated.pyc", status["generated_paths"])
+        self.assertIn("scripts/__pycache__/nested/notes.txt", self.cli("verify", code=4)["drift"]["changed_paths"])
+        self.assertEqual(unknown.read_text(), "user work")
+        (self.path / "scripts/__pycache__/linked").symlink_to(private.parent, target_is_directory=True)
+        linked = wr.code_state(self.path)
+        self.assertIn("scripts/__pycache__/linked", [e.path for e in linked.entries])
+        self.assertNotIn("scripts/__pycache__/linked/private.txt", [e.path for e in linked.entries])
+
+    def test_non_utf8_git_filename_survives_fingerprint_registry_and_json(self):
+        raw_name = b"invalid-\xff.txt"
+        name = os.fsdecode(raw_name)
+        file = self.path / name
+        file.write_text("user work")
+        initial = wr.code_state(self.path)
+        self.assertIn(name, [item.path for item in initial.entries])
+        self.assertEqual(wr._canonical({"name": "caf\u00e9"}), b'{"name":"caf\xc3\xa9"}')
+        self.planned()
+        self.assertEqual(self.cli("status", session=None, run=None)["unknown_untracked_paths"], [name])
+        self.assertIn(name, [item["path"] for item in self.data()["baseline"]["entries"]])
+        self.cli("verify")
+        file.write_text("changed")
+        self.assertIn(name, self.cli("verify", code=4)["drift"]["changed_paths"])
 
     def test_clean_requires_owner_and_post_checkpoint_verify(self):
         self.owned()

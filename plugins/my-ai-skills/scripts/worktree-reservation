@@ -160,7 +160,9 @@ def execute(args, reg, path, ident, current):
         if f"branch refs/heads/{args.branch}" in worktrees:
             raise ReservationError(6, "Planned branch already checked out", entry=entry)
         if entry:
-            if entry["state"] == "RESERVED" and entry["owner"]["session"] == args.session and entry["owner"]["run"] == args.run:
+            if (entry["state"] == "RESERVED" and entry["owner"]["session"] == args.session
+                    and entry["owner"]["run"] == args.run and entry["issue_url"] == args.issue
+                    and entry["branch"] == args.branch):
                 return response(entry, path=checkout)
             raise ReservationError(3, "Destination already reserved", entry=entry)
         other = next((e for e in reg["entries"] if e.get("issue_url") == args.issue and e["path"] != checkout and e.get("state") != "REMOVED"), None)
@@ -198,6 +200,8 @@ def execute(args, reg, path, ident, current):
             raise ReservationError(3, "Incomplete registry entry; run reconcile before takeover", entry=entry)
         if entry["state"] == "RECOVERY_REQUIRED":
             raise ReservationError(3, "Recovery required, no implicit ownership", entry=entry, inventory=_inventory(args.repository or checkout, checkout, ident, current))
+        if entry["state"] == "CLEANUP_ELIGIBLE":
+            raise ReservationError(3, "Cleanup-eligible checkout cannot be reserved for writing", entry=entry)
         if entry["issue_url"] != args.issue or entry["branch"] != args.branch:
             raise ReservationError(6, "Issue or branch differs from reservation", entry=entry)
         if entry["state"] == "RESERVED":
@@ -461,16 +465,16 @@ def main():
                 save(reg, path)
                 result = response(entry, current, path=checkout, extra={"execution_ref": ref, "recorded_paths": sorted(new)})
         if args.json:
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            print(json.dumps(result, ensure_ascii=True, sort_keys=True))
         else:
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps(result, ensure_ascii=True, indent=2))
         return 0
     except ReservationError as exc:
         result = response(exc.entry, current, path=checkout, error=str(exc), code=exc.code,
                           extra={"inventory": exc.inventory} if exc.inventory else None)
         if exc.drift:
             result["drift"] = exc.drift
-        print(json.dumps(result, ensure_ascii=False, sort_keys=True) if args.json else str(exc), file=sys.stdout if args.json else sys.stderr)
+        print(json.dumps(result, ensure_ascii=True, sort_keys=True) if args.json else str(exc), file=sys.stdout if args.json else sys.stderr)
         return exc.code
 
 

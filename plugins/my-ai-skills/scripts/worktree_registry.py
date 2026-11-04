@@ -73,7 +73,8 @@ def identity(checkout):
 
 
 def is_known_generated(rel_path: str) -> bool:
-    return "__pycache__" in Path(rel_path).parts or rel_path.endswith((".pyc", ".pyo"))
+    # A cache directory can contain user files; only bytecode is generated.
+    return rel_path.endswith((".pyc", ".pyo"))
 
 
 @dataclass(frozen=True)
@@ -108,7 +109,9 @@ def _hash(data: bytes) -> str:
 
 
 def _canonical(value) -> bytes:
-    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    # Preserve the existing UTF-8 payload for normal names while retaining
+    # Git's undecodable filename bytes represented by surrogateescape.
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "surrogateescape")
 
 
 def _matching(path, patterns):
@@ -138,14 +141,16 @@ def _status(checkout):
         status = record[:2].decode("ascii")
         path = record[3:].decode("utf-8", "surrogateescape")
         # Git coalesces ignored __pycache__/ directories even with
-        # --ignored=matching. Expand only that known directory's direct files;
-        # never recurse into unrelated ignored trees such as .venv/.
+        # --ignored=matching. Inspect only this directory, including unknown
+        # files; never recurse into unrelated ignored trees such as .venv/.
         if status == "!!" and path.rstrip("/").split("/")[-1] == "__pycache__":
             directory = Path(checkout) / path
             if directory.is_dir() and not directory.is_symlink():
-                for child in directory.iterdir():
+                for child in directory.rglob("*"):
+                    if not (child.is_file() or child.is_symlink()):
+                        continue
                     rel = str(child.relative_to(checkout))
-                    if child.name.endswith((".pyc", ".pyo")) and _safe_file(checkout, rel):
+                    if not is_known_generated(rel) or _safe_file(checkout, rel):
                         result[rel] = "!!"
         else:
             result[path] = status
@@ -175,7 +180,8 @@ def code_state(checkout, *, exclude_paths=(), include_ignored=()) -> CodeState:
     generated = []
     entries = []
     for path, xy in sorted(statuses.items()):
-        if xy == "!!" and not _matching(path, include_ignored) and not is_known_generated(path):
+        if (xy == "!!" and not _matching(path, include_ignored) and
+                not is_known_generated(path) and "__pycache__" not in Path(path).parts):
             continue
         if is_known_generated(path) and xy in ("??", "!!"):
             generated.append(path)
@@ -183,7 +189,7 @@ def code_state(checkout, *, exclude_paths=(), include_ignored=()) -> CodeState:
         if _matching(path, exclude_paths):
             continue
         file_path = checkout / path
-        if file_path.is_dir():  # ignored directories are never traversed
+        if file_path.is_dir() and not file_path.is_symlink():  # never hash directories
             continue
         sha = _file_hash(file_path)
         entries.append(PathEntry(path, xy, sha, sha is None,
@@ -320,7 +326,7 @@ def save(reg, path):
     fd, temp = tempfile.mkstemp(prefix=".worktrees-", dir=path.parent)
     try:
         with os.fdopen(fd, "w") as stream:
-            json.dump(reg, stream, sort_keys=True, ensure_ascii=False, indent=2)
+            json.dump(reg, stream, sort_keys=True, ensure_ascii=True, indent=2)
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
@@ -386,6 +392,8 @@ def _check_identity(entry, ident, path):
 def _check_owner(entry, session):
     if entry["state"] == "RECOVERY_REQUIRED":
         raise ReservationError(3, "Recovery required: review inventory and stopped-writer evidence", entry=entry)
+    if entry["state"] == "RESERVED":
+        raise ReservationError(3, "Activate the planned checkout before writing", entry=entry)
     if not entry["owner"] or entry["owner"]["session"] != session:
         raise ReservationError(3, "Checkout owned by another session", entry=entry)
 
