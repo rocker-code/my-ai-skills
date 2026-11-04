@@ -32,6 +32,15 @@ class AttemptLogTests(unittest.TestCase):
         self.assertIn("E_RETRY_LIMIT", codes(fixture("t1_override_no_effect")))
         self.assertTrue(check(fixture("t1_diagnosed_alternative"), final=True)["ready"])
 
+    def test_two_failures_are_valid_history_not_next_attempt_approval(self):
+        data = fixture("t1_override_no_effect")
+        third = data["entries"].pop(2)
+        resolution = data["entries"].pop()
+        self.assertTrue(check(data)["valid"])
+        self.assertIsNone(check(data)["ready"])
+        data["entries"].extend((third, resolution))
+        self.assertIn("E_RETRY_LIMIT", codes(data))
+
     def test_t1_diagnosed_alternative_accepted(self):
         self.assertEqual([], codes(fixture("t1_diagnosed_alternative")))
 
