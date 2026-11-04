@@ -543,11 +543,17 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-status .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-event .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree-reservation .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-evidence .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_evidence.py .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
   .ai-workflow/scripts/workflow-status \
   .ai-workflow/scripts/workflow-event \
-  .ai-workflow/scripts/workflow-report
+  .ai-workflow/scripts/workflow-report \
+  .ai-workflow/scripts/worktree-reservation \
+  .ai-workflow/scripts/workflow-evidence
 ```
 
 | Arquivos instalados | Finalidade |
@@ -560,6 +566,11 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `templates/pull-request.md`, `templates/github/*.md` | Formatos de PR, pergunta, decisão, revisão e contrato de integração. |
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Consulta de contexto atual do GitHub; exige `gh` e `jq`. |
 | `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Registro opcional de tempos e relatórios por issue/milestone; exige `gh` e Python 3.10+. |
+| `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Reserva cooperante de escrita, fingerprint versionado, retomada com inventário e tratamento restrito de bytecode; exige Git e Python 3.10+ em POSIX (`fcntl`). Consulte `protocol/WORKTREES.md`. |
+| `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py` | Registro, verificação e transporte de evidência de testes; exige Python 3.10+, Git e `gh` apenas para GitHub. |
+
+Exemplo: `.ai-workflow/scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest discover -s tests` emite um ID antes de executar e armazena o log no diretório Git comum. `verify <id> --format json` confere HEAD, index/diff, configuração e identificadores de ambiente declarados; `export <id> --output bundle.tar.gz` e `import bundle.tar.gz` transportam logs entre clones. Declare `--env-id NAME=ID` não secreto para cada perfil relevante (não use valores de env/credenciais), e `--report`/`--output-dir` para saídas. `publish <id> --issue URL` publica apenas metadados: comentários locais sem pacote não são prova completa. Revise pacotes antes de compartilhá-los; `prune --older-than 30` apenas simula até `--yes`. O gate local final deve ser registrado e verificado no HEAD limpo depois do commit de archive/preparação da PR; seu ID fica fora do commit e qualquer commit seguinte exige novo gate. O helper não substitui a reserva de checkout nem testes obrigatórios.
+Saídas declaradas não podem excluir código rastreado. Um registro local aprovado sem gate tipado (`required_gate: null`) pode ser inspecionado como `verified/passed`, mas sua obrigação é `not_required` e `verify` retorna 3: isso não comprova gate local obrigatório. Só gate local tipado no HEAD final limpo pode satisfazê-lo; confirme antes a exigência independentemente na política do repositório, não no manifesto, seleção ou status declarados pelo produtor importado. O checksum do pacote prova a integridade do transporte, não a confiabilidade das alegações do produtor. Uma projeção pública hospedada confirma apenas a execução: `verify <id> --from-github <URL> --base-branch main --hosted-obligation <ID>` exige vínculo independente à política protegida e ao job/check do run; sem obrigação ou vínculo, o exit code é 3. O vínculo atual suporta branch protection com checks; se a política depender só de rulesets ou a API não confirmar a origem do check, o gate permanece pendente. Importação limita a expansão do pacote (256 MiB no total, 64 MiB por membro, 1024 membros).
 
 `scripts/sync-plugin` mantém o pacote deste repositório. Não o instale como auxiliar de execução da aplicação.
 
@@ -600,6 +611,10 @@ test -x .ai-workflow/scripts/workflow-status
 test -x .ai-workflow/scripts/workflow-event
 test -x .ai-workflow/scripts/workflow-report
 test -f .ai-workflow/scripts/workflow_metrics.py
+test -x .ai-workflow/scripts/worktree-reservation
+test -f .ai-workflow/scripts/worktree_registry.py
+test -x .ai-workflow/scripts/workflow-evidence
+test -f .ai-workflow/scripts/workflow_evidence.py
 python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```

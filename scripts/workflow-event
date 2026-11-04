@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.dont_write_bytecode = True
 from workflow_metrics import RUN_MARKER, iso_time, parse_run_comment  # noqa: E402
 
 URL_PATTERN = re.compile(r"^https://github\.com/([^/]+/[^/]+)/(issues|milestone)/(\d+)/?$")
@@ -20,6 +21,7 @@ SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
 REASONS = {"owner_input", "dependency", "ci", "review", "runtime_capacity", "external", "other"}
 REWORK_REASONS = {"review", "ci", "replan", "reopened", "other"}
 SCOPES = {"single_issue", "project_queue", "milestone"}
+EVIDENCE_REF_PATTERN = re.compile(r"^evidence:ev-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$")
 
 
 def gh(*args: str, input_text: str | None = None) -> str:
@@ -111,8 +113,9 @@ def main() -> int:
             parser.error("--milestone-url must belong to the issue repository")
 
     for evidence in args.evidence:
-        if not (evidence.startswith("https://github.com/") or re.fullmatch(r"[a-fA-F0-9]{7,64}", evidence)):
-            parser.error("--evidence must be a GitHub URL or commit SHA")
+        if not (evidence.startswith("https://github.com/") or re.fullmatch(r"[a-fA-F0-9]{7,64}", evidence)
+                or EVIDENCE_REF_PATTERN.fullmatch(evidence)):
+            parser.error("--evidence must be a GitHub URL, commit SHA or evidence:<evidence_id>")
 
     comments = read_comments(repo, issue_number)
     matches = [(item, parse_run_comment(item.get("body", ""))) for item in comments]

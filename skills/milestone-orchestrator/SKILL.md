@@ -113,10 +113,13 @@ artifact_paths: [<proposal-spec-design-task-paths>]
 dependency_commits: [<merged-commit-shas>]
 architecture_constraints: [<repository-instructions-or-decision-links>]
 validation_commands: [<actual-supported-commands>]
+evidence_ids: [<evidence:ev-... plus state and obligation; package location if another runtime>]
 merge_mode: auto-if-green
 ```
 
 Reject a handoff when issue, validated proposal SHA, review/validation evidence, worktree tree, or merged dependencies disagree. Never pass the planning transcript as the only evidence.
+
+When `workflow-evidence` is installed, carry `evidence_id`/integrity-checked bundle in the Apply → prepare-pr → review handoff and attach `workflow-event --evidence evidence:<id>` to the run. A foreign `/tmp` path or public local metadata alone is not a verified local proof. Verify on the recipient's candidate and respect per-obligation recovery; keep the final gate's ID outside the commit and rerun it after any HEAD change. Hosted gates require an independent trusted base-policy/check binding and exact-SHA API confirmation, never a local-gate substitution. Without the helper, retain the manual proof and label helper verification NOT RUN.
 
 ## Recovery and output
 
@@ -150,3 +153,5 @@ Read [the test strategy](references/TEST_STRATEGY.md). Carry each issue's risk-b
 ## Worktree lifecycle
 
 Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Automatically remove verified eligible managed worktrees after delivery/kaizen, reconcile leftovers at startup/resume and run end, and report retained paths with precise reasons. Use only non-forced Git operations.
+
+When installed, use `worktree-reservation reserve --planned --repository <existing-checkout>` before creation, `cancel-planned` only if add failed without a destination or Git entry, `reserve` to activate, `verify` before mutations, `checkpoint` after own writes, and `handoff` only after the prior worker returned; stop on drift until explicit recorded acceptance, and on registry loss until inventory and stopped-writer evidence have been reviewed. Without the helper, coordinate manually under WORKTREES and report the gap.
