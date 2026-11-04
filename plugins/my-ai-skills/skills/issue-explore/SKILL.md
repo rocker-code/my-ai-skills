@@ -39,6 +39,7 @@ Identify:
 - obsolete code that replacement would remove;
 - expected unit/integration/E2E evidence;
 - contradictions among issue, decisions, code, tests and OpenSpec.
+- pre-flight for changed shared configuration/defaults, toolchain or test infrastructure: find real consumers outside the changed module (with code paths) and their old-value fixture assumptions; record the search even when no cross-cutting impact is found.
 
 For work that crosses repositories or consumes another system's behavior, invoke contract-handoff in design-review mode. Map each consumer scenario (including wireframes and approved decisions) to the producer's public operation, fields, state/error, and authoritative enforcement point. Record producer and consumer issue links and a hard dependency in the OpenSpec exploration. If a required signal or behavior is absent, implicit, or unimplemented, identify the exact producer follow-up and do not release the dependent proposal. Do not require unrelated issues to wait.
 
