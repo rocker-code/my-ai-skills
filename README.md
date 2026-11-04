@@ -445,6 +445,13 @@ scripts/workflow-event stage-start --issue https://github.com/owner/repo/issues/
   --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --agent codex
 scripts/workflow-event stage-end --issue https://github.com/owner/repo/issues/123 \
   --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --status completed
+scripts/workflow-event dispatch --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42
+scripts/workflow-event observe --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42 \
+  --state completed --source runtime_event --report present --log-ref runtime:job-42
+scripts/workflow-event stage-end --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42 --status completed
 scripts/workflow-event run-end --issue https://github.com/owner/repo/issues/123 \
   --run-id "$RUN_ID" --status completed
 
@@ -454,9 +461,11 @@ scripts/workflow-report https://github.com/owner/repo/milestone/7 --format json
 scripts/workflow-report https://github.com/owner/repo/milestone/7 --format csv
 ```
 
-Nos eventos de espera, informe a etapa e um motivo: `owner_input`, `dependency`, `ci`, `review`, `runtime_capacity`, `external` ou `other`. Para retrabalho, use `--reason review|ci|replan|reopened|other` e vincule evidências com `--evidence` (URL do GitHub ou SHA de commit). Valores opcionais de agente/modelo só são registrados quando o ambiente os fornece. Não inclua prompts ou dados sensíveis.
+Nos eventos de espera, informe a etapa e um motivo: `owner_input`, `dependency`, `ci`, `tests` (testes locais), `review`, `environment` (ambiente indisponível), `runtime_capacity`, `external` ou `other`. Para retrabalho, use `--reason review|ci|replan|reopened|other` e vincule evidências com `--evidence` (URL do GitHub, SHA de commit ou `evidence:<id>`). Valores opcionais de agente/modelo só são registrados quando o ambiente os fornece. Não inclua prompts ou dados sensíveis.
 
-O relatório mostra o tempo de ciclo da issue, trabalho registrado, esperas explícitas, etapas, retrabalho, achados de revisão e verificações reprovadas/pendentes. No milestone, inclui contagens por estado e medianas por etapa; apresenta P90 apenas com pelo menos cinco amostras. Use `--run-id` para consultar uma execução comum do milestone. A soma do trabalho pode superar o tempo de calendário quando há execução paralela. Trabalho registrado é tempo de relógio dentro das etapas, descontadas as esperas explícitas, e não tempo de raciocínio interno do modelo. Dados ausentes são informados como indisponíveis, nunca inferidos de labels ou conversas.
+`dispatch` abre a etapa de um worker assíncrono sem confundir retorno imediato com conclusão. `observe` aceita `--state running|completed|failed|interrupted|unknown` e `--source runtime_event|runtime_query|ci_api|process_exit|test_report` (confirmatórias) ou `agent_prose|container_state` (insuficientes). Informe `--observed-at` (ISO-8601 com fuso) para callbacks atrasados; `at` guarda o instante efetivo e `recorded_at` a gravação. Use `--execution-kind worker|process|job|test_run|ci_run` com `--execution-id` seguro, e repita ambos no `stage-end` tipado. Para testes com `workflow-evidence`, o ID emitido antes da execução é `--execution-kind test_run --execution-id <evidence_id>` e vincule `--evidence evidence:<evidence_id>`; para `ci_run`, use o ID do run de CI. `--report present` e `evidence:` são fatos/referências, **não** aprovação: somente `workflow-evidence verify` verifica a prova. `--log-ref` aceita URL HTTPS de `github.com` sem credenciais/consulta, SHA ou referência tipada segura (não `http`/`file`); `--next` descreve o próximo passo em uma linha.
+
+O relatório mostra o tempo de ciclo da issue, trabalho registrado, esperas explícitas, etapas, retrabalho, achados de revisão e verificações reprovadas/pendentes. O resumo Markdown/JSON (`status_summary`) traz etapa atual, estado observado, última observação confirmada, bloqueio, próximo passo e horário da verificação; `incomplete_evidence` identifica execução de teste sem término ou relatório confirmado. No milestone, inclui contagens por estado e medianas por etapa; apresenta P90 apenas com pelo menos cinco amostras. Use `--run-id` para consultar uma execução comum do milestone. A soma do trabalho pode superar o tempo de calendário quando há execução paralela. Trabalho registrado termina na primeira observação terminal confirmatória da mesma execução e desconta esperas explícitas; não é tempo de raciocínio interno do modelo. Dados ausentes são indisponíveis, nunca inferidos de labels ou conversas. CSV mantém o formato anterior.
 
 As métricas apoiam `kaizen`: após a conclusão, compare gargalos recorrentes com retrabalho e evidências de qualidade antes de sugerir mudanças no processo. Uma execução lenta isolada não justifica alterar uma etapa de validação. Tokens e custos não são estimados quando o ambiente não os fornece.
 

@@ -446,6 +446,13 @@ scripts/workflow-event stage-start --issue https://github.com/owner/repo/issues/
   --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --agent codex
 scripts/workflow-event stage-end --issue https://github.com/owner/repo/issues/123 \
   --run-id "$RUN_ID" --stage issue_audit --worker-id orchestrator --status completed
+scripts/workflow-event dispatch --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42
+scripts/workflow-event observe --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42 \
+  --state completed --source runtime_event --report present --log-ref runtime:job-42
+scripts/workflow-event stage-end --issue https://github.com/owner/repo/issues/123 \
+  --run-id "$RUN_ID" --stage tests --worker-id worker-1 --execution-kind job --execution-id job-42 --status completed
 scripts/workflow-event run-end --issue https://github.com/owner/repo/issues/123 \
   --run-id "$RUN_ID" --status completed
 
@@ -455,9 +462,11 @@ scripts/workflow-report https://github.com/owner/repo/milestone/7 --format json
 scripts/workflow-report https://github.com/owner/repo/milestone/7 --format csv
 ```
 
-For wait events, pass a stage and one reason: `owner_input`, `dependency`, `ci`, `review`, `runtime_capacity`, `external` or `other`. For rework, use `--reason review|ci|replan|reopened|other` and link evidence with `--evidence` (a GitHub URL or commit SHA). Optional agent/model values are recorded only when the runtime exposes them. Do not include prompts or sensitive text.
+For wait events, pass a stage and one reason: `owner_input`, `dependency`, `ci`, `tests` (local tests), `review`, `environment` (unavailable environment), `runtime_capacity`, `external` or `other`. For rework, use `--reason review|ci|replan|reopened|other` and link evidence with `--evidence` (a GitHub URL, commit SHA or `evidence:<id>`). Optional agent/model values are recorded only when the runtime exposes them. Do not include prompts or sensitive text.
 
-The report shows issue cycle time, recorded work, explicit waits, stages, rework, PR review findings and failed/pending checks. A milestone report includes state counts and per-stage medians; it shows P90 only when there are at least five samples. Use `--run-id` to get a common milestone execution. The total registered work can exceed calendar time when workers ran in parallel. Recorded work is wall-clock time within stage windows minus explicitly marked waits, not model-internal thinking time. Missing data is reported as unavailable, never inferred from issue labels or conversation text.
+`dispatch` opens an asynchronous worker stage without mistaking the immediate dispatch response for completion. `observe` accepts `--state running|completed|failed|interrupted|unknown` and `--source runtime_event|runtime_query|ci_api|process_exit|test_report` (confirming) or `agent_prose|container_state` (insufficient). Supply `--observed-at` (timezone-aware ISO-8601) for late callbacks; `at` stores effective time and `recorded_at` the write time. Pair `--execution-kind worker|process|job|test_run|ci_run` with a safe `--execution-id`, and repeat both on typed `stage-end`. For `workflow-evidence` tests, the ID emitted before execution is `--execution-kind test_run --execution-id <evidence_id>` and link `--evidence evidence:<evidence_id>`; for `ci_run` use the CI run ID. `--report present` and `evidence:` are runtime facts/references, **not** approval: only `workflow-evidence verify` verifies the proof. `--log-ref` accepts an HTTPS `github.com` URL without credentials/query, a SHA or safe typed reference (not `http`/`file`); `--next` describes the next action on one line.
+
+The report shows issue cycle time, recorded work, explicit waits, stages, rework, PR review findings and failed/pending checks. The Markdown/JSON summary (`status_summary`) shows current stage, observed state, last confirmed observation, blocker, next action and verification time; `incomplete_evidence` identifies test runs without confirmed termination/report. A milestone report includes state counts and per-stage medians; it shows P90 only when there are at least five samples. Use `--run-id` to get a common milestone execution. The total registered work can exceed calendar time when workers ran in parallel. Recorded work stops at the first confirming terminal observation for that execution and subtracts explicit waits; it is not model-internal thinking time. Missing data is unavailable, never inferred from labels or conversation text. CSV retains its previous format.
 
 Timing metrics support `kaizen`: after completion, compare recurring bottlenecks with rework and quality evidence before suggesting a process change. A single slow run does not justify changing a gate. Tokens and cost are not estimated when the runtime does not expose them.
 
