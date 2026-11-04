@@ -8,6 +8,8 @@ metadata:
 
 # Address PR Review
 
+For test evidence handed off as `evidence:<id>`, use `workflow-evidence verify <id> --format json` when installed, inspect `recovery` and rerun only genuinely affected obligations without bypassing the final repository gates. A correction commit invalidates the final local gate even if a prior obligation was `unaffected`: record and verify the required final suite anew on the new clean HEAD, then update the PR Validation line with the new ID outside the commit. Hosted gates require base-policy/check binding and exact-SHA API confirmation; local public metadata is not a log. Without the helper, mark helper verification NOT RUN and retain the manual proof/gates.
+
 Correct the implementation, not merely the comment count.
 
 ## Refresh live state

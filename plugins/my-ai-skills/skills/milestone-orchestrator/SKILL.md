@@ -113,10 +113,13 @@ artifact_paths: [<proposal-spec-design-task-paths>]
 dependency_commits: [<merged-commit-shas>]
 architecture_constraints: [<repository-instructions-or-decision-links>]
 validation_commands: [<actual-supported-commands>]
+evidence_ids: [<evidence:ev-... plus state and obligation; package location if another runtime>]
 merge_mode: auto-if-green
 ```
 
 Reject a handoff when issue, validated proposal SHA, review/validation evidence, worktree tree, or merged dependencies disagree. Never pass the planning transcript as the only evidence.
+
+When `workflow-evidence` is installed, carry `evidence_id`/integrity-checked bundle in the Apply → prepare-pr → review handoff and attach `workflow-event --evidence evidence:<id>` to the run. A foreign `/tmp` path or public local metadata alone is not a verified local proof. Verify on the recipient's candidate and respect per-obligation recovery; keep the final gate's ID outside the commit and rerun it after any HEAD change. Hosted gates require an independent trusted base-policy/check binding and exact-SHA API confirmation, never a local-gate substitution. Without the helper, retain the manual proof and label helper verification NOT RUN.
 
 ## Recovery and output
 

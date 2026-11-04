@@ -6,11 +6,11 @@ Apply this policy automatically during planning, implementation and review. Use 
 
 Inspect existing tests and fixtures before adding new ones. Extend the existing OpenSpec evidence matrix instead of creating another artifact or approval step:
 
-| Scenario | Acceptance criterion or concrete risk | Layer | Existing or new proving test/check |
-|---|---|---|---|
-| Rename a ticket and reload it | The change persists | Integration | Existing test extended |
-| Rename another customer's ticket | Ownership is enforced at the API boundary | GraphQL | New test |
-| Reject an invalid name | Name validation | Unit | Existing test reused |
+| Scenario | Acceptance criterion or concrete risk | Layer | Existing or new proving test/check | Evidence |
+|---|---|---|---|---|
+| Rename a ticket and reload it | The change persists | Integration | Existing test extended | `evidence:<id>` (`verified`/pending) |
+| Rename another customer's ticket | Ownership is enforced at the API boundary | GraphQL | New test | `evidence:<id>` (`verified`/pending) |
+| Reject an invalid name | Name validation | Unit | Existing test reused | `evidence:<id>` (`verified`/pending) |
 
 Start with the main successful behavior, the relevant business rejection and risks introduced or affected by the change. A scenario may satisfy more than one obligation. Add cases for distinct behavior or failure modes; do not turn this starting point into three mandatory tests for every change. Documentation-only changes may need only documentation/package checks.
 
@@ -57,3 +57,11 @@ Review sufficiency as well as missing coverage. For any requested additional tes
 Stop adding scenarios when acceptance criteria and identified risks have behavioral evidence, relevant assertions pass and applicable required checks pass. Report pending, failed or not-run evidence accurately; missing required proof remains unresolved. Preserve the planned matrix in the existing handoff/PR so reviewers can see both coverage and material residual uncertainty.
 
 Never delete, skip or weaken existing tests, silently narrow discovery, reduce thresholds or bypass required checks to meet a time target. Consolidating existing coverage requires the preservation/equivalence evidence in CI_PERFORMANCE.md. Treat elapsed time as a signal to diagnose scope or setup, not as an automatic pass/fail budget. This policy adds no benchmark, fixed time limit, user command or routine approval checkpoint.
+
+## Evidence handoff
+
+Where `workflow-evidence` is installed, record a focused execution with `scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest ...`. It prints an `evidence_id` before running and stores a versioned manifest and checksum-bound log under the Git common directory, shared by worktrees in the same clone. Use `list --obligation T1`, `show <id>` and `verify <id> --format json` to link matrix rows, selections, command, HEAD, indexed/working changes, declared configs, observed Python/platform and non-secret `--tool`/`--env-id` profiles. Declare outputs with `--report`, `--artifact` or `--output-dir` so generated results do not create a false concurrent-change finding. Declare relevant environment profiles with `--env-id NAME=ID`; names alone do not prove compatibility, and verify requires every declared ID again.
+
+States: `verified` proves an accessible matching execution (only `passed` can satisfy a gate); `metadata_only` has public metadata but not a complete local proof, `incomplete` has missing/corrupt artifacts or identifiers, `ambiguous` changed during the run, `stale` differs from candidate HEAD/index/diff/config/environment, and `not_applicable` cannot satisfy that gate type. Consult JSON `reasons`, `changed_paths`, per-obligation `impact` and `recovery`; `unaffected` is informational, never approval of a stale execution. A required local gate needs a local `verified/passed` record at the exact final clean HEAD and matching fingerprint. A required hosted gate needs an exact-SHA clean candidate, API-confirmed run and independent base-branch policy/check mapping plus confirmed successful job; a hosted run cannot satisfy a local gate. Historical CI or an imported manifesto cannot grant a gate. Existing repository gates always take precedence.
+
+Complete archive/sync, self-review, distribution and commit before recording the final required local suite. Verify the gate on the final HEAD; after **any** further commit, record and verify it again. Keep the final `evidence_id` outside the commit (handoff/PR comment). Use `export <id> --output bundle.tar.gz` and `import bundle.tar.gz` for another clone/runtime; a `/tmp` path or public comment alone is not a transferable local log. `publish <id> --issue|--pr URL` publishes only allowlisted metadata; local public metadata is `metadata_only` without the package, while hosted execution needs fresh API confirmation and still lacks a gate binding without trusted policy. Logs and reports stay local/in the package; review packages before sharing, never pass secrets as argv or profile IDs. Retention is explicit: `prune --older-than 30` previews, `--yes` removes. No automatic deletion. If the helper is unavailable, retain the existing command/result handoff and mark helper verification NOT RUN; do not weaken required tests.

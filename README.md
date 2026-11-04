@@ -545,12 +545,15 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree-reservation .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-evidence .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_evidence.py .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
   .ai-workflow/scripts/workflow-status \
   .ai-workflow/scripts/workflow-event \
   .ai-workflow/scripts/workflow-report \
-  .ai-workflow/scripts/worktree-reservation
+  .ai-workflow/scripts/worktree-reservation \
+  .ai-workflow/scripts/workflow-evidence
 ```
 
 | Arquivos instalados | Finalidade |
@@ -564,6 +567,9 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Consulta de contexto atual do GitHub; exige `gh` e `jq`. |
 | `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Registro opcional de tempos e relatórios por issue/milestone; exige `gh` e Python 3.10+. |
 | `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Reserva cooperante de escrita, fingerprint versionado, retomada com inventário e tratamento restrito de bytecode; exige Git e Python 3.10+ em POSIX (`fcntl`). Consulte `protocol/WORKTREES.md`. |
+| `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py` | Registro, verificação e transporte de evidência de testes; exige Python 3.10+, Git e `gh` apenas para GitHub. |
+
+Exemplo: `.ai-workflow/scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest discover -s tests` emite um ID antes de executar e armazena o log no diretório Git comum. `verify <id> --format json` confere HEAD, index/diff, configuração e identificadores de ambiente declarados; `export <id> --output bundle.tar.gz` e `import bundle.tar.gz` transportam logs entre clones. Declare `--env-id NAME=ID` não secreto para cada perfil relevante (não use valores de env/credenciais), e `--report`/`--output-dir` para saídas. `publish <id> --issue URL` publica apenas metadados: comentários locais sem pacote não são prova completa. Revise pacotes antes de compartilhá-los; `prune --older-than 30` apenas simula até `--yes`. O gate local final deve ser registrado e verificado no HEAD limpo depois do commit de archive/preparação da PR; seu ID fica fora do commit e qualquer commit seguinte exige novo gate. O helper não substitui a reserva de checkout nem testes obrigatórios.
 
 `scripts/sync-plugin` mantém o pacote deste repositório. Não o instale como auxiliar de execução da aplicação.
 
@@ -606,6 +612,8 @@ test -x .ai-workflow/scripts/workflow-report
 test -f .ai-workflow/scripts/workflow_metrics.py
 test -x .ai-workflow/scripts/worktree-reservation
 test -f .ai-workflow/scripts/worktree_registry.py
+test -x .ai-workflow/scripts/workflow-evidence
+test -f .ai-workflow/scripts/workflow_evidence.py
 python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```

@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Record, inspect, transport and verify test evidence. Logs remain local."""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+from workflow_evidence import (export_bundle, from_github, import_bundle, load_manifest, parse_pairs,
+                               publish, record, record_dir, register_hosted, store, verify_manifest)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--checkout", default=".", help="Git checkout (default: current directory)")
+    commands = parser.add_subparsers(dest="action", required=True)
+    run = commands.add_parser("record", help="capture command output and code state")
+    run.add_argument("--obligation", action="append", default=[], help="ID[:relevant-glob,...] (repeatable)")
+    run.add_argument("--required-gate", choices=("local", "hosted"))
+    run.add_argument("--selection", default="")
+    run.add_argument("--config", action="append", default=[])
+    run.add_argument("--report", action="append", default=[])
+    run.add_argument("--artifact", action="append", default=[])
+    run.add_argument("--output-dir", action="append", default=[])
+    run.add_argument("--tool", action="append", default=[])
+    run.add_argument("--env-id", action="append", default=[])
+    run.add_argument("--env-name", action="append", default=[])
+    run.add_argument("--openspec-change")
+    for field in ("run-id", "issue-url", "stage", "worker-id"):
+        run.add_argument("--correlation-" + field)
+    run.add_argument("command", nargs=argparse.REMAINDER)
+
+    hosted = commands.add_parser("register-hosted", help="confirm a GitHub Actions run")
+    hosted.add_argument("--url", required=True)
+    hosted.add_argument("--obligation", action="append", default=[])
+    hosted.add_argument("--required-gate", choices=("local", "hosted"))
+    hosted.add_argument("--selection", default="")
+
+    verify = commands.add_parser("verify", help="compare evidence against current checkout")
+    verify.add_argument("evidence_id")
+    verify.add_argument("--from-github", metavar="ISSUE_OR_PR_URL")
+    verify.add_argument("--base-branch", help="trusted protected target branch for hosted gate binding")
+    verify.add_argument("--tool", action="append", default=[])
+    verify.add_argument("--env-id", action="append", default=[])
+    verify.add_argument("--format", choices=("text", "json"), default="text")
+    for action in ("show", "export", "publish"):
+        cmd = commands.add_parser(action)
+        cmd.add_argument("evidence_id")
+        if action == "export":
+            cmd.add_argument("--output", type=Path, required=True)
+        if action == "publish":
+            targets = cmd.add_mutually_exclusive_group(required=True)
+            targets.add_argument("--issue")
+            targets.add_argument("--pr")
+    importing = commands.add_parser("import", help="validate and import a tar.gz bundle")
+    importing.add_argument("bundle", type=Path)
+    listing = commands.add_parser("list", help="find evidence by obligation")
+    listing.add_argument("--obligation")
+    prune = commands.add_parser("prune", help="dry-run removal unless --yes")
+    prune.add_argument("--older-than", type=int, help="age in days")
+    prune.add_argument("--evidence-id")
+    prune.add_argument("--yes", action="store_true")
+    args = parser.parse_args()
+    checkout = Path(args.checkout).resolve()
+    if args.action == "record":
+        return record(checkout, args)
+    if args.action == "register-hosted":
+        print(register_hosted(checkout, args))
+        return 0
+    if args.action == "verify":
+        directory = record_dir(checkout, args.evidence_id)
+        projection = bool(args.from_github)
+        if projection:
+            try:
+                manifest = from_github(args.from_github, args.evidence_id)
+            except (ValueError, OSError, KeyError, json.JSONDecodeError):
+                manifest = {"evidence_id": args.evidence_id}
+        else:
+            try:
+                manifest = load_manifest(directory)
+            except (FileNotFoundError, json.JSONDecodeError):
+                manifest = {"evidence_id": args.evidence_id}
+        result = verify_manifest(manifest, directory, checkout, tools=parse_pairs(args.tool),
+                                 env_ids=parse_pairs(args.env_id), base_branch=args.base_branch,
+                                 projection=projection)
+        if args.format == "json":
+            print(json.dumps(result, ensure_ascii=True))
+        else:
+            print(f"{args.evidence_id}: {result['state']} / {result['result'] or 'unknown'} — {', '.join(result['reasons'])}")
+        return 0 if (result["state"] == "verified" and result["result"] == "passed"
+                     and all(o["gate"] == "satisfied" for o in result["obligations"])) else 3
+    if args.action == "show":
+        print(json.dumps(load_manifest(record_dir(checkout, args.evidence_id)), indent=2))
+    elif args.action == "export":
+        print("Review package for sensitive logs before sharing outside the repository.", file=sys.stderr)
+        print(export_bundle(checkout, args.evidence_id, args.output))
+    elif args.action == "import":
+        print(import_bundle(checkout, args.bundle))
+    elif args.action == "publish":
+        print(json.dumps(publish(checkout, args.evidence_id, args.issue or args.pr)))
+    elif args.action == "list":
+        for directory in sorted(store(checkout).glob("ev-*")):
+            try:
+                item = load_manifest(directory)
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+            if not args.obligation or args.obligation in [o.get("id") for o in item.get("obligations", [])]:
+                print(json.dumps({k: item.get(k) for k in ("evidence_id", "selection", "command", "status", "obligations")}))
+    elif args.action == "prune":
+        from datetime import datetime, timezone
+        import shutil
+        if args.older_than is None and not args.evidence_id:
+            parser.error("prune requires --older-than or --evidence-id")
+        for directory in sorted(store(checkout).glob("ev-*")):
+            if (args.evidence_id and directory.name != args.evidence_id) or (args.older_than is not None and
+                    (datetime.now(timezone.utc).timestamp() - directory.stat().st_mtime) < args.older_than * 86400):
+                continue
+            print(f"{'removed' if args.yes else 'would remove'}: {directory.name}")
+            if args.yes:
+                shutil.rmtree(directory)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (ValueError, OSError, KeyError, json.JSONDecodeError) as error:
+        print(f"workflow-evidence: {error}", file=sys.stderr)
+        sys.exit(2)
