@@ -163,18 +163,22 @@ Quando o fingerprint diverge, a verificação SHALL listar os caminhos alterados
 - **THEN** todas as suas obrigações são `affected`
 
 ### Requirement: Precedência dos gates do repositório
-Gates obrigatórios SHALL ser tipados `local` ou `hosted`. O gate local exige registro local `verified`/`passed` no HEAD e fingerprint finais; o hosted exige execução confirmada na origem, candidato limpo no SHA exato e vínculo verificável à obrigação. Projeção pública sem vínculo não aprova gate. Resultado hosted nunca satisfaz gate local; `unaffected` e metadados autodeclarados não aprovam gate.
+Gates obrigatórios SHALL ser tipados `local` ou `hosted`. O gate local exige registro local `verified`/`passed` no HEAD e fingerprint finais. O hosted exige candidato limpo no SHA exato, execução confirmada na origem e vínculo da obrigação ao check obrigatório definido pela política efetiva do ramo-base. Projeção pública e manifesto importado MUST NOT definir esse vínculo. Resultado hosted nunca satisfaz gate local; `unaffected` não aprova gate.
 
 #### Scenario: CI antigo para gate local (AC5)
 - **WHEN** existe apenas um resultado hospedado aprovado e a obrigação é um gate `local` obrigatório
 - **THEN** a verificação retorna `not_applicable` para essa obrigação e ela permanece pendente
 
 #### Scenario: CI do candidato exato para gate hospedado
-- **WHEN** a obrigação é um gate `hosted`, existe vínculo verificável dessa obrigação ao run (manifesto importado ou configuração confiável do workflow) e registro hospedado aprovado com URL/run_id/head/status confirmados na origem confiável, com `head` igual ao SHA do candidato limpo
+- **WHEN** a obrigação é um gate `hosted`, a política efetiva do ramo-base a vincula a um workflow/check obrigatório e a API confirma que o job/check desse run passou no SHA do candidato limpo
 - **THEN** a verificação retorna `verified` para essa obrigação
 
+#### Scenario: Run não relacionado no mesmo SHA
+- **WHEN** um manifesto importado atribui a obrigação a um run bem-sucedido no SHA correto, mas o workflow/check do run não é o mapeado pela política efetiva do ramo-base
+- **THEN** a execução pode estar confirmada, mas a obrigação permanece pendente; o manifesto não cria nem altera o vínculo do gate
+
 #### Scenario: Execução hospedada confirmada sem vínculo à obrigação
-- **WHEN** a execução hosted publicada é confirmada pela API mas não há manifesto importado nem configuração confiável que a associe ao gate
+- **WHEN** a execução hosted publicada é confirmada pela API mas não há política/mapeamento confiável ou job/check específico confirmado que a associe ao gate
 - **THEN** a execução é `verified`, mas a obrigação permanece pendente
 
 #### Scenario: Resultado hospedado não confirmável
