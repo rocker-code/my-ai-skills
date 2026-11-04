@@ -546,12 +546,15 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree-reservation .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-evidence .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_evidence.py .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
   .ai-workflow/scripts/workflow-status \
   .ai-workflow/scripts/workflow-event \
   .ai-workflow/scripts/workflow-report \
-  .ai-workflow/scripts/worktree-reservation
+  .ai-workflow/scripts/worktree-reservation \
+  .ai-workflow/scripts/workflow-evidence
 ```
 
 | Installed files | Purpose |
@@ -565,6 +568,10 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Read-only live GitHub context helpers, requiring `gh` and `jq`. |
 | `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Optional workflow timing capture and issue/milestone reports; require `gh` and Python 3.10+. |
 | `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Cooperative write reservation, versioned fingerprint, inventory-based recovery and restricted bytecode handling; require Git and Python 3.10+ on POSIX (`fcntl`). See `protocol/WORKTREES.md`. |
+| `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py` | Test evidence capture, verification and transport; require Python 3.10+, Git and `gh` only for GitHub operations. |
+
+Example: `.ai-workflow/scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest discover -s tests` emits an ID before execution and stores its log in the Git common directory. `verify <id> --format json` checks HEAD, index/diff, configuration and declared environment IDs; `export <id> --output bundle.tar.gz` and `import bundle.tar.gz` move logs between clones. Declare a non-secret `--env-id NAME=ID` for each relevant profile (never use environment values or credentials) and `--report`/`--output-dir` for generated outputs. `publish <id> --issue URL` posts metadata only: a local comment without the package is not complete proof. Review packages before sharing; `prune --older-than 30` only previews until `--yes`. Record and verify the final local gate at the clean HEAD after the archive/PR-preparation commit; its ID stays outside the commit and any subsequent commit requires a fresh gate. This helper does not replace checkout reservations or required tests.
+Declared outputs cannot exclude tracked code. A passing untyped (`required_gate: null`) local record is inspectable as `verified/passed`, but its obligation is `not_required` and `verify` exits 3: it does not establish a required local gate. Only a typed local gate on a clean final HEAD can satisfy that gate; first confirm the requirement independently from repository policy, not from an imported producer's manifest, selection, or status claims. An imported bundle's checksum proves transport integrity, not that its producer's claims are trustworthy. A public hosted projection confirms only the execution: `verify <id> --from-github <URL> --base-branch main --hosted-obligation <ID>` requires independent binding to protected policy and the run's job/check; without an obligation or binding, it exits 3. Binding currently supports branch protection checks; a ruleset-only policy or unconfirmable check source leaves the gate pending. Import limits expanded packages (256 MiB total, 64 MiB per member, 1024 members).
 
 `scripts/sync-plugin` is a package-maintenance tool for this repository. Do not install it as an application runtime helper.
 
@@ -607,6 +614,8 @@ test -x .ai-workflow/scripts/workflow-report
 test -f .ai-workflow/scripts/workflow_metrics.py
 test -x .ai-workflow/scripts/worktree-reservation
 test -f .ai-workflow/scripts/worktree_registry.py
+test -x .ai-workflow/scripts/workflow-evidence
+test -f .ai-workflow/scripts/workflow_evidence.py
 python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```
