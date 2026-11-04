@@ -72,19 +72,16 @@ def opening_for(record: dict, stage: str, worker: str, execution: dict | None, a
               and event.get("stage") == stage and (event.get("worker_id") or "orchestrator") == worker]
     ends = [event for event in record["events"] if event.get("type") in {"stage_finished", "stage_failed"}
             and event.get("stage") == stage and (event.get("worker_id") or "orchestrator") == worker]
-    if open_only and execution is None:
-        untyped = [item for item in starts if execution_of(item) is None]
-        return next((item for item in untyped[len([end for end in ends if execution_of(end) is None]):]
-                     if item["at"] <= at), None)
     candidates = []
+    untyped_ends = [item for item in ends if execution_of(item) is None]
     for index, start in enumerate(starts):
         if execution_of(start) != execution or start["at"] > at:
             continue
         matching_ends = [end for end in ends if execution_of(end) == execution and end["at"] >= start["at"]]
-        if not execution and matching_ends:
+        if not execution:
             # Legacy starts/ends are paired FIFO; an end belongs to this start by ordinal.
-            ordinal = sum(1 for item in starts[:index] if not execution_of(item))
-            matching_ends = matching_ends[ordinal:ordinal + 1]
+            ordinal = sum(1 for item in starts[:index] if execution_of(item) is None)
+            matching_ends = untyped_ends[ordinal:ordinal + 1]
         closed_at = matching_ends[0]["at"] if matching_ends else None
         if open_only and closed_at is not None:
             continue
@@ -271,16 +268,42 @@ def main() -> int:
                    and (e.get("worker_id") or "orchestrator") == args.worker_id
                    and execution_of(e) == event["execution"] for e in record["events"]):
                 raise ValueError("execution id already used for this stage and worker")
+        if args.event in {"stage-start", "dispatch"}:
+            # An opening can change the effective-time window of an already
+            # correlated untyped callback (even when the new opening is typed).
+            # Do not rewrite history by inserting it ahead of that callback.
+            pair = [e for e in record["events"] if e.get("stage") == args.stage
+                    and (e.get("worker_id") or "orchestrator") == args.worker_id]
+            if any(e.get("type") == "state_observed" and execution_of(e) is None
+                   and e["at"] >= at
+                   and opening_for(record, args.stage, args.worker_id, None, e["at"]) is not None
+                   for e in pair):
+                raise ValueError("backdated opening would reassign an existing observation")
         if args.event in {"stage-start", "dispatch"} and not args.execution_id:
-            # Keep untyped openings in effective-time order; a late opening
-            # may precede an existing end without changing FIFO pairing.
             pair_starts = [e["at"] for e in record["events"]
                           if e.get("type") == "stage_started"
                           and e.get("stage") == args.stage
                           and (e.get("worker_id") or "orchestrator") == args.worker_id
                           and execution_of(e) is None]
-            if pair_starts and at < max(pair_starts):
+            pair_ends = [e["at"] for e in record["events"]
+                         if e.get("type") in {"stage_finished", "stage_failed"}
+                         and e.get("stage") == args.stage
+                         and (e.get("worker_id") or "orchestrator") == args.worker_id
+                         and execution_of(e) is None]
+            if (pair_starts and at <= max(pair_starts)) or (pair_ends and at <= max(pair_ends)):
                 raise ValueError("backdated untyped stage-start would change FIFO pairing")
+        if args.event in {"wait-start", "wait-end"}:
+            same_wait = [e for e in record["events"] if e.get("stage") == args.stage
+                         and (e.get("worker_id") or "orchestrator") == args.worker_id
+                         and e.get("reason") == args.reason]
+            starts = [e for e in same_wait if e.get("type") == "wait_started"]
+            ends = [e for e in same_wait if e.get("type") == "wait_finished"]
+            if args.event == "wait-start":
+                if (starts and at < starts[-1]["at"]) or (ends and at <= ends[-1]["at"]):
+                    raise ValueError("backdated wait-start would change FIFO pairing")
+            elif (not starts or len(ends) >= len(starts) or at < starts[len(ends)]["at"]
+                  or (ends and at < ends[-1]["at"])):
+                raise ValueError("wait-end has no matching open wait at effective time")
         if args.event in {"observe", "stage-end"}:
             if args.event == "stage-end" and not args.execution_id:
                 prior_ends = [e["at"] for e in record["events"]

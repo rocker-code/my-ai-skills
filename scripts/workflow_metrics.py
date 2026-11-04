@@ -97,6 +97,7 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
     waits: list[dict[str, Any]] = []
     run_started = parse_time(record.get("created_at"))
     run_finished = parse_time(record.get("finished_at"))
+    legacy = not any(event.get("type") == "state_observed" for event in events)
     current_stage = None
 
     for event in events:
@@ -136,21 +137,22 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
         intervals.extend(queue)
     open_waits = ([{"stage": stage, "worker_id": worker, "reason": reason}
                    for (stage, worker, reason), queue in wait_starts.items() if queue]
-                  if not run_finished else [])
+                   if legacy or not run_finished else [])
     for (stage, worker, reason), queue in wait_starts.items():
         while queue:
             waits.append({"stage": stage, "worker_id": worker, "reason": reason, "start": queue.popleft(),
                           "end": as_of})
 
-    # Run completion bounds accounting, including callbacks recorded after it.
-    # Preserve the original event timestamps/closed_at for audit and correlation.
-    horizon = min(as_of, run_finished) if run_finished else as_of
+    # Observed records bound accounting at run completion. Records predating
+    # runtime observation retain their original as_of-based durations.
+    # Preserve original timestamps/closed_at for audit and correlation.
+    horizon = min(as_of, run_finished) if run_finished and not legacy else as_of
     for interval in intervals:
         interval["end"] = max(interval["start"], min(interval["end"], horizon))
     for wait in waits:
         wait["end"] = max(wait["start"], min(wait["end"], horizon))
     open_stages = [(items[-1]["start"], stage) for (stage, _worker), items in stage_starts.items() if items]
-    current_stage = max(open_stages, default=(None, None))[1] if not run_finished else None
+    current_stage = max(open_stages, default=(None, None))[1] if legacy or not run_finished else None
 
     correlate_observations(intervals, events)
     for interval in intervals:
@@ -163,7 +165,7 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
         interval["effective_end"] = min(interval["end"], parse_time(terminals[0]["at"])) if terminals else interval["end"]
         interval["verified_state"] = (
             "needs_reconciliation" if terminals and interval["closed_at"] is None
-            else terminals[0]["state"] if terminals
+            else terminals[-1]["state"] if terminals
             else "working" if confirmed
             else "unconfirmed" if observations
             else "unobserved"
@@ -213,11 +215,14 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
     for wait in waits:
         wait_totals[wait["reason"]] += max(0.0, (wait["end"] - wait["start"]).total_seconds())
 
-    cycle_end = horizon
+    cycle_end = run_finished or as_of
     cycle = max(0.0, (cycle_end - run_started).total_seconds()) if run_started else None
     active = sorted((item for item in intervals if item["closed_at"] is None and not run_finished), key=lambda i: i["start"])
     current = active[-1] if active else None
-    historical = max(intervals, key=lambda i: i["end"]) if intervals else None
+    # The accounting horizon may give several intervals the same capped end.
+    # The latest opening identifies the relevant incarnation, not that tie.
+    historical = max(enumerate(intervals),
+                     key=lambda pair: (pair[1]["start"], pair[1]["closed_at"] or pair[1]["start"], pair[0]))[1] if intervals else None
     relevant = current or historical
     last = relevant["last_confirmed"] if relevant else None
     incomplete = []
@@ -237,7 +242,7 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
     elif open_waits:
         activity = f"waiting:{open_waits[-1]['reason']}"
     elif current:
-        activity = (current["terminal"]["state"] if current["terminal"] and current["terminal"]["state"] in {"unknown", "interrupted"}
+        activity = (current["last_confirmed"]["state"] if current["terminal"] and current["last_confirmed"]["state"] in {"unknown", "interrupted"}
                     else current["verified_state"])
     else:
         activity = "unobserved"
@@ -266,7 +271,9 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
         "issue": record.get("issue"),
         "status": record.get("status", "running"),
         "current_stage": current_stage,
-        "current_waits": open_waits,
+        # The pre-observation reader consumed its wait queues before emitting
+        # this legacy field (always []). Keep that field byte-for-byte compatible.
+        "current_waits": [] if legacy else open_waits,
         "status_summary": status_summary,
         "incomplete_evidence": incomplete,
         "created_at": record.get("created_at"),
