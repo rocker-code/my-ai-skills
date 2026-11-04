@@ -10,8 +10,8 @@ Garantir que, entre participantes cooperantes do workflow, exista no máximo um 
 O helper SHALL usar exclusivamente o registry `ai-workflow/worktrees.json` no Git common dir do repositório, criando-o quando ausente. Toda leitura-modificação-escrita MUST ocorrer sob lock exclusivo comum a todos os worktrees e gravar o arquivo de forma atômica. Se a exclusividade não puder ser estabelecida, o helper MUST falhar sem alterar o registry nem conceder posse.
 
 #### Scenario: Registry materializado no Git common dir
-- **WHEN** um writer reserva um worktree auxiliar de um repositório sem registry
-- **THEN** o registry é criado em `<git-common-dir>/ai-workflow/worktrees.json`, fora da árvore rastreada, com identidade do repositório e a entrada do checkout
+- **WHEN** o coordenador planeja um novo worktree auxiliar de um repositório sem registry
+- **THEN** o registry é criado em `<git-common-dir>/ai-workflow/worktrees.json`, fora da árvore rastreada, com identidade do repositório e a entrada `RESERVED` do caminho planejado; checkout preexistente sem entrada não recebe posse direta
 
 #### Scenario: Lock indisponível
 - **WHEN** outro processo mantém o lock além do tempo de espera ou o mecanismo de lock não existe na plataforma
@@ -38,7 +38,15 @@ O helper SHALL conceder posse ativa de um checkout a no máximo uma sessão. Uma
 
 #### Scenario: Reserva planejada antes da criação
 - **WHEN** o coordenador reserva um caminho ainda inexistente com `--planned --repository <checkout existente>` antes de `git worktree add`
-- **THEN** identidade e lock vêm do checkout existente, o caminho planejado recebe estado `RESERVED` sem baseline e sem chamadas Git nele, e somente a mesma sessão pode ativá-lo após criação/verificação da branch; ausência de `--repository` é erro de uso
+- **THEN** identidade e lock vêm do checkout existente, o caminho planejado recebe estado `RESERVED` sem baseline e sem chamadas Git nele, e somente a mesma sessão/run pode ativá-lo após criação/verificação da branch; ausência de `--repository` é erro de uso
+
+#### Scenario: Git worktree add falha sem criar destino
+- **WHEN** o dono da reserva `RESERVED` informa `cancel-planned --session --run --repository <checkout existente> --reason <motivo>` e o destino não existe nem aparece em `git worktree list --porcelain`
+- **THEN** sob lock a entrada passa a `REMOVED` com motivo no histórico, sem acessar Git no destino nem excluir arquivos
+
+#### Scenario: Cancelamento de criação parcial ou por outro dono
+- **WHEN** o destino existe, figura no inventário Git, a entrada já foi ativada ou sessão/run não correspondem ao dono `RESERVED`
+- **THEN** `cancel-planned` recusa a operação sem remover worktree, diretório ou entrada; a criação parcial precisa de inspeção manual
 
 #### Scenario: Identificadores incompatíveis ou issue duplicada
 - **WHEN** sessão/run não obedece ao padrão seguro ou outra entrada não removida já usa a mesma issue em outro caminho
@@ -78,7 +86,7 @@ O helper SHALL manter em `status`, `verify` e `reserve` com `--json`, inclusive 
 - **THEN** retorna exit 4 e campos de estado, dono nulo e relatório com commits/caminhos alterados
 
 ### Requirement: Alteração externa detectada e distinguida de escrita própria
-O helper SHALL comparar HEAD/digest com o baseline, inclusive sem dono. `verify` SHALL persistir drift ou recibo do dono/baseline. `checkpoint` SHALL exigir recibo válido, dono/identidade iguais e nenhum drift detectado; SHALL gravar a diferença após escrita. Drift detectado MUST suspender mutações até aceite explícito com motivo/histórico. `release` SHALL exigir igualdade com o checkpoint, sem absorver diferença. Autoria entre verify e checkpoint não é comprovável.
+O helper SHALL comparar HEAD/digest com o baseline, inclusive sem dono em entradas liberadas. `verify` SHALL persistir drift ou recibo do dono/baseline. `checkpoint` SHALL exigir recibo válido, dono/identidade iguais e nenhum drift detectado, gravando o novo baseline após escrita. Drift detectado MUST suspender mutações até aceite explícito com motivo/histórico. `release` SHALL exigir igualdade com o checkpoint, sem absorver diferença. Autoria entre verify e checkpoint não é comprovável.
 
 #### Scenario: Commit externo altera HEAD
 - **WHEN** outro agente cria commit na branch reservada depois do último checkpoint
@@ -116,37 +124,63 @@ O helper SHALL transferir a posse de um checkout de uma sessão para outra de fo
 - **THEN** a transferência é recusada e o registry não muda
 
 ### Requirement: Retomada e reconstrução sem tomada de posse por idade
-O helper SHALL reconstruir entrada ausente/incompleta do Git real, sem dono e sem alterar arquivos. Idade MUST NOT autorizar posse. Takeover MUST exigir dono anterior esperado e evidência de término; PID explicitamente fornecido ainda vivo no mesmo host MUST impedir takeover. PID ausente/morto não substitui evidência de término.
+O helper SHALL reconstruir entrada ausente/incompleta do Git real em `RECOVERY_REQUIRED`, com `owner=null` significando posse desconhecida, sem alterar arquivos. Baseline observado nesse estado MUST NOT autorizar `reserve`, `verify`, `checkpoint`, `release`, `handoff`, aceite de drift ou limpeza aplicada. SHALL expor inventário de worktrees/branch/HEAD/estado/diff/caminhos desconhecidos e digest para revisão. Idade MUST NOT autorizar posse.
 
 #### Scenario: Writer interrompido e registry perdido
 - **WHEN** o registry desaparece após um writer deixar diff parcial
-- **THEN** a reconstrução registra branch, HEAD e fingerprint reais, nenhum dono ativo, e o diff permanece intacto
+- **THEN** a reconstrução registra branch, HEAD e fingerprint reais, `owner=null` e estado `RECOVERY_REQUIRED`, e o diff permanece intacto sem conceder posse
 
-#### Scenario: Reserva antiga sem evidência de término
-- **WHEN** outra sessão tenta assumir uma reserva antiga sem informar dono anterior e evidência de término
+#### Scenario: Registry perdido enquanto writer anterior segue vivo sem PID registrado
+- **WHEN** um writer ainda atua no checkout, o registry desaparece, e outra sessão tenta `reconcile` seguido de `reserve` (inclusive com `--accept-external --reason`)
+- **THEN** o checkout fica em `RECOVERY_REQUIRED` e a nova sessão recebe conflito, sem posse ou absorção de diff; o operador deve comprovar o término fora do helper antes de retomar
+
+#### Scenario: Entrada incompleta não é checkout livre
+- **WHEN** uma entrada de registry perde campos obrigatórios e a sessão nova tenta reservá-la
+- **THEN** `reconcile` preserva os dados recuperáveis e a bloqueia em `RECOVERY_REQUIRED`, sem substituir silenciosamente o dono por uma entrada `WAITING`
+
+### Requirement: Takeover condicionado a término e inventário revisados
+Takeover MUST exigir dono anterior esperado (ou `unknown` se perdido), referência a evidência externa de término revisada pelo coordenador/operador e digest do inventário revisado, refeito sob lock. PID anterior explicitamente fornecido ainda vivo no mesmo host MUST impedir takeover; ausência de PID ou idade não substitui evidência. Sem evidência confiável, manter bloqueio. O helper não autentica a referência nem impede writers externos não cooperantes.
+
+#### Scenario: Reserva antiga sem evidência ou inventário revisado
+- **WHEN** outra sessão tenta assumir uma reserva antiga sem dono anterior esperado, evidência de término revisada ou digest de inventário atual
 - **THEN** a tomada é recusada independentemente da idade
 
-#### Scenario: Tomada após término comprovado
-- **WHEN** a sessão nova informa o dono anterior esperado, evidência de término, e o processo anterior não está vivo
-- **THEN** a posse é transferida, a evidência é registrada no histórico e o diff é preservado
+#### Scenario: Retomada depois de término e inventário revisados
+- **WHEN** a sessão nova informa o dono anterior esperado (ou `unknown` no registry perdido), referência à evidência externa de término revisada, digest do inventário revisado, e não há PID anterior registrado vivo no mesmo host
+- **THEN** o helper refaz inventário sob lock, concede posse somente se o digest ainda corresponder, registra motivo/evidência e baseline no histórico e preserva o diff; inventário alterado impede a tomada
 
 #### Scenario: PID explícito ainda vivo
 - **WHEN** a reserva registrou `--owner-pid` de um worker ainda vivo no mesmo host e outra sessão apresenta evidência de término
 - **THEN** o takeover é recusado sem apagar trabalho nem inferir que o processo do CLI efêmero é o worker
 
 ### Requirement: Arquivos gerados conhecidos separados de trabalho do usuário
-O helper SHALL classificar caminhos não rastreados e ignorados como gerados conhecidos (`__pycache__/`, `*.pyc`, `*.pyo`) ou desconhecidos. A limpeza MUST remover apenas bytecode conhecido elegível dentro do checkout reservado, pelo dono, com listagem prévia por padrão e relatório dos caminhos removidos; MUST NOT varrer diretórios ignorados por outros motivos (`.venv/`, `node_modules/`), seguir symlinks ou remover arquivos desconhecidos, rastreados e alterações parciais.
+O helper SHALL classificar não rastreados/ignorados como gerados (`__pycache__/`, `*.pyc`, `*.pyo`) ou desconhecidos; nome MUST NOT autorizar exclusão. `clean-generated` SHALL listar elegíveis/recusados e razões. Somente arquivos regulares não rastreados/não staged `*.py[co]` com header igual ao `importlib.util.MAGIC_NUMBER` do Python em execução são elegíveis; outros cabeçalhos MUST permanecer. Header é indício de formato, não prova de autoria ou integridade.
 
 #### Scenario: Pycache e arquivo desconhecido coexistem
-- **WHEN** o checkout contém `scripts/__pycache__/x.pyc`, um arquivo novo desconhecido e uma alteração rastreada, e o dono executa a limpeza aplicada
-- **THEN** somente o bytecode é removido, e o arquivo desconhecido e a alteração rastreada permanecem
+- **WHEN** o checkout contém `scripts/__pycache__/x.pyc` com magic header reconhecido, um arquivo novo desconhecido e uma alteração rastreada já no baseline, e o dono seleciona `x.pyc` com motivo após verificação válida
+- **THEN** somente o bytecode selecionado é removido e reportado, e o arquivo desconhecido e a alteração rastreada permanecem
+
+#### Scenario: Nome pyc sem origem verificável
+- **WHEN** um arquivo `*.pyc` contém bytes arbitrários ou magic header não reconhecido, ou o dono pede `--apply` sem caminhos exatos ou motivo
+- **THEN** nada desse arquivo é removido, mesmo que tenha sido classificado como gerado pelo nome
+
+### Requirement: Limpeza aplicada verificada e restrita ao selecionado
+`clean-generated --apply` MUST exigir dono, seleção exata e motivo; sob lock MUST revalidar identidade, posse, HEAD/digest, recibo `verified_for` atual e ausência de drift antes de reenumerar. MUST revalidar metadados e header antes de desvincular cada arquivo, sem seguir symlinks, varrer diretórios ignorados por outros motivos ou remover arquivos desconhecidos/rastreados/diff. Só remove `__pycache__` vazio após remoção própria; não promete proteção contra corrida final de writer externo.
+
+#### Scenario: Drift ou verificação inválida antes da limpeza
+- **WHEN** houve drift persistido/novo, recibo de verify ausente/obsoleto, mudança de identidade ou de dono antes de `--apply`
+- **THEN** a verificação refeita sob lock impede qualquer remoção e relata a divergência
+
+#### Scenario: Candidato muda ou vira symlink
+- **WHEN** o arquivo selecionado ou um ancestral se torna symlink, ou metadados/cabeçalho mudam antes de desvincular
+- **THEN** o helper recusa o candidato sem segui-lo nem apagar o novo conteúdo
 
 #### Scenario: Limpeza sem posse
 - **WHEN** uma sessão sem posse pede a limpeza aplicada
 - **THEN** nada é removido e o comando falha com conflito de posse
 
 #### Scenario: Bytecode dentro de diretório ignorado alheio
-- **WHEN** `.venv/lib/__pycache__/x.pyc` está ignorado por `.venv/` e há bytecode elegível em `scripts/__pycache__/`
+- **WHEN** `.venv/lib/__pycache__/x.pyc` está ignorado por `.venv/` e há bytecode elegível selecionado em `scripts/__pycache__/`
 - **THEN** a limpeza aplicada preserva `.venv/` e remove somente o bytecode elegível de `scripts/`
 
 ### Requirement: Helpers não criam bytecode que bloqueie o fluxo
