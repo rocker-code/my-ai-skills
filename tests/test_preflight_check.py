@@ -88,6 +88,57 @@ class PreflightCheckTests(unittest.TestCase):
             self.assertIn({"path": "extra.md", "type": "??"}, data["findings"])
             self.assertEqual(self.cli(root, "policy", "--since", "missing-revision", code=2)["status"], "error")
 
+    def test_policy_detects_staged_delta_hidden_by_restored_worktree(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+
+            def git(*args):
+                subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+            git("init", "-q")
+            git("config", "user.name", "Test")
+            git("config", "user.email", "test@example.com")
+            policy = root / "AGENTS.md"
+            policy.write_text("original\n")
+            git("add", "AGENTS.md")
+            git("commit", "-qm", "plan")
+            policy.write_text("staged policy\n")
+            git("add", "AGENTS.md")
+            policy.write_text("original\n")
+            self.assertEqual(self.cli(root, "policy", "--since", "HEAD", code=1)["findings"],
+                             [{"path": "AGENTS.md", "type": "M"}])
+
+    def test_policy_paths_cannot_exclude_mandatory_defaults(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
+            subprocess.run(["git", "-C", str(root), "-c", "user.name=Test",
+                            "-c", "user.email=test@example.com", "commit", "--allow-empty",
+                            "-qm", "plan"], check=True)
+            (root / "AGENTS.md").write_text("policy\n")
+            for path in (":(exclude)AGENTS.md", ":!AGENTS.md"):
+                with self.subTest(path=path):
+                    self.assertEqual(self.cli(root, "policy", "--since", "HEAD", "--path", path,
+                                              code=2)["status"], "error")
+            self.assertEqual(self.cli(root, "policy", "--since", "HEAD", "--path", "extra.md",
+                                      code=1)["findings"], [{"path": "AGENTS.md", "type": "??"}])
+
+    def test_workspace_and_skipped_optional_cannot_be_reported_ok(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            installed = root / "node_modules/.package-lock.json"
+            installed.parent.mkdir(parents=True)
+            (root / "package-lock.json").write_text(json.dumps({"lockfileVersion": 3, "packages": {
+                "": {"version": "1.0.0"}, "node_modules/workspace": {"link": True, "resolved": "packages/workspace"}}}))
+            installed.write_text(json.dumps({"packages": {"node_modules/workspace": {"link": True}}}))
+            self.assertEqual(self.cli(root, "lock", code=2)["status"], "error")
+            (root / "package-lock.json").write_text(json.dumps({"lockfileVersion": 3, "packages": {
+                "": {"version": "1.0.0"}, "node_modules/platform-only": {"version": "1.0.0", "optional": True}}}))
+            installed.write_text(json.dumps({"packages": {}}))
+            self.assertEqual(self.cli(root, "lock", code=1)["findings"],
+                             [{"ecosystem": "npm", "type": "missing", "package": "node_modules/platform-only",
+                               "locked": "1.0.0", "installed": None}])
+
 
 if __name__ == "__main__":
     unittest.main()

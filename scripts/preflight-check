@@ -106,14 +106,22 @@ def policy_check(root, args):
     paths = (*DEFAULT_POLICY, *args.path)
     for path in paths:
         candidate = Path(path)
-        if candidate.is_absolute() or ".." in candidate.parts or not path:
+        if candidate.is_absolute() or ".." in candidate.parts or not path or path.startswith(":"):
             raise ValueError(f"policy path must be repo-relative: {path}")
     rev = git(root, "rev-parse", "--verify", "--end-of-options", f"{args.since}^{{commit}}").strip().decode("ascii")
-    changed = git(root, "diff", "--no-renames", "--name-status", "-z", rev, "--", *paths).split(b"\0")
+    # Compare both states with the plan revision: a staged policy change can be
+    # hidden from the working-tree comparison by restoring the file to HEAD.
     findings = []
-    for index in range(0, len(changed) - 1, 2):
-        findings.append({"type": changed[index].decode("utf-8", "replace"),
-                         "path": changed[index + 1].decode("utf-8", "replace")})
+    seen = set()
+    for options in ((), ("--cached",)):
+        changed = git(root, "diff", "--no-renames", "--name-status", "-z", *options,
+                      rev, "--", *paths).split(b"\0")
+        for index in range(0, len(changed) - 1, 2):
+            finding = (changed[index].decode("utf-8", "replace"),
+                       changed[index + 1].decode("utf-8", "replace"))
+            if finding not in seen:
+                findings.append({"type": finding[0], "path": finding[1]})
+                seen.add(finding)
     untracked = git(root, "ls-files", "--others", "--exclude-standard", "-z", "--", *paths)
     findings.extend({"type": "??", "path": path.decode("utf-8", "replace")}
                     for path in untracked.split(b"\0") if path)
