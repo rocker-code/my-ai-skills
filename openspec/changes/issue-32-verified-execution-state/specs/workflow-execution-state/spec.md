@@ -18,7 +18,7 @@ O registro de eventos SHALL permitir associar run, issue, etapa e worker a um id
 - **THEN** o comando falha com erro de validação e o registro não é alterado
 
 ### Requirement: Fonte e horário da observação
-Toda observação SHALL registrar estado (`running`, `completed`, `failed`, `interrupted`, `unknown`), fonte, horário observado e horário de gravação. Um horário informado MUST ser ISO-8601 UTC, não posterior ao horário de gravação além de uma tolerância curta e não anterior ao início do run; caso contrário o comando MUST falhar.
+Toda observação SHALL registrar estado (`running`, `completed`, `failed`, `interrupted`, `unknown`), fonte, horário observado e horário de gravação. Um horário informado MUST ser ISO-8601 com fuso (`Z` ou offset), normalizado para UTC, não posterior ao horário de gravação além de uma tolerância curta e não anterior ao início do run; caso contrário o comando MUST falhar.
 
 #### Scenario: Horário informado por callback
 - **WHEN** um callback de término informa conclusão às 10:20 e o orquestrador grava às 10:25 com esse horário
@@ -26,6 +26,10 @@ Toda observação SHALL registrar estado (`running`, `completed`, `failed`, `int
 
 #### Scenario: Horário futuro ou anterior ao run
 - **WHEN** o horário informado é futuro ou anterior ao início do run
+- **THEN** o comando falha sem alterar o registro
+
+#### Scenario: Término anterior ao despacho
+- **WHEN** a observação ou o término informado para um worker precede o despacho correspondente
 - **THEN** o comando falha sem alterar o registro
 
 ### Requirement: Sinais insuficientes não confirmam estado
@@ -54,10 +58,10 @@ Quando a observação confirmatória mais recente de uma etapa aberta indicar `c
 - **THEN** o estado verificado não é `working` e o bloqueio exibido é reconciliação pendente
 
 ### Requirement: Classificação de esperas
-O registro SHALL aceitar os motivos de espera `owner_input`, `dependency`, `ci`, `tests`, `review`, `environment`, `runtime_capacity`, `external` e `other`. Tempo em espera MUST ser excluído do trabalho da etapa e somado ao motivo correspondente; ao terminar a espera a etapa volta ao estado de trabalho.
+O registro SHALL aceitar os motivos de espera `owner_input`, `dependency`, `ci`, `tests`, `review`, `environment`, `runtime_capacity`, `external` e `other`. Tempo em espera MUST ser excluído do trabalho da etapa e somado ao motivo correspondente; ao terminar a espera a etapa volta ao estado observado anterior, ou permanece sem confirmação quando não houver observação confirmatória.
 
 #### Scenario: Usuário responde decisão após espera
-- **WHEN** uma etapa entra em espera `owner_input` às 10:00, a espera termina às 10:40 e a etapa termina às 11:00, tendo começado às 09:50
+- **WHEN** uma etapa com execução confirmada em andamento entra em espera `owner_input` às 10:00, a espera termina às 10:40 e a etapa termina às 11:00, tendo começado às 09:50
 - **THEN** a espera `owner_input` soma 40 minutos, o trabalho registrado soma 30 minutos e, entre 10:40 e 11:00, o estado verificado é trabalho
 
 #### Scenario: CI em andamento
@@ -75,6 +79,17 @@ Uma execução de teste sem término confirmado, ou com término confirmado mas 
 - **WHEN** a observação de uma execução `test_run` confirma término com relatório ausente e a etapa é encerrada como concluída
 - **THEN** o resumo lista a execução como evidência incompleta e a última prova confirmada não a apresenta como aprovação
 
+### Requirement: Observação de runtime não é veredito de prova
+Estado observado e presença de relatório SHALL ser tratados apenas como fatos de runtime. O resumo MUST NOT rotular uma execução de teste como verificada ou aprovada com base em `--report present` ou em mera referência `evidence:<id>`; ele SHALL exibir a referência vinculada ou "não verificada". O veredito sobre a prova pertence à verificação do registro de evidência.
+
+#### Scenario: Relatório presente sem evidência vinculada
+- **WHEN** uma execução `test_run` tem término confirmado com relatório presente e nenhuma referência `evidence:` vinculada
+- **THEN** o resumo mostra a execução como "não verificada", sem rótulo de aprovação
+
+#### Scenario: Observação vinculada a evidência registrada
+- **WHEN** uma observação informa `--evidence evidence:ev-20261104T031855Z-8da5fbe0`
+- **THEN** a observação é aceita e a última observação confirmada exibe essa referência sem afirmar que a prova foi verificada
+
 ### Requirement: Progresso separado por issue
 Cada issue SHALL manter ciclo, etapas e métricas próprios, mesmo quando várias entregas ocorrem na mesma sessão ou run. O registro MUST recusar abrir etapa, despacho ou espera num registro já finalizado, exigindo um registro da issue correta.
 
@@ -83,11 +98,15 @@ Cada issue SHALL manter ciclo, etapas e métricas próprios, mesmo quando vária
 - **THEN** os ciclos e métricas de A e B são independentes no relatório e uma tentativa de abrir etapa no registro finalizado de A falha
 
 ### Requirement: Observação repetida não gera eventos redundantes
-Uma observação idêntica à mais recente da mesma execução (mesmo estado e fonte) SHALL atualizar apenas o horário de última confirmação, sem acrescentar um novo evento.
+Uma observação idêntica à mais recente da mesma execução (mesmo estado, fonte, resultado, relatório, referência de log, evidência e próximo passo) SHALL atualizar apenas o horário de última confirmação, sem acrescentar um novo evento. Informação de prova nova MUST ser registrada, nunca deduplicada como idêntica.
 
 #### Scenario: Runtime fornece callback de término
 - **WHEN** o callback de término é registrado e a mesma observação é repetida em seguida
 - **THEN** o registro contém uma única observação de término para a execução, com horário de última confirmação atualizado, e as métricas derivam do callback
+
+#### Scenario: Nova evidência para mesmo estado
+- **WHEN** uma observação posterior mantém estado e fonte, mas acrescenta `evidence:<id>`
+- **THEN** a nova referência é registrada e aparece na última observação confirmada
 
 ### Requirement: Resumo simples de progresso
 O relatório SHALL apresentar, por issue, etapa atual, estado verificado, última prova confirmada (estado, fonte, referência), bloqueio, próximo passo informado e horário da última verificação confirmatória. Campos sem dado MUST aparecer como indisponíveis, nunca estimados.
@@ -98,25 +117,30 @@ O relatório SHALL apresentar, por issue, etapa atual, estado verificado, últim
 
 #### Scenario: Sem observação
 - **WHEN** a issue não possui observações
-- **THEN** o resumo mostra estado sem observação e prova e verificação indisponíveis
+- **THEN** o resumo mostra estado sem observação e prova e verificação indisponíveis, sem alterar as métricas legadas
+
+#### Scenario: Registro anterior à observação de runtime
+- **WHEN** o relatório lê um registro `schema_version: 1` criado antes desta mudança
+- **THEN** durações, esperas, retrabalho, evidências e ciclo existentes continuam legíveis com os mesmos valores, e apenas o novo estado verificado aparece como sem observação
 
 ### Requirement: Referências seguras de log
-Referências de log e evidência de observação SHALL ser URL GitHub, SHA de commit ou referência tipada `<esquema>:<identificador-seguro>`. Valores com espaço, caracteres de consulta ou credenciais embutidas MUST ser recusados.
+`--log-ref` SHALL aceitar URL HTTPS do host `github.com`, SHA de commit ou referência tipada `<esquema>:<identificador-seguro>`. URLs MUST recusar userinfo, porta, query, fragment, escapes percentuais e caminho inseguro; referências tipadas MUST recusar `http`, `https`, `file`, `@`, `//`, espaço e `?`, `=`, `&`, `#`. A validação de `--evidence` MUST permanecer independente desta regra.
 
 #### Scenario: Referência tipada aceita
-- **WHEN** uma observação informa `runtime:task-7f3a` ou `m2t:run-20261104-01`
+- **WHEN** uma observação informa `--log-ref runtime:task-7f3a`
 - **THEN** a referência é registrada e exibida no relatório
 
-#### Scenario: Referência com consulta recusada
+#### Scenario: Referência com consulta ou espaço recusada
 - **WHEN** a referência contém `?token=` ou espaço
 - **THEN** o comando falha sem alterar o registro
 
-### Requirement: Compatibilidade com registros antigos
-Registros `schema_version: 1` sem os novos eventos SHALL continuar legíveis, com as mesmas durações, esperas, retrabalho e ciclo de antes. Os novos campos MUST ser aditivos no mesmo schema.
+#### Scenario: Credenciais embutidas ou http recusados
+- **WHEN** a referência é `https://user:pass@example.com/x` ou `http://evil.example/x`
+- **THEN** o comando falha sem alterar o registro
 
-#### Scenario: Registro antigo
-- **WHEN** o relatório lê um registro gravado antes desta mudança
-- **THEN** os valores existentes são idênticos aos anteriores e o estado verificado aparece como sem observação
+#### Scenario: URL GitHub com credenciais em consulta ou userinfo recusada
+- **WHEN** `--log-ref` recebe `https://github.com/o/r?token=secret`, `https://github.com/o/r#fragment` ou `https://github.com/user:pass@evil.example/x`
+- **THEN** o comando falha sem alterar o registro
 
 ### Requirement: Reconciliação e continuidade do orquestrador
 O orquestrador SHALL reconciliar o estado com runtime e evidência antes de anunciar atividade ou conclusão, inclusive após interrupção, compactação ou retomada, preservando resultados desconhecidos. Ele MUST preferir notificações de término do runtime a polling sem finalidade, seguir as etapas sem exigir comando do usuário por etapa e só ampliar escopo quando autorizado.
