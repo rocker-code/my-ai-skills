@@ -154,26 +154,52 @@ Takeover MUST exigir dono anterior esperado (ou `unknown` se perdido), referênc
 - **THEN** o takeover é recusado sem apagar trabalho nem inferir que o processo do CLI efêmero é o worker
 
 ### Requirement: Arquivos gerados conhecidos separados de trabalho do usuário
-O helper SHALL classificar não rastreados/ignorados como gerados (`__pycache__/`, `*.pyc`, `*.pyo`) ou desconhecidos; nome MUST NOT autorizar exclusão. `clean-generated` SHALL listar elegíveis/recusados e razões. Somente arquivos regulares não rastreados/não staged `*.py[co]` com header igual ao `importlib.util.MAGIC_NUMBER` do Python em execução são elegíveis; outros cabeçalhos MUST permanecer. Header é indício de formato, não prova de autoria ou integridade.
+O helper SHALL classificar não rastreados/ignorados como gerados (`__pycache__/`, `*.pyc`, `*.pyo`) ou desconhecidos e listar elegíveis/recusados com razões. Nome e magic header MUST NOT autorizar exclusão sem registro verificável de execução cooperante; bytecode manual, preexistente ou sem registro MUST permanecer.
 
-#### Scenario: Pycache e arquivo desconhecido coexistem
-- **WHEN** o checkout contém `scripts/__pycache__/x.pyc` com magic header reconhecido, um arquivo novo desconhecido e uma alteração rastreada já no baseline, e o dono seleciona `x.pyc` com motivo após verificação válida
-- **THEN** somente o bytecode selecionado é removido e reportado, e o arquivo desconhecido e a alteração rastreada permanecem
+#### Scenario: Bytecode válido preexistente ou criado manualmente
+- **WHEN** `scripts/__pycache__/user.pyc` já existia antes do comando cooperante ou foi criado fora de `track-generated`, com magic header válido, e o dono o seleciona para limpeza
+- **THEN** a listagem indica ausência de proveniência e `--apply` recusa removê-lo, preservando também arquivos desconhecidos e diff parcial
 
 #### Scenario: Nome pyc sem origem verificável
 - **WHEN** um arquivo `*.pyc` contém bytes arbitrários ou magic header não reconhecido, ou o dono pede `--apply` sem caminhos exatos ou motivo
 - **THEN** nada desse arquivo é removido, mesmo que tenha sido classificado como gerado pelo nome
 
+### Requirement: Proveniência opt-in de bytecode gerado durante execução cooperante
+`track-generated --session -- <command>` SHALL verificar dono/identidade/baseline e recibo `verified_for`, observar bytecode antes/depois da execução cooperante bem-sucedida e só registrar candidatos novos com magic header reconhecido. MUST NOT publicar proveniência se comando, snapshot, verificação ou checkpoint falhar, ou se filhos conhecidos ainda executarem. Snapshots não provam ausência de writers externos não cooperantes.
+
+#### Scenario: Execução cooperante com bytecode novo e efeitos rastreados
+- **WHEN** o dono verifica e executa `track-generated --session -- <command>` com comando cooperante bem-sucedido que altera código rastreado e cria `scripts/__pycache__/x.pyc`, sem subprocesso pendente
+- **THEN** o wrapper observa bytecode regular não rastreado/não staged em caminhos seguros, sem varrer árvores ignoradas alheias, faz checkpoint dos efeitos, registra `x.pyc` sob lock e uma verificação posterior pode passar; bytecode válido existente antes não recebe registro
+
+#### Scenario: Comando falha ou deixa filho executando
+- **WHEN** o comando falha, snapshot falha ou há processo filho conhecido ainda ativo após o comando principal
+- **THEN** nenhum candidato desse comando recebe proveniência, nenhum snapshot posterior ocorre com filho ativo, e os efeitos já presentes exigem inspeção/checkpoint ou reconciliação antes de nova execução
+
+### Requirement: Registro limitado de proveniência de bytecode
+Antes de publicar candidatos, o helper MUST revalidar posse/identidade/ausência de drift e persistir checkpoint e proveniência juntos sob lock. Registros SHALL ser limitados a 256 por entrada, conter hash/metadados/referência de execução e MUST NOT conter argumentos ou secrets. Troca de dono, recuperação e aceite de drift MUST invalidá-los; MUST NOT reconstituí-los por nome ou header.
+
+#### Scenario: Capacidade do registro excedida
+- **WHEN** a execução produz mais candidatos do que cabem no limite de 256 registros por checkout
+- **THEN** não se publica registro parcial nem se autoriza limpeza dos candidatos excedentes
+
+#### Scenario: Registro sem dados do comando
+- **WHEN** um comando cooperante recebe argumentos sensíveis e gera bytecode novo
+- **THEN** o registry contém somente caminho, hash completo, metadados `lstat` (dev/ino/uid/mode/size/mtime_ns/ctime_ns), sessão/run e referência aleatória; comando, argumentos, ambiente e output não são persistidos
+
 ### Requirement: Limpeza aplicada verificada e restrita ao selecionado
-`clean-generated --apply` MUST exigir dono, seleção exata e motivo; sob lock MUST revalidar identidade, posse, HEAD/digest, recibo `verified_for` atual e ausência de drift antes de reenumerar. MUST revalidar metadados e header antes de desvincular cada arquivo, sem seguir symlinks, varrer diretórios ignorados por outros motivos ou remover arquivos desconhecidos/rastreados/diff. Só remove `__pycache__` vazio após remoção própria; não promete proteção contra corrida final de writer externo.
+`clean-generated --apply` MUST exigir dono, caminhos exatos, motivo e `verified_for` atual; sob lock MUST revalidar identidade, HEAD/digest e ausência de drift. Somente arquivo regular não rastreado/não staged com registro da sessão/run dona atual, hash/metadados coincidentes e magic header reconhecido MAY ser removido; após removê-lo, SHALL invalidar seu registro. Sem registro coincidente, MUST permanecer list-only.
+
+#### Scenario: Bytecode gerado comprovado pela execução cooperante
+- **WHEN** o checkout contém `scripts/__pycache__/x.pyc` novo registrado por `track-generated`, um arquivo novo desconhecido, bytecode válido manual e alteração rastreada já no checkpoint, e o dono verifica, seleciona somente `x.pyc` com motivo
+- **THEN** somente `x.pyc` idêntico ao registro é removido e o registro invalidado; o bytecode manual, arquivo desconhecido e alteração rastreada permanecem; só `__pycache__` vazio após remoção própria pode ser removido
 
 #### Scenario: Drift ou verificação inválida antes da limpeza
 - **WHEN** houve drift persistido/novo, recibo de verify ausente/obsoleto, mudança de identidade ou de dono antes de `--apply`
 - **THEN** a verificação refeita sob lock impede qualquer remoção e relata a divergência
 
 #### Scenario: Candidato muda ou vira symlink
-- **WHEN** o arquivo selecionado ou um ancestral se torna symlink, ou metadados/cabeçalho mudam antes de desvincular
-- **THEN** o helper recusa o candidato sem segui-lo nem apagar o novo conteúdo
+- **WHEN** o arquivo selecionado ou um ancestral se torna symlink, ou conteúdo (mesmo com magic header e tamanho mantidos) ou metadados diferem do registro antes de desvincular
+- **THEN** o helper recusa o candidato sem segui-lo nem apagar o novo conteúdo; reabre com no-follow, compara `fstat`/hash ao registro imediatamente antes do `unlink`, não percorre diretórios ignorados alheios e não promete proteção contra writer externo no intervalo final
 
 #### Scenario: Limpeza sem posse
 - **WHEN** uma sessão sem posse pede a limpeza aplicada
