@@ -153,6 +153,17 @@ class ReservationTest(unittest.TestCase):
         self.reserve(code=7)
         self.assertEqual(json.loads(self.registry.read_text())["schema_version"], 99)
 
+    def test_malformed_entry_history_refuses_recovery_without_mutation(self):
+        self.planned()
+        reg = json.loads(self.registry.read_text())
+        reg["entries"][0]["history"] = None
+        self.registry.write_text(json.dumps(reg))
+        prior = self.registry.read_bytes()
+        result = self.cli("reconcile", session=None, run=None, code=7)
+        self.assertIn("history", result["error"])
+        self.assertEqual(result["exit_code"], 7)
+        self.assertEqual(self.registry.read_bytes(), prior)
+
     def test_lock_timeout_leaves_registry_unchanged(self):
         self.planned()
         prior = self.registry.read_bytes()
@@ -240,6 +251,18 @@ class ReservationTest(unittest.TestCase):
             self.assertEqual(result["state"], "CLEANUP_ELIGIBLE")
             self.assertIsNone(result["owner"])
         self.assertEqual(self.data()["state"], "CLEANUP_ELIGIBLE")
+
+    def test_cleanup_eligible_cannot_be_reacquired_by_takeover(self):
+        self.owned()
+        self.cli("release", "--state", "CLEANUP_ELIGIBLE")
+        digest = self.cli("reconcile", session=None, run=None)["inventory"]["digest"]
+        prior = self.registry.read_bytes()
+        result = self.cli("reconcile", "--takeover", "--expected-owner", "unknown",
+                          "--stopped-evidence", "worker-ended:fixture", "--inventory-digest", digest,
+                          session="next", code=3)
+        self.assertEqual(result["state"], "CLEANUP_ELIGIBLE")
+        self.assertIsNone(result["owner"])
+        self.assertEqual(self.registry.read_bytes(), prior)
 
     def test_handoff_planning_to_apply_keeps_checkout_and_revokes_previous(self):
         self.owned()

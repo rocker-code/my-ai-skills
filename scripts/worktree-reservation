@@ -261,6 +261,8 @@ def execute(args, reg, path, ident, current):
         return response(entry, current, path=checkout, extra={"inventory": _inventory(checkout, checkout, ident, current)})
     _check_identity(entry, ident, checkout)
     if command == "reconcile" and args.takeover:
+        if entry["state"] == "CLEANUP_ELIGIBLE":
+            raise ReservationError(3, "Cleanup-eligible checkout cannot be taken over for writing", entry=entry)
         previous = entry.get("recovery", {}).get("expected_owner") if entry["state"] == "RECOVERY_REQUIRED" else (entry["owner"] or {}).get("session")
         if args.expected_owner != (previous or "unknown"):
             raise ReservationError(3, "Expected owner mismatch", entry=entry)

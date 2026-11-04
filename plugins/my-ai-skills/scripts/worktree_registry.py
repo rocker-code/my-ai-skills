@@ -236,6 +236,8 @@ def _validate_registry(reg, repo):
             raise ReservationError(7, "Registry path must be absolute")
         if "state" in entry and entry["state"] not in STATES:
             raise ReservationError(7, "Invalid registry lifecycle state")
+        if "history" in entry and not isinstance(entry["history"], list):
+            raise ReservationError(7, "Invalid registry entry history")
         if entry.get("state") != "REMOVED":
             if entry["path"] in active_paths:
                 raise ReservationError(7, "Duplicate active checkout entries in registry")
