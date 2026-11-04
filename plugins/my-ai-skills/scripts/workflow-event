@@ -68,10 +68,14 @@ def execution_of(event: dict) -> dict | None:
 def opening_for(record: dict, stage: str, worker: str, execution: dict | None, at: str,
                 *, open_only: bool = False) -> dict | None:
     """Find one matching incarnation at effective time, not callback arrival time."""
-    starts = [event for event in record["events"] if event.get("type") == "stage_started"
-              and event.get("stage") == stage and (event.get("worker_id") or "orchestrator") == worker]
-    ends = [event for event in record["events"] if event.get("type") in {"stage_finished", "stage_failed"}
-            and event.get("stage") == stage and (event.get("worker_id") or "orchestrator") == worker]
+    # The reader sorts by effective time, stably breaking ties by record order.
+    # Use that same opening/closing order for FIFO and incarnation windows.
+    starts = sorted((event for event in record["events"] if event.get("type") == "stage_started"
+                     and event.get("stage") == stage and (event.get("worker_id") or "orchestrator") == worker),
+                    key=lambda event: event["at"])
+    ends = sorted((event for event in record["events"] if event.get("type") in {"stage_finished", "stage_failed"}
+                   and event.get("stage") == stage and (event.get("worker_id") or "orchestrator") == worker),
+                  key=lambda event: event["at"])
     candidates = []
     untyped_ends = [item for item in ends if execution_of(item) is None]
     for index, start in enumerate(starts):
@@ -90,7 +94,7 @@ def opening_for(record: dict, stage: str, worker: str, execution: dict | None, a
         if not execution:
             if sum(1 for item in starts if item["at"] == start["at"] and execution_of(item) is None) > 1:
                 continue
-            later = [item["at"] for item in starts[index + 1:] if item["at"] >= start["at"]]
+            later = [item["at"] for item in starts[index + 1:]]
             if (closed_at and at > closed_at) or (later and at >= min(later)):
                 continue
         candidates.append(start)
@@ -325,8 +329,8 @@ def main() -> int:
                           and e.get("stage") == args.stage
                           and (e.get("worker_id") or "orchestrator") == args.worker_id
                           and execution_of(e) == execution_of(event)]
-                if starts and not opening:
-                    raise ValueError("observation is outside the execution's effective-time window")
+                if starts and at < starts[0]["at"]:
+                    raise ValueError("observation precedes dispatch")
             elif args.observed_at:
                 starts = [e for e in record["events"] if e.get("type") == "stage_started"
                           and e.get("stage") == args.stage and (e.get("worker_id") or "orchestrator") == args.worker_id

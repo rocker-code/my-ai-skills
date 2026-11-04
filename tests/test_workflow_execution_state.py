@@ -171,14 +171,47 @@ class FakeGitHub(unittest.TestCase):
         pair = ("--stage", "tests", "--worker-id", "worker-1", "--execution-kind", "job", "--execution-id", "a")
         self.invoke("dispatch", *pair, "--observed-at", at(1))
         self.invoke("stage-end", *pair, "--status", "completed", "--observed-at", at(30))
-        before = self.path.read_bytes()
         self.invoke("observe", *pair, "--state", "completed", "--source", "runtime_event",
-                    "--observed-at", at(31), ok=False)
-        self.assertEqual(self.path.read_bytes(), before)
+                    "--observed-at", at(31))
+        self.assertEqual(self.saved()["events"][-1]["at"], at(31))
+        self.assertEqual(summary(self.saved())["stages"][0]["verified_state"], "unobserved")
         self.invoke("observe", *pair, "--state", "completed", "--source", "runtime_event",
                     "--observed-at", at(20))
         self.assertEqual(self.saved()["events"][-1]["at"], at(20))
         self.assertEqual(summarize_run(self.saved())["stages"][0]["verified_state"], "completed")
+
+    def test_equal_timestamp_opening_and_callback_agree_with_reader(self):
+        start = datetime.fromisoformat(self.saved()["created_at"].replace("Z", "+00:00"))
+        def at(seconds):
+            return (start + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+        pair = ("--stage", "tests", "--worker-id", "worker-1")
+        self.invoke("stage-start", *pair, "--observed-at", at(1))
+        self.invoke("observe", *pair, "--state", "running", "--source", "runtime_event", "--observed-at", at(5))
+        before = self.path.read_bytes()
+        # A new opening at the exact callback time would retroactively steal it.
+        self.invoke("dispatch", *pair, "--execution-kind", "job", "--execution-id", "b",
+                    "--observed-at", at(5), ok=False)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.invoke("dispatch", *pair, "--execution-kind", "job", "--execution-id", "b",
+                    "--observed-at", at(6))
+        self.invoke("observe", *pair, "--state", "completed", "--source", "runtime_event",
+                    "--observed-at", at(6))
+        self.assertEqual(summary(self.saved())["status_summary"]["activity_state"], "unobserved")
+        self.invoke("observe", *pair, "--state", "completed", "--source", "runtime_event",
+                    "--execution-kind", "job", "--execution-id", "b", "--observed-at", at(7))
+        self.assertEqual(summary(self.saved())["status_summary"]["last_confirmed"]["execution"]["id"], "b")
+
+    def test_backdated_typed_opening_uses_effective_order_for_untyped_window(self):
+        start = datetime.fromisoformat(self.saved()["created_at"].replace("Z", "+00:00"))
+        def at(seconds):
+            return (start + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+        pair = ("--stage", "tests", "--worker-id", "worker-1")
+        self.invoke("stage-start", *pair, "--observed-at", at(20))
+        self.invoke("dispatch", *pair, "--execution-kind", "job", "--execution-id", "a", "--observed-at", at(10))
+        self.invoke("observe", *pair, "--state", "running", "--source", "runtime_event", "--observed-at", at(25))
+        self.assertEqual(summary(self.saved())["status_summary"]["last_confirmed"]["execution"], None)
+        self.invoke("stage-end", *pair, "--status", "completed", "--observed-at", at(30))
+        self.assertEqual(summary(self.saved())["stages"][0]["executions"][-1]["verified_state"], "working")
 
     def test_backdated_untyped_end_cannot_change_fifo_pairing(self):
         start = datetime.fromisoformat(self.saved()["created_at"].replace("Z", "+00:00"))
@@ -345,6 +378,25 @@ class StateMetricsTest(unittest.TestCase):
         self.assertIsNone(result["status_summary"]["last_confirmed"])
         self.assertEqual(result["stages"][0]["verified_state"], "unobserved")
 
+    def test_equal_time_reopen_and_out_of_order_callback_windows(self):
+        a, b = {"kind": "job", "id": "a"}, {"kind": "job", "id": "b"}
+        # B's late-recorded typed callback belongs to B, while the untyped
+        # callback at B's opening cannot confirm the earlier incarnation.
+        run = record(event("stage_started", 0), event("stage_finished", 10),
+                     event("stage_started", 10, execution=b),
+                     event("state_observed", 10, state="completed", source="runtime_event"),
+                     event("state_observed", 12, state="running", source="runtime_event", execution=b))
+        result = summary(run)
+        self.assertEqual(result["stages"][0]["executions"][0]["verified_state"], "unobserved")
+        self.assertEqual(result["status_summary"]["last_confirmed"]["execution"], b)
+        run["events"].extend((event("stage_finished", 20, execution=b),
+                              event("stage_started", 25, execution=a),
+                              event("state_observed", 15, state="completed", source="runtime_event", execution=b)))
+        result = summary(run)
+        self.assertEqual(result["stages"][0]["executions"][1]["verified_state"], "completed")
+        self.assertEqual(result["status_summary"]["activity_state"], "unobserved")
+        self.assertIsNone(result["status_summary"]["last_confirmed"])
+
     def test_wait_open_state_and_resumption(self):
         run = record(event("stage_started", 0), event("state_observed", 1, state="running", source="runtime_event"),
                      event("wait_started", 10, reason="ci"))
@@ -457,6 +509,69 @@ class StateMetricsTest(unittest.TestCase):
                     actual = [{key: item[key] for key in value[0]} for item in actual]
                 self.assertEqual(actual, value)
         self.assertEqual(result["status_summary"]["activity_state"], "completed")
+
+    def test_mixed_finished_run_preserves_unobserved_stage_and_wait_timeline(self):
+        run = record(event("stage_started", 0),
+                     event("state_observed", 10, state="completed", source="runtime_event"),
+                     event("stage_started", 20, stage="build", worker_id="worker-2"),
+                     event("wait_started", 25, stage="build", worker_id="worker-2", reason="ci"),
+                     event("run_finished", 30, status="completed"))
+        run.update(status="completed", finished_at="2026-11-04T10:30:00Z")
+        result = summary(run, 50)
+        stages = {item["stage"]: item for item in result["stages"]}
+        self.assertEqual(stages["tests"]["recorded_work_seconds"], 600)
+        self.assertEqual(stages["tests"]["elapsed_seconds"], 1800)
+        self.assertEqual(stages["build"]["elapsed_seconds"], 1800)
+        self.assertEqual(stages["build"]["recorded_work_seconds"], 300)
+        self.assertEqual(stages["build"]["wait_seconds_by_reason"], {"ci": 1500})
+        self.assertEqual(result["recorded_work_seconds"], 900)
+        self.assertEqual(result["wait_seconds_by_reason"], {"ci": 1500})
+        self.assertEqual(result["status_summary"]["activity_state"], "completed")
+
+    def test_reopened_same_pair_wait_uses_unobserved_incarnation(self):
+        a, b = {"kind": "job", "id": "a"}, {"kind": "job", "id": "b"}
+        run = record(event("stage_started", 0, execution=a),
+                     event("state_observed", 10, state="completed", source="runtime_event", execution=a),
+                     event("stage_started", 20, execution=b),
+                     event("wait_started", 25, reason="ci"),
+                     event("run_finished", 30, status="completed"))
+        run.update(status="completed", finished_at="2026-11-04T10:30:00Z")
+        result = summary(run, 50)
+        self.assertEqual(result["wait_seconds_by_reason"], {"ci": 1500})
+        self.assertEqual(result["recorded_work_seconds"], 900)
+        self.assertEqual(result["stages"][0]["elapsed_seconds"], 3000)
+
+    def test_future_closed_legacy_endpoints_preserve_original_accounting(self):
+        run = record(event("stage_started", 0), event("wait_started", 10, reason="ci"),
+                     event("stage_finished", 40), event("wait_finished", 45, reason="ci"))
+        run.update(status="completed", finished_at="2026-11-04T10:20:00Z")
+        result = summary(run, 30)
+        # Exact pre-#32 fields for closed intervals, even when close > as_of.
+        self.assertEqual(result["stages"][0]["elapsed_seconds"], 2400)
+        self.assertEqual(result["stages"][0]["recorded_work_seconds"], 600)
+        self.assertEqual(result["stages"][0]["wait_seconds_by_reason"], {"ci": 2100})
+        self.assertEqual(result["recorded_work_seconds"], 600)
+        self.assertEqual(result["wait_seconds_by_reason"], {"ci": 2100})
+        run["events"].extend((event("stage_started", 0, stage="observed", worker_id="worker-2"),
+                              event("state_observed", 5, stage="observed", worker_id="worker-2",
+                                    state="completed", source="runtime_event")))
+        mixed = summary(run, 30)
+        self.assertEqual(next(item for item in mixed["stages"] if item["stage"] == "tests"), result["stages"][0])
+        self.assertEqual(mixed["wait_seconds_by_reason"], {"ci": 2100})
+
+    def test_verified_at_is_latest_confirmation_time_not_latest_terminal(self):
+        execution = {"kind": "job", "id": "a"}
+        run = record(event("stage_started", 0, execution=execution),
+                     event("state_observed", 10, state="running", source="runtime_query", execution=execution,
+                           last_seen_at="2026-11-04T10:40:00Z"),
+                     event("state_observed", 20, state="completed", source="runtime_event", execution=execution,
+                           last_seen_at="2026-11-04T10:22:00Z"))
+        result = summary(run)
+        self.assertEqual(result["status_summary"]["last_confirmed"]["state"], "completed")
+        self.assertEqual(result["status_summary"]["verified_at"], "2026-11-04T10:40:00Z")
+        run["events"][1].pop("last_seen_at")
+        run["events"][2].pop("last_seen_at")
+        self.assertEqual(summary(run)["status_summary"]["verified_at"], "2026-11-04T10:20:00Z")
 
     def test_latest_terminal_outcome_and_historical_incarnation_selection(self):
         execution = {"kind": "test_run", "id": "a"}

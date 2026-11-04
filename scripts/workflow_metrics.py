@@ -60,6 +60,7 @@ def overlap_seconds(start: datetime, end: datetime, other_start: datetime, other
 
 def correlate_observations(intervals: list[dict[str, Any]], events: list[dict[str, Any]]) -> None:
     """Attach observations to exactly one incarnation using effective time and identity."""
+    opening_order = {id(event): index for index, event in enumerate(events) if event.get("type") == "stage_started"}
     for event in events:
         if event.get("type") != "state_observed":
             continue
@@ -67,9 +68,10 @@ def correlate_observations(intervals: list[dict[str, Any]], events: list[dict[st
         if at is None:
             continue
         stage, worker = event.get("stage") or "workflow", event.get("worker_id") or "orchestrator"
-        pair = [item for item in intervals if item["stage"] == stage and item["worker_id"] == worker]
+        pair = sorted((item for item in intervals if item["stage"] == stage and item["worker_id"] == worker),
+                      key=lambda item: opening_order[id(item["start_event"])])
         candidates = []
-        for interval in pair:
+        for index, interval in enumerate(pair):
             if interval["execution"] != event.get("execution") or at < interval["start"]:
                 continue
             if interval["execution"] and (interval["closed_at"] is None or at <= interval["closed_at"]):
@@ -77,8 +79,9 @@ def correlate_observations(intervals: list[dict[str, Any]], events: list[dict[st
                 # effective-time window cannot confirm it after administrative close.
                 candidates.append(interval)
             else:
-                later = [item["start"] for item in pair if item["start"] > interval["start"]]
-                boundary = min(later) if later else None
+                # At equal effective timestamps, the next opening still owns
+                # the boundary. The writer uses this stable opening order too.
+                boundary = pair[index + 1]["start"] if index + 1 < len(pair) else None
                 if (interval["closed_at"] is None or at <= interval["closed_at"]) and (boundary is None or at < boundary):
                     candidates.append(interval)
         if len(candidates) == 1:
@@ -143,19 +146,15 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
             waits.append({"stage": stage, "worker_id": worker, "reason": reason, "start": queue.popleft(),
                           "end": as_of})
 
-    # Observed records bound accounting at run completion. Records predating
-    # runtime observation retain their original as_of-based durations.
-    # Preserve original timestamps/closed_at for audit and correlation.
-    horizon = min(as_of, run_finished) if run_finished and not legacy else as_of
-    for interval in intervals:
-        interval["end"] = max(interval["start"], min(interval["end"], horizon))
-    for wait in waits:
-        wait["end"] = max(wait["start"], min(wait["end"], horizon))
     open_stages = [(items[-1]["start"], stage) for (stage, _worker), items in stage_starts.items() if items]
     current_stage = max(open_stages, default=(None, None))[1] if legacy or not run_finished else None
 
     correlate_observations(intervals, events)
     for interval in intervals:
+        # An observation affects only its incarnation. A separate unobserved
+        # worker retains pre-#32 accounting, including future closed endpoints.
+        if interval["observations"] and run_finished:
+            interval["end"] = max(interval["start"], min(interval["end"], as_of, run_finished))
         observations = sorted(interval["observations"], key=lambda e: parse_time(e["at"]))
         confirmed = [e for e in observations if e.get("source") in CONFIRMING_SOURCES]
         terminals = [e for e in confirmed if e.get("state") in TERMINAL_STATES]
@@ -170,6 +169,19 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
             else "unconfirmed" if observations
             else "unobserved"
         )
+
+    opening_order = {id(event): index for index, event in enumerate(events) if event.get("type") == "stage_started"}
+    for wait in waits:
+        # Charge a wait to the incarnation active when it began. An earlier
+        # observed incarnation of the same pair must not cap a later B's
+        # unobserved wait (or its legacy work subtraction).
+        candidates = [item for item in intervals if item["stage"] == wait["stage"]
+                      and item["worker_id"] == wait["worker_id"] and item["start"] <= wait["start"]
+                      and (item["closed_at"] is None or wait["start"] <= item["closed_at"])]
+        owner = (max(candidates, key=lambda item: (item["start"], opening_order[id(item["start_event"])]))
+                 if candidates else None)
+        if run_finished and owner and owner["observations"]:
+            wait["end"] = max(wait["start"], min(wait["end"], as_of, run_finished))
 
     rework_count = sum(1 for event in events if event.get("type") in {"stage_failed", "rework"})
     stage_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -259,10 +271,13 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
     blocker = (None if record.get("finished_at") else
                open_waits[-1]["reason"] if open_waits else
                "needs_reconciliation" if current and current["terminal"] else None)
+    verification_times = (parse_time(e.get("last_seen_at")) or parse_time(e["at"])
+                          for e in relevant["observations"] if e.get("source") in CONFIRMING_SOURCES) if relevant else ()
+    verified_at = max(verification_times, default=None)
     status_summary = {"current_stage": current_stage, "activity_state": activity, "last_confirmed": proof,
                       "insufficient_signal": {"state": weak.get("state"), "source": weak.get("source"), "at": weak.get("at")} if weak else None,
                       "blocker": blocker, "next_action": next_action,
-                      "verified_at": (last.get("last_seen_at") or last["at"]) if last else None}
+                      "verified_at": iso_time(verified_at) if verified_at else None}
     return {
         "run_id": record["run_id"],
         "repository": record.get("repository"),
