@@ -40,5 +40,6 @@ Read [the CI performance protocol](references/CI_PERFORMANCE.md). When the diff 
 ## Proportionate test coverage
 
 Read [the test strategy](references/TEST_STRATEGY.md). Audit coverage against acceptance criteria and concrete affected risks. For a requested new test, identify the failure existing evidence would miss and the smallest proving layer. Do not demand exhaustive permutations, fixed counts or the same rule matrix in unit, integration and GraphQL tests. Preserve distinct real-boundary proof and existing required checks.
+Check the pre-flight handoff for cross-cutting consumers and fixture assumptions, policy reconciliation, and base-failure origin/action. A focused pass is not broad-suite or required hosted proof; a comparable base `evidence:<id>` is stale for the candidate, and a pre-existing failing required suite is not a pass.
 
 Inspect existing tests for the affected behavior for redundant cases or obsolete expectations under the test strategy. Keep ordinary cleanup small and scope-bound; for a wider suite audit use a dedicated issue. Any consolidation, migration or removal needs a current-obligation → retained/replacement proof (or authoritative obsolescence evidence) map and applicable validation.
