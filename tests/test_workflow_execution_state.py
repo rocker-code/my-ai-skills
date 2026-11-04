@@ -195,6 +195,23 @@ class FakeGitHub(unittest.TestCase):
         self.assertEqual(result["stages"][0]["elapsed_seconds"], 30)
         self.assertEqual(result["recorded_work_seconds"], 40)
 
+    def test_backdated_untyped_dispatch_cannot_reassign_fifo_closures(self):
+        start = datetime.fromisoformat(self.saved()["created_at"].replace("Z", "+00:00"))
+        def at(seconds):
+            return (start + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+        pair = ("--stage", "tests", "--worker-id", "worker-1")
+        self.invoke("dispatch", *pair, "--observed-at", at(10))
+        self.invoke("stage-end", *pair, "--status", "completed", "--observed-at", at(20))
+        self.invoke("dispatch", *pair, "--observed-at", at(30))
+        before = self.path.read_bytes()
+        self.invoke("dispatch", *pair, "--observed-at", at(15), ok=False)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.invoke("stage-end", *pair, "--status", "completed", "--observed-at", at(40))
+        result = summary(self.saved())
+        self.assertEqual(result["stages"][0]["elapsed_seconds"], 30)
+        self.assertEqual(result["recorded_work_seconds"], 20)
+        self.assertEqual([item["execution"] for item in result["stages"][0]["executions"]], [None, None])
+
     def test_untyped_second_incarnation_closes_and_does_not_deduplicate_first(self):
         start = datetime.fromisoformat(self.saved()["created_at"].replace("Z", "+00:00"))
         def at(seconds):
@@ -315,6 +332,23 @@ class StateMetricsTest(unittest.TestCase):
             self.assertEqual(result["recorded_work_seconds"], 600)
             self.assertEqual(result["incomplete_evidence"], [])
 
+    def test_test_report_completeness_uses_latest_terminal_outcome(self):
+        execution = {"kind": "test_run", "id": "junit-42"}
+        for later_state, report, reason in (("completed", "absent", "missing_report"),
+                                            ("failed", "unknown", "missing_report"),
+                                            ("unknown", "present", "missing_terminal"),
+                                            ("interrupted", "present", "missing_terminal")):
+            with self.subTest(later_state=later_state, report=report):
+                run = record(event("stage_started", 0, execution=execution),
+                             event("state_observed", 10, state="completed", source="test_report", report="present", execution=execution),
+                             event("state_observed", 20, state=later_state, source="runtime_query", report=report, execution=execution),
+                             event("stage_finished", 30, execution=execution))
+                result = summary(run)
+                self.assertEqual(result["recorded_work_seconds"], 600)
+                self.assertEqual(result["incomplete_evidence"][0]["reason"], reason)
+                run["events"].append(event("state_observed", 25, state="failed", source="test_report", report="present", execution=execution))
+                self.assertEqual(summary(run)["incomplete_evidence"], [])
+
     def test_finished_run_caps_open_wait_and_displays_final_state(self):
         run = record(event("stage_started", 0), event("wait_started", 10, reason="ci"),
                      event("run_finished", 20, status="completed"))
@@ -323,7 +357,27 @@ class StateMetricsTest(unittest.TestCase):
         self.assertEqual(result["status_summary"]["activity_state"], "completed")
         self.assertIsNone(result["status_summary"]["blocker"])
         self.assertEqual(result["wait_seconds_by_reason"]["ci"], 600)
-        self.assertEqual(result["current_waits"][0]["reason"], "ci")
+        self.assertEqual(result["recorded_work_seconds"], 600)
+        self.assertEqual(result["stages"][0]["elapsed_seconds"], 1200)
+        self.assertEqual(result["current_stage"], None)
+        self.assertEqual(result["status_summary"]["current_stage"], None)
+        self.assertEqual(result["current_waits"], [])
+        self.assertEqual(summary(run, 59)["recorded_work_seconds"], result["recorded_work_seconds"])
+        self.assertEqual(summary(run, 59)["wait_seconds_by_reason"], result["wait_seconds_by_reason"])
+
+    def test_late_wait_end_after_run_finish_preserves_event_but_caps_duration(self):
+        run = record(event("stage_started", 0), event("wait_started", 10, reason="ci"),
+                     event("run_finished", 20, status="completed"),
+                     event("wait_finished", 45, reason="ci", recorded_at="2026-11-04T10:50:00Z"),
+                     event("stage_finished", 50))
+        run.update(status="completed", finished_at="2026-11-04T10:20:00Z")
+        result = summary(run)
+        self.assertEqual(result["wait_seconds_by_reason"]["ci"], 600)
+        self.assertEqual(result["recorded_work_seconds"], 600)
+        self.assertEqual(result["stages"][0]["elapsed_seconds"], 1200)
+        self.assertEqual(result["events"][3]["at"], "2026-11-04T10:45:00Z")
+        self.assertEqual(result["events"][3]["recorded_at"], "2026-11-04T10:50:00Z")
+        self.assertEqual(result["current_waits"], [])
 
     def test_legacy_record_unchanged_and_unobserved(self):
         run = record(event("stage_started", 0), event("stage_finished", 30))

@@ -132,21 +132,25 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
             if queue:
                 waits.append({"stage": stage, "worker_id": worker, "reason": key[2], "start": queue.popleft(), "end": at})
 
-    open_stages = [
-        (items[-1]["start"], stage) for (stage, _worker), items in stage_starts.items() if items
-    ]
-    current_stage = max(open_stages, default=(None, None))[1]
-
     for (stage, worker), queue in stage_starts.items():
         intervals.extend(queue)
-    open_waits = [
-        {"stage": stage, "worker_id": worker, "reason": reason}
-        for (stage, worker, reason), queue in wait_starts.items() if queue
-    ]
+    open_waits = ([{"stage": stage, "worker_id": worker, "reason": reason}
+                   for (stage, worker, reason), queue in wait_starts.items() if queue]
+                  if not run_finished else [])
     for (stage, worker, reason), queue in wait_starts.items():
         while queue:
             waits.append({"stage": stage, "worker_id": worker, "reason": reason, "start": queue.popleft(),
-                          "end": min(as_of, run_finished) if run_finished else as_of})
+                          "end": as_of})
+
+    # Run completion bounds accounting, including callbacks recorded after it.
+    # Preserve the original event timestamps/closed_at for audit and correlation.
+    horizon = min(as_of, run_finished) if run_finished else as_of
+    for interval in intervals:
+        interval["end"] = max(interval["start"], min(interval["end"], horizon))
+    for wait in waits:
+        wait["end"] = max(wait["start"], min(wait["end"], horizon))
+    open_stages = [(items[-1]["start"], stage) for (stage, _worker), items in stage_starts.items() if items]
+    current_stage = max(open_stages, default=(None, None))[1] if not run_finished else None
 
     correlate_observations(intervals, events)
     for interval in intervals:
@@ -209,9 +213,9 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
     for wait in waits:
         wait_totals[wait["reason"]] += max(0.0, (wait["end"] - wait["start"]).total_seconds())
 
-    cycle_end = run_finished or as_of
+    cycle_end = horizon
     cycle = max(0.0, (cycle_end - run_started).total_seconds()) if run_started else None
-    active = sorted((item for item in intervals if item["closed_at"] is None), key=lambda i: i["start"])
+    active = sorted((item for item in intervals if item["closed_at"] is None and not run_finished), key=lambda i: i["start"])
     current = active[-1] if active else None
     historical = max(intervals, key=lambda i: i["end"]) if intervals else None
     relevant = current or historical
@@ -219,17 +223,15 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
     incomplete = []
     for item in intervals:
         if (item["execution"] or {}).get("kind") == "test_run":
-            terminal = item["terminal"]
-            # Unknown/interrupted is a work cut-off, not a confirmed test
-            # outcome. A later confirming terminal observation can reconcile
-            # report availability without reviving the same work interval.
-            proven_report = any(e.get("source") in CONFIRMING_SOURCES
-                                and e.get("state") in {"completed", "failed"}
-                                and e.get("report") == "present" for e in item["observations"])
-            if not proven_report:
+            # Work ends at the first terminal observation, but completeness
+            # follows the last confirmed terminal outcome of this incarnation.
+            outcomes = sorted((e for e in item["observations"] if e.get("source") in CONFIRMING_SOURCES
+                               and e.get("state") in TERMINAL_STATES), key=lambda e: parse_time(e["at"]))
+            outcome = outcomes[-1] if outcomes else None
+            if not outcome or outcome["state"] not in {"completed", "failed"} or outcome.get("report") != "present":
                 incomplete.append({"stage": item["stage"], "worker_id": item["worker_id"],
-                                   "execution": item["execution"],
-                                   "reason": "missing_terminal" if terminal is None or terminal["state"] in {"unknown", "interrupted"} else "missing_report"})
+                                    "execution": item["execution"],
+                                    "reason": "missing_terminal" if outcome is None or outcome["state"] in {"unknown", "interrupted"} else "missing_report"})
     if record.get("finished_at"):
         activity = record.get("status", "completed")
     elif open_waits:

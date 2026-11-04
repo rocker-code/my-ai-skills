@@ -271,7 +271,7 @@ def main() -> int:
                    and (e.get("worker_id") or "orchestrator") == args.worker_id
                    and execution_of(e) == event["execution"] for e in record["events"]):
                 raise ValueError("execution id already used for this stage and worker")
-        if args.event == "stage-start" and not args.execution_id:
+        if args.event in {"stage-start", "dispatch"} and not args.execution_id:
             # Keep untyped openings in effective-time order; a late opening
             # may precede an existing end without changing FIFO pairing.
             pair_starts = [e["at"] for e in record["events"]
