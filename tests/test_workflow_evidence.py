@@ -69,6 +69,11 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(self.verify(evidence_id)[1]["state"], "verified")
         self.assertEqual(self.verify(evidence_id)[1]["result"], "failed")
 
+    def test_no_report_counts_are_unknown_not_zero(self):
+        _, manifest = self.record()
+        self.assertEqual(manifest["counts"], {"tests": None, "failures": None, "errors": None,
+                                              "skipped": None, "source": "none"})
+
     def test_same_head_different_diff_is_stale(self):
         (self.repo / "a.py").write_text("before\n")
         evidence_id, _ = self.record()
@@ -128,6 +133,13 @@ class EvidenceTests(unittest.TestCase):
         manifest["exit_code"] = None
         manifest["status"] = "interrupted"
         self.assertEqual(verify_manifest(manifest, record_dir(self.repo, evidence_id), self.repo)["state"], "incomplete")
+
+    def test_malformed_imported_identity_is_incomplete(self):
+        evidence_id, manifest = self.record()
+        manifest["code"]["state"].pop("entries")
+        (self.repo / "a.py").write_text("different")
+        result = verify_manifest(manifest, record_dir(self.repo, evidence_id), self.repo)
+        self.assertEqual(result["state"], "incomplete")
 
     def test_environment_id_drift_is_stale(self):
         evidence_id, _ = self.record("--env-id", "CI=runner-a")

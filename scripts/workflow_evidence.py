@@ -185,7 +185,7 @@ def obligations(items, gate=None):
 
 
 def counts_from_reports(reports):
-    totals = dict(tests=0, failures=0, errors=0, skipped=0, source="none")
+    totals = dict(tests=None, failures=None, errors=None, skipped=None, source="none")
     for report in reports:
         if not report.is_file():
             continue
@@ -196,7 +196,7 @@ def counts_from_reports(reports):
             suites = [suite for suite in root.findall(".//testsuite") if not suite.findall("testsuite")]
         for suite in suites:
             for field in ("tests", "failures", "errors", "skipped"):
-                totals[field] += int(suite.get(field, "0"))
+                totals[field] = (totals[field] or 0) + int(suite.get(field, "0"))
         totals["source"] = "junit"
     return totals
 
@@ -482,8 +482,19 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
             required_code = ("fingerprint", "fingerprint_after", "state", "config_paths", "excluded_paths")
             required_runner = ("python", "platform", "architecture", "tools", "env_ids", "compatibility_digest")
             if (any(key not in code for key in required_code) or
-                    any(key not in manifest["runner"] for key in required_runner)):
+                    any(key not in manifest["runner"] for key in required_runner) or
+                    not isinstance(code["state"], dict) or
+                    not {"head", "digest", "entries"} <= code["state"].keys() or
+                    not isinstance(code["config_paths"], list) or
+                    not isinstance(code["excluded_paths"], list) or
+                    not isinstance(manifest["runner"]["tools"], dict) or
+                    not isinstance(manifest["runner"]["env_ids"], dict) or
+                    any(not isinstance(item, dict) or "path" not in item for item in code["config_paths"]) or
+                    any(not isinstance(item, dict) for item in manifest["artifacts"])):
                 raise ValueError("missing local code or runner identity")
+            for path in [item["path"] for item in code["config_paths"]] + code["excluded_paths"]:
+                if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
+                    raise ValueError("unsafe declared path")
         if projection and manifest.get("schema") != PUBLIC_SCHEMA:
             raise ValueError("unknown public schema")
     except (ValueError, TypeError, AttributeError):
