@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import gzip
 import hashlib
 import io
 import json
@@ -38,6 +39,25 @@ ENV_NAME = re.compile(r"(?:CI|NODE_ENV|PYTHON[A-Z0-9_]*|[A-Z][A-Z0-9_]*)")
 MAX_BUNDLE_MEMBERS = 1024
 MAX_BUNDLE_BYTES = 256 * 1024 * 1024
 MAX_MEMBER_BYTES = 64 * 1024 * 1024
+# Include tar framing and extended headers, not just the sizes of returned members.
+MAX_ARCHIVE_BYTES = MAX_BUNDLE_BYTES + 16 * 1024 * 1024
+
+
+class LimitedReader:
+    """Bound bytes consumed before tarfile can parse extended headers."""
+
+    def __init__(self, stream, limit):
+        self.stream = stream
+        self.remaining = limit
+
+    def read(self, size=-1):
+        if size < 0:
+            size = self.remaining + 1
+        chunk = self.stream.read(min(size, self.remaining + 1))
+        self.remaining -= len(chunk)
+        if self.remaining < 0:
+            raise ValueError("bundle exceeds import size limit")
+        return chunk
 
 
 def now():
@@ -183,6 +203,12 @@ def validate_exclusions(checkout, paths):
     for path in paths:
         if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
             raise ValueError("unsafe declared output path")
+        # code_state interprets these as fnmatch patterns. Do not validate a
+        # literal path here and then exclude a wider set of tracked code there.
+        if any(char in path for char in "*?[") and not path.endswith("/**"):
+            raise ValueError("glob metacharacters in declared output path")
+        if path.endswith("/**") and any(char in path[:-3] for char in "*?["):
+            raise ValueError("glob metacharacters in declared output path")
         directory = path[:-3] if path.endswith("/**") else None
         if any(p == path or (directory is not None and (p == directory or p.startswith(directory + "/")))
                for p in tracked):
@@ -248,6 +274,11 @@ def record(checkout, args):
     if not command:
         raise ValueError("record requires -- <command>")
     claimed_obligations = obligations(args.obligation, args.required_gate)
+    # Validate raw names before resolve() can normalize a wildcard-containing
+    # directory into an apparently harmless path.
+    for path in args.report + args.artifact + args.output_dir:
+        if any(char in path for char in "*?["):
+            raise ValueError("glob metacharacters in declared output path")
     config = [safe_relative(p, root) for p in args.config]
     reports = [safe_relative(p, root) for p in args.report]
     artifacts = [safe_relative(p, root) for p in args.artifact]
@@ -553,6 +584,13 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
     kind = manifest["kind"]
     code = manifest["code"]
     state = code_state(checkout)
+    if kind == "local":
+        candidate_repo = repository(checkout)
+        recorded_repo = manifest.get("repository")
+        if recorded_repo and candidate_repo and recorded_repo != candidate_repo:
+            return finish("stale", "repository_changed")
+        if any(o.get("required_gate") for o in obs) and (not recorded_repo or not candidate_repo):
+            return finish("incomplete", "repository_identity_unavailable", "provide_identifiers")
     bindings = {}
     if kind == "local" and not projection:
         if code.get("fingerprint") != code.get("fingerprint_after"):
@@ -653,7 +691,13 @@ def import_bundle(checkout, source):
     with tempfile.TemporaryDirectory(dir=store(checkout)) as temp:
         seen = {}
         total = 0
-        with tarfile.open(source, "r|gz") as bundle:
+        # Tarfile parses PAX extended headers before yielding a member. A size
+        # check in the loop below alone cannot bound that allocation. Cap both
+        # input and the entire inflated tar stream before it reaches tarfile.
+        if source.stat().st_size > MAX_ARCHIVE_BYTES:
+            raise ValueError("bundle exceeds import size limit")
+        with source.open("rb") as compressed, gzip.GzipFile(fileobj=LimitedReader(compressed, MAX_ARCHIVE_BYTES)) as inflated, \
+                tarfile.open(fileobj=LimitedReader(inflated, MAX_ARCHIVE_BYTES), mode="r|") as bundle:
             for member in bundle:
                 name = member.name
                 if (len(seen) >= MAX_BUNDLE_MEMBERS or name in seen or not member.isfile()

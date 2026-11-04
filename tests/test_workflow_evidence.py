@@ -60,6 +60,24 @@ class EvidenceTests(unittest.TestCase):
         self.assertIsNone(manifest["repository"])
         self.assertEqual(self.verify(evidence_id)[1]["state"], "verified")
 
+    def test_known_local_repository_mismatch_rejected_even_with_same_code(self):
+        evidence_id, manifest = self.record()
+        self.git("remote", "set-url", "origin", "https://github.com/other/project.git")
+        self.assertEqual(self.git("rev-parse", "HEAD"), manifest["code"]["head"])
+        result = self.verify(evidence_id)[1]
+        self.assertEqual((result["state"], result["reasons"]), ("stale", ["repository_changed"]))
+
+    def test_required_local_gate_needs_repository_identity(self):
+        evidence_id, _ = self.record("--required-gate", "local")
+        self.git("remote", "remove", "origin")
+        result = self.verify(evidence_id)[1]
+        self.assertEqual((result["state"], result["reasons"]),
+                         ("incomplete", ["repository_identity_unavailable"]))
+        path_only, _ = self.record()
+        self.assertEqual(self.verify(path_only)[1]["state"], "verified")
+        required, _ = self.record("--required-gate", "local")
+        self.assertEqual(self.verify(required)[1]["state"], "incomplete")
+
     def test_failing_command_recorded_and_exit_propagated(self):
         result = self.cli("record", "--obligation", "T1", "--", sys.executable, "-c", "exit(7)")
         self.assertEqual(result.returncode, 7)
@@ -132,6 +150,24 @@ class EvidenceTests(unittest.TestCase):
         evidence_id, manifest = self.record()
         manifest["code"]["excluded_paths"] = ["a.py"]
         self.assertEqual(verify_manifest(manifest, record_dir(self.repo, evidence_id), self.repo)["state"], "incomplete")
+
+    def test_output_glob_cannot_hide_tracked_code(self):
+        (self.repo / "source").mkdir()
+        (self.repo / "source/a.py").write_text("tracked")
+        self.git("add", "source/a.py")
+        self.git("commit", "-qm", "source")
+        for option, path in (("--output-dir", "s*"), ("--report", "source/*.py"),
+                             ("--artifact", "source/a.p?")):
+            with self.subTest(option=option):
+                result = self.cli("record", "--obligation", "T1", option, path, "--", "true")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("glob metacharacters", result.stderr)
+        evidence_id, manifest = self.record()
+        for exclusion in ("s*/**", "source/*.py", "source/a.p?"):
+            with self.subTest(exclusion=exclusion):
+                manifest["code"]["excluded_paths"] = [exclusion]
+                self.assertEqual(verify_manifest(manifest, record_dir(self.repo, evidence_id), self.repo)["state"],
+                                 "incomplete")
 
     def test_untracked_output_made_tracked_invalidates_evidence(self):
         evidence_id, manifest = self.record("--report", "report.xml")
@@ -265,6 +301,18 @@ class EvidenceTests(unittest.TestCase):
                         target.addfile(info, io.BytesIO(b"\0" * info.size))
                 with self.assertRaisesRegex(ValueError, "limit|unsafe"):
                     import_bundle(self.repo, package)
+        self.assertEqual(list((self.repo / ".git/ai-workflow/evidence").glob("ev-*")), [])
+
+    def test_import_bounds_pax_header_before_member_is_yielded(self):
+        package = Path(self.temp.name) / "pax.tar.gz"
+        with tarfile.open(package, "w:gz", format=tarfile.PAX_FORMAT) as target:
+            info = tarfile.TarInfo("safe")
+            info.pax_headers = {"comment": "x" * 8192}
+            info.size = 0
+            target.addfile(info, io.BytesIO())
+        with patch("workflow_evidence.MAX_ARCHIVE_BYTES", 2048):
+            with self.assertRaisesRegex(ValueError, "size limit"):
+                import_bundle(self.repo, package)
         self.assertEqual(list((self.repo / ".git/ai-workflow/evidence").glob("ev-*")), [])
 
     def test_unknown_extensions_preserved(self):
