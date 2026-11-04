@@ -77,6 +77,26 @@ class AttemptLogTests(unittest.TestCase):
         data["entries"][1]["change_target"] = "environment"
         self.assertNotIn("E_FOCUS", codes(data))
 
+    def test_environment_focus_survives_signature_change(self):
+        data = fixture("t4_service_before_phpunit")
+        first, second = data["entries"][:2]
+        second["signature"] = "phpunit assertion failed"
+        self.assertEqual(2, len(check(data)["groups"]))
+        self.assertIn("E_FOCUS", codes(data))
+        diagnosis = {
+            "kind": "diagnosis", "seq": first["seq"] + 1,
+            "group": {"obligation": first["obligation"], "signature": first["signature"]},
+            "class": "implementation",
+            "checked": {"phase": "after bootstrap", "scope": "sandbox", "lifecycle": "runner started", "consumers": "PHPUnit"},
+            "runtime_proof": ["abcdef3"], "simplest_alternative": "repair service",
+            "choice_rationale": "runtime evidence shows application failure", "next_hypothesis": "fix application",
+        }
+        second["seq"] = diagnosis["seq"] + 1
+        data["entries"].insert(1, diagnosis)
+        self.assertNotIn("E_FOCUS", codes(data))
+        diagnosis["checked"].pop("phase")
+        self.assertIn("E_FOCUS", codes(data))
+
     def test_t2_group_vs_field_claim_rejected(self):
         data = fixture("t2_group_vs_field")
         self.assertIn("E_CLAIM_ANCESTOR", codes(data))
@@ -99,6 +119,17 @@ class AttemptLogTests(unittest.TestCase):
         data["entries"][1]["basis"] = ["claim:1"]
         self.assertIn("E_REPLAN_BASIS", codes(data))
 
+    def test_accepted_replan_precedes_blocked_group_state(self):
+        data = fixture("blockers")
+        replan = fixture("t3_replan_with_basis")["entries"]
+        replan[0]["seq"] = 4
+        replan[1]["seq"] = 5
+        replan[1]["basis"] = ["claim:4"]
+        data["entries"][3:3] = replan
+        result = check(data, final=True)
+        self.assertEqual((True, False, "blocked", "NEEDS_REPLAN", None),
+                         (result["valid"], result["ready"], result["groups"][0]["status"], result["blocker_state"], result["wait_reason"]))
+
     def test_final_unresolved_not_approval(self):
         self.assertIn("E_UNRESOLVED", codes(fixture("final_unresolved"), final=True))
 
@@ -106,6 +137,17 @@ class AttemptLogTests(unittest.TestCase):
         data = fixture("final_unresolved")
         data["entries"].append({"kind": "resolution", "group": {"obligation": "R1", "signature": "assertion failed"}, "outcome": "skipped", "via_seq": 1})
         self.assertIn("E_WEAKENED", codes(data, final=True))
+
+    def test_boolean_via_seq_does_not_resolve_attempt_or_blocker(self):
+        passed = fixture("final_unresolved")
+        passed["entries"][0]["result"] = "pass"
+        passed["entries"].append({"kind": "resolution", "group": {"obligation": "R1", "signature": "assertion failed"}, "outcome": "passed", "via_seq": True})
+        for data, outcome in ((passed, "passed"), (fixture("blockers"), "blocked")):
+            with self.subTest(outcome=outcome):
+                data["entries"][-1]["via_seq"] = True
+                result = check(data, final=True)
+                self.assertIn("E_WEAKENED", [v["code"] for v in result["violations"]])
+                self.assertFalse(result["ready"])
 
     def test_old_pass_cannot_resolve_last_fail(self):
         data = fixture("t1_diagnosed_alternative")

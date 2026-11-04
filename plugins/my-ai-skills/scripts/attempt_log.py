@@ -55,6 +55,7 @@ def check(data, *, final=False):
     claims = {}
     blockers = {}
     seen_refs = set()
+    last_attempt_by_obligation = {}
     last_seq = 0
     replan_required = False
 
@@ -129,10 +130,12 @@ def check(data, *, final=False):
                 second_failure = pending_failures[-2]
                 if not any(second_failure < diag["seq"] < seq and diag["complete"] for diag in state["diagnoses"]):
                     violation("E_RETRY_LIMIT", seq, "diagnose after the second failure and before any next attempt")
-            if attempts and attempts[-1].get("class") == "environment/bootstrap" and entry.get("change_target") == "application":
-                if not any(attempts[-1]["seq"] < diag["seq"] < seq and diag.get("class") != "environment/bootstrap" and diag["complete"] for diag in state["diagnoses"]):
+            previous_key, previous_attempt = last_attempt_by_obligation.get(entry["obligation"], (None, None))
+            if previous_attempt and previous_attempt.get("class") == "environment/bootstrap" and entry.get("change_target") == "application":
+                if not any(previous_attempt["seq"] < diag["seq"] < seq and diag["class"] != "environment/bootstrap" and diag["complete"] for diag in groups[previous_key]["diagnoses"]):
                     violation("E_FOCUS", seq, "environment failure cannot trigger application edit without reclassification")
             attempts.append(entry)
+            last_attempt_by_obligation[entry["obligation"]] = (key, entry)
             state["seen_refs"].update(evidence)
             seen_refs.update(evidence)
         elif kind == "diagnosis":
@@ -197,7 +200,7 @@ def check(data, *, final=False):
         elif kind == "resolution":
             key = group_for(entry, seq)
             if key:
-                if not isinstance(entry.get("via_seq"), int) or entry["via_seq"] > last_seq:
+                if type(entry.get("via_seq")) is not int or entry["via_seq"] > last_seq:
                     violation("E_WEAKENED", entry.get("via_seq"), "resolution must refer to an earlier event")
                 groups[key]["resolution"] = entry
 
@@ -214,12 +217,13 @@ def check(data, *, final=False):
         status = "open"
         if resolution:
             outcome, via = resolution.get("outcome"), resolution.get("via_seq")
-            if outcome == "passed" and last.get("result") == "pass" and via == last.get("seq"):
+            if outcome == "passed" and last.get("result") == "pass" and type(via) is int and via == last.get("seq"):
                 status = "resolved"
             elif outcome == "blocked" and type(via) is int and via in blockers and blockers[via]["valid"] and blockers[via]["key"] == key and last.get("result") == "fail" and via > last["seq"]:
                 status = "blocked"
-                blocker_state = blockers[via]["state"]
-                blocker_wait_reason = blockers[via]["wait_reason"]
+                if not replan_required:
+                    blocker_state = blockers[via]["state"]
+                    blocker_wait_reason = blockers[via]["wait_reason"]
             else:
                 violation("E_WEAKENED", via, "resolution must cite latest passing attempt or valid same-group blocker after failure")
         if status != "resolved":
