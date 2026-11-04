@@ -22,18 +22,41 @@ O helper SHALL usar exclusivamente o registry `ai-workflow/worktrees.json` no Gi
 - **THEN** o helper recusa mutações, preserva o arquivo e orienta a reconstrução verificada
 
 ### Requirement: Reserva exclusiva de escrita
-O helper SHALL conceder posse ativa de um checkout a no máximo uma sessão. Uma reserva MUST registrar repositório, issue, branch, caminho absoluto, base, dono (sessão, run, etapa, host e processo), estado do lifecycle, HEAD, fingerprint do diff e horário da verificação. Pedido de outra sessão para checkout com dono ativo MUST falhar com conflito explícito que identifica o dono atual.
+O helper SHALL conceder posse ativa de um checkout a no máximo uma sessão. Uma reserva MUST registrar repositório, issue, branch, caminho, base, dono, lifecycle, baseline de código e horário. Sessão/run MUST seguir os IDs seguros de `workflow-event`. Outra sessão MUST receber conflito com o dono atual; a mesma issue MUST NOT ter duas entradas não removidas em caminhos distintos.
 
 #### Scenario: Dois writers disputam o mesmo checkout
 - **WHEN** duas sessões cooperantes executam a reserva do mesmo checkout ao mesmo tempo
 - **THEN** exatamente uma recebe posse e a outra recebe código de conflito com o dono vencedor, sem posse simultânea
 
+#### Scenario: Campos do dono registrado
+- **WHEN** uma sessão reserva um checkout com run, etapa e `--owner-pid` opcional
+- **THEN** owner registra sessão, run, etapa, host e somente o PID explicitamente fornecido; branch, caminho absoluto, base, issue e baseline ficam no registry
+
 #### Scenario: Reserva idempotente do próprio dono
 - **WHEN** a sessão que já é dona repete a reserva sem mudança externa
 - **THEN** a reserva é confirmada sem criar segunda entrada
 
+#### Scenario: Reserva planejada antes da criação
+- **WHEN** o coordenador reserva um caminho ainda inexistente com `--planned --repository <checkout existente>` antes de `git worktree add`
+- **THEN** identidade e lock vêm do checkout existente, o caminho planejado recebe estado `RESERVED` sem baseline e sem chamadas Git nele, e somente a mesma sessão pode ativá-lo após criação/verificação da branch; ausência de `--repository` é erro de uso
+
+#### Scenario: Identificadores incompatíveis ou issue duplicada
+- **WHEN** sessão/run não obedece ao padrão seguro ou outra entrada não removida já usa a mesma issue em outro caminho
+- **THEN** a primeira reserva falha por uso inválido, ou a segunda por conflito com indicação do caminho existente, sem conceder posse
+
+### Requirement: API canônica versionada de estado de código
+O módulo `worktree_registry.py` SHALL expor `FINGERPRINT_VERSION`, `SAFE_ID`, `is_known_generated`, `code_state(checkout, *, exclude_paths=(), include_ignored=())` e `drift_report(baseline, current, *, checkout)`. O estado SHALL conter HEAD, digest `sha256:v1:<hex>` e entradas por caminho com XY, conteúdo e índice; gerados são separados. O digest MUST incluir blobs/modos/estágios do índice; mudanças incompatíveis MUST usar nova versão. O relatório MUST comparar entradas completas.
+
+#### Scenario: Alteração staged com working tree e XY iguais
+- **WHEN** o blob ou modo de um caminho no índice é alterado mas HEAD, XY e conteúdo atual da working tree permanecem iguais
+- **THEN** o digest muda e o relatório inclui esse caminho
+
+#### Scenario: Exclusões, configuração ignorada e gerados
+- **WHEN** um relatório de teste é excluído, uma configuração ignorada é declarada e apenas um bytecode conhecido aparece
+- **THEN** o relatório e o bytecode não alteram o digest, a configuração declarada entra na entrada por caminho e seu hash afeta o digest, e os gerados são reportados separadamente
+
 ### Requirement: Identidade verificada antes de mutação
-Antes de escrita, teste com efeitos, commit ou push, o participante SHALL verificar com o helper que caminho, repositório, branch, HEAD, fingerprint do diff e dono correspondem à reserva. Divergência MUST impedir a mutação e informar o que divergiu.
+Antes de escrita, teste com efeitos, commit ou push, o participante SHALL verificar caminho, repositório, branch, HEAD, digest e dono contra a reserva. Divergência MUST impedir a mutação e informar o que divergiu. Toda inspeção Git do helper MUST desabilitar locks opcionais, sem escrever índice ou refs.
 
 #### Scenario: Branch ou repositório diferente
 - **WHEN** o checkout está em outra branch ou o remote não corresponde à identidade registrada
@@ -43,8 +66,19 @@ Antes de escrita, teste com efeitos, commit ou push, o participante SHALL verifi
 - **WHEN** uma sessão diferente do dono registrado pede verificação para escrever
 - **THEN** a verificação falha com conflito de posse
 
+#### Scenario: Inspeção sem lock do índice e contrato JSON
+- **WHEN** `status --json` ou `verify --json` inspeciona o checkout e o dono pode executar `git add` em paralelo
+- **THEN** chamadas Git usam `--no-optional-locks` e `GIT_OPTIONAL_LOCKS=0`, e a resposta contém os campos estáveis de posse, estado de código, drift e classificação de caminhos
+
+### Requirement: Respostas JSON consumíveis pelo orquestrador
+O helper SHALL manter em `status`, `verify` e `reserve` com `--json`, inclusive erros 3/4/6, as chaves `ok`, `exit_code`, `error`, `path`, `issue_url`, `branch`, `state`, `owner`, `head`, `digest`, `drift`, `generated_paths`, `unknown_untracked_paths`, `last_verified_at`. O relatório de drift SHALL conter `head_before`, `head_after`, `commits`, `diverged`, `committed_paths`, `changed_paths` e `detected_at`.
+
+#### Scenario: Drift no formato estável
+- **WHEN** `reserve --json` detecta drift em checkout sem dono
+- **THEN** retorna exit 4 e campos de estado, dono nulo e relatório com commits/caminhos alterados
+
 ### Requirement: Alteração externa detectada e distinguida de escrita própria
-O helper SHALL comparar HEAD e fingerprint do diff atuais com o último checkpoint do dono. Escrita autorizada do próprio dono MUST ser registrada por checkpoint após a mutação; qualquer diferença não registrada MUST ser tratada como alteração externa, suspender mutações até reconciliação explícita e listar commits e caminhos afetados para invalidar somente a evidência atingida.
+O helper SHALL comparar HEAD/digest com o baseline, inclusive sem dono. `verify` SHALL persistir drift ou recibo do dono/baseline. `checkpoint` SHALL exigir recibo válido, dono/identidade iguais e nenhum drift detectado; SHALL gravar a diferença após escrita. Drift detectado MUST suspender mutações até aceite explícito com motivo/histórico. `release` SHALL exigir igualdade com o checkpoint, sem absorver diferença. Autoria entre verify e checkpoint não é comprovável.
 
 #### Scenario: Commit externo altera HEAD
 - **WHEN** outro agente cria commit na branch reservada depois do último checkpoint
@@ -53,6 +87,18 @@ O helper SHALL comparar HEAD e fingerprint do diff atuais com o último checkpoi
 #### Scenario: Escrita própria registrada
 - **WHEN** o dono verifica, altera um arquivo e registra checkpoint
 - **THEN** a verificação seguinte passa e não reporta alteração externa
+
+#### Scenario: Drift já detectado não é escrita própria
+- **WHEN** `verify` detecta diferença do baseline e o dono tenta `checkpoint`
+- **THEN** checkpoint é recusado até aceite explícito do drift, mesmo que a sessão se declare autora
+
+#### Scenario: Release após escrita própria
+- **WHEN** o dono escreve após `verify` e tenta `release` sem checkpoint
+- **THEN** release falha com drift e não troca dono nem baseline; após um checkpoint feito antes de detectar drift, release com baseline igual ao estado atual passa
+
+#### Scenario: Release, mudança externa e reserva de outro writer
+- **WHEN** uma reserva é liberada em `WAITING`, outro agente faz commit ou edição, e nova sessão tenta `reserve`
+- **THEN** a reserva falha com drift e relatório sem assumir posse; somente `--accept-external --reason` explícitos registram o aceite/histórico e permitem assumir com novo baseline
 
 #### Scenario: Arquivo gerado conhecido não é drift
 - **WHEN** apenas arquivos gerados conhecidos surgem após o checkpoint
@@ -70,7 +116,7 @@ O helper SHALL transferir a posse de um checkout de uma sessão para outra de fo
 - **THEN** a transferência é recusada e o registry não muda
 
 ### Requirement: Retomada e reconstrução sem tomada de posse por idade
-O helper SHALL reconstruir uma entrada ausente ou incompleta a partir do estado real do Git, sem dono ativo e sem alterar arquivos do checkout. Idade da reserva MUST NOT autorizar tomada de posse. Assumir checkout com dono registrado MUST exigir o dono anterior esperado e evidência de término; se o processo anterior estiver comprovadamente vivo no mesmo host, a tomada MUST ser recusada.
+O helper SHALL reconstruir entrada ausente/incompleta do Git real, sem dono e sem alterar arquivos. Idade MUST NOT autorizar posse. Takeover MUST exigir dono anterior esperado e evidência de término; PID explicitamente fornecido ainda vivo no mesmo host MUST impedir takeover. PID ausente/morto não substitui evidência de término.
 
 #### Scenario: Writer interrompido e registry perdido
 - **WHEN** o registry desaparece após um writer deixar diff parcial
@@ -84,8 +130,12 @@ O helper SHALL reconstruir uma entrada ausente ou incompleta a partir do estado 
 - **WHEN** a sessão nova informa o dono anterior esperado, evidência de término, e o processo anterior não está vivo
 - **THEN** a posse é transferida, a evidência é registrada no histórico e o diff é preservado
 
+#### Scenario: PID explícito ainda vivo
+- **WHEN** a reserva registrou `--owner-pid` de um worker ainda vivo no mesmo host e outra sessão apresenta evidência de término
+- **THEN** o takeover é recusado sem apagar trabalho nem inferir que o processo do CLI efêmero é o worker
+
 ### Requirement: Arquivos gerados conhecidos separados de trabalho do usuário
-O helper SHALL classificar caminhos não rastreados e ignorados como gerados conhecidos (`__pycache__/`, `*.pyc`, `*.pyo`) ou desconhecidos. A limpeza MUST remover apenas gerados conhecidos dentro do checkout reservado, pelo dono, com listagem prévia por padrão e relatório dos caminhos removidos; arquivos desconhecidos, rastreados e alterações parciais MUST permanecer intactos.
+O helper SHALL classificar caminhos não rastreados e ignorados como gerados conhecidos (`__pycache__/`, `*.pyc`, `*.pyo`) ou desconhecidos. A limpeza MUST remover apenas bytecode conhecido elegível dentro do checkout reservado, pelo dono, com listagem prévia por padrão e relatório dos caminhos removidos; MUST NOT varrer diretórios ignorados por outros motivos (`.venv/`, `node_modules/`), seguir symlinks ou remover arquivos desconhecidos, rastreados e alterações parciais.
 
 #### Scenario: Pycache e arquivo desconhecido coexistem
 - **WHEN** o checkout contém `scripts/__pycache__/x.pyc`, um arquivo novo desconhecido e uma alteração rastreada, e o dono executa a limpeza aplicada
@@ -95,8 +145,12 @@ O helper SHALL classificar caminhos não rastreados e ignorados como gerados con
 - **WHEN** uma sessão sem posse pede a limpeza aplicada
 - **THEN** nada é removido e o comando falha com conflito de posse
 
+#### Scenario: Bytecode dentro de diretório ignorado alheio
+- **WHEN** `.venv/lib/__pycache__/x.pyc` está ignorado por `.venv/` e há bytecode elegível em `scripts/__pycache__/`
+- **THEN** a limpeza aplicada preserva `.venv/` e remove somente o bytecode elegível de `scripts/`
+
 ### Requirement: Helpers não criam bytecode que bloqueie o fluxo
-Os helpers Python distribuídos SHALL executar sem gravar bytecode dos seus módulos, e o repositório MUST ignorar `__pycache__/` e `*.py[co]`. Arquivo gerado conhecido MUST NOT exigir decisão de produto para seguir com atualização de `main`.
+Os helpers Python distribuídos SHALL executar sem gravar bytecode dos seus módulos, inclusive futuros helpers distribuídos por `scripts/sync-plugin`, e o repositório MUST ignorar `__pycache__/` e `*.py[co]`. Arquivo gerado conhecido MUST NOT exigir decisão de produto para seguir com atualização de `main`.
 
 #### Scenario: Executar helpers e testes
 - **WHEN** os helpers são executados sem `PYTHONDONTWRITEBYTECODE` e a suíte de testes roda

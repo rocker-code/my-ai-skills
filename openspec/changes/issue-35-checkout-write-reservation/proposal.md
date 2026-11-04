@@ -8,7 +8,8 @@ O [protocolo de worktrees](../../../protocol/WORKTREES.md) já exige registry no
 
 - Novo helper stdlib `scripts/worktree-reservation` (CLI) com módulo `scripts/worktree_registry.py` que materializa e valida o registry `<git-common-dir>/ai-workflow/worktrees.json` já definido em WORKTREES, sob lock exclusivo e escrita atômica.
 - Comandos para reservar, verificar antes de mutação, registrar checkpoint após escrita própria, transferir posse entre sessões (planejamento → Apply → correção), liberar/mudar estado do lifecycle, reconstruir registry ausente/incompleto a partir do Git real, consultar estado e limpar apenas arquivos gerados conhecidos.
-- Detecção de alteração externa de HEAD/diff por fingerprint, distinguindo-a de escrita própria registrada; relatório dos caminhos afetados para invalidar só a evidência atingida.
+- API pública versionada de estado de código (HEAD, working tree e blobs/modos staged do índice, entradas por caminho) para reuso por #31; detecção de drift inclusive em reservas sem dono, com relatório dos caminhos afetados. Checkpoint distingue escrita própria após verificação de drift já detectado, sem alegar autoria infalível durante a janela de escrita.
+- Reserva `RESERVED` de caminho planejado ainda inexistente ancorada por `--repository` em checkout existente; `release` só após checkpoint do estado atual, sem absorver mudança externa.
 - Posse nunca é tomada por idade; tomada após interrupção exige dono anterior esperado e evidência de término registrada.
 - Classificação de não rastreados em "gerado conhecido" (`__pycache__/`, `*.pyc`, `*.pyo`) versus desconhecido; desconhecidos e trabalho parcial nunca são removidos.
 - Prevenção de bytecode incidental: helpers Python desativam escrita de bytecode antes de importar módulos irmãos (`workflow-event`, `workflow-report`, novo CLI) e o repositório ganha `.gitignore` para `__pycache__/` e `*.py[co]`.
@@ -26,7 +27,7 @@ O [protocolo de worktrees](../../../protocol/WORKTREES.md) já exige registry no
 ## Impact
 
 - Código: `scripts/worktree-reservation`, `scripts/worktree_registry.py` (novos); `scripts/workflow-event`, `scripts/workflow-report` (uma linha cada); `scripts/sync-plugin`; `.gitignore` (novo).
-- Documentação/skills: `protocol/WORKTREES.md`; `skills/{milestone-orchestrator,implement-issue,apply-issue,prepare-pr,github-resolution,address-pr-review,update-main,update-ai-workflow}/SKILL.md`; `README.md`, `README.en.md`; cópias regeneradas em `skills/*/references/WORKTREES.md` e `plugins/my-ai-skills/**` via `scripts/sync-plugin`.
+- Documentação/skills: `protocol/WORKTREES.md`; `skills/{milestone-orchestrator,milestone-progress,implement-issue,apply-issue,prepare-pr,github-resolution,address-pr-review,update-main,update-ai-workflow}/SKILL.md`; `README.md`, `README.en.md`; cópias regeneradas em `skills/*/references/WORKTREES.md` e `plugins/my-ai-skills/**` via `scripts/sync-plugin`.
 - Testes: `tests/test_worktree_reservation.py` (novo).
 - Dependências: nenhuma nova (Python 3.10+ stdlib, `git`); lock via `fcntl` (POSIX); sem `fcntl` o helper falha fechado.
 - Sem impacto em GitHub, merge, release ou deploy: o registry continua sendo dado de coordenação local, nunca prova de entrega nem gate de validação.
