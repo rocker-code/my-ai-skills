@@ -51,11 +51,14 @@ def parse(text):
 def check(data, *, final=False):
     """Validate a parsed document; valid concerns rules, ready concerns final approval."""
     violations = []
-    groups = {}
+    groups = {}  # A signature may have several temporal episodes.
+    episodes = []
+    active = {}
     claims = {}
     blockers = {}
     seen_refs = set()
-    last_attempt_by_obligation = {}
+    environment_guards = {}
+    obligation_refs = {}
     last_seq = 0
     replan_required = False
 
@@ -91,7 +94,7 @@ def check(data, *, final=False):
         if key not in groups:
             violation("E_FIELD", seq, "group has no attempt")
             return None
-        return key
+        return groups[key][-1]
 
     for entry in data["entries"]:
         kind = entry.get("kind")
@@ -112,7 +115,14 @@ def check(data, *, final=False):
             if not present(entry.get("obligation")) or not present(entry.get("signature")):
                 continue
             key = (entry["obligation"], normalize(entry["signature"]))
-            state = groups.setdefault(key, {"attempts": [], "diagnoses": [], "blockers": [], "resolution": None, "seen_refs": set()})
+            state = active.get(entry["obligation"])
+            if state is None or state["key"] != key:
+                if state is not None and state["attempts"][-1].get("result") == "fail":
+                    state["progressed"] = True
+                state = {"key": key, "first_seq": seq, "attempts": [], "diagnoses": [], "resolution": None, "seen_refs": set(), "progressed": False}
+                groups.setdefault(key, []).append(state)
+                episodes.append(state)
+                active[entry["obligation"]] = state
             attempts = state["attempts"]
             state["resolution"] = None  # a later execution invalidates any earlier approval
             previous = next((item for item in reversed(attempts) if normalize(item.get("hypothesis")) == normalize(entry.get("hypothesis"))), None)
@@ -130,29 +140,38 @@ def check(data, *, final=False):
                 second_failure = pending_failures[-2]
                 if not any(second_failure < diag["seq"] < seq and diag["complete"] for diag in state["diagnoses"]):
                     violation("E_RETRY_LIMIT", seq, "diagnose after the second failure and before any next attempt")
-            previous_key, previous_attempt = last_attempt_by_obligation.get(entry["obligation"], (None, None))
-            if previous_attempt and previous_attempt.get("class") == "environment/bootstrap" and entry.get("change_target") == "application":
-                if not any(previous_attempt["seq"] < diag["seq"] < seq and diag["class"] != "environment/bootstrap" and diag["complete"] for diag in groups[previous_key]["diagnoses"]):
-                    violation("E_FOCUS", seq, "environment failure cannot trigger application edit without reclassification")
+            guard = environment_guards.get(entry["obligation"])
+            if guard and entry.get("change_target") == "application":
+                violation("E_FOCUS", seq, "environment failure cannot trigger application edit without reclassification")
             attempts.append(entry)
-            last_attempt_by_obligation[entry["obligation"]] = (key, entry)
             state["seen_refs"].update(evidence)
+            obligation_refs.setdefault(entry["obligation"], set()).update(evidence)
             seen_refs.update(evidence)
+            if entry.get("result") == "pass":
+                environment_guards.pop(entry["obligation"], None)
+            elif entry.get("result") == "fail" and entry.get("class") == "environment/bootstrap":
+                environment_guards[entry["obligation"]] = (state, seq)
         elif kind == "diagnosis":
             key = group_for(entry, seq)
             checked = entry.get("checked")
             complete = isinstance(entry.get("class"), str) and entry["class"] in CLASSES and isinstance(checked, dict) and all(present(checked.get(k)) for k in ("phase", "scope", "lifecycle", "consumers"))
             proof = entry.get("runtime_proof")
             if isinstance(proof, list):
-                complete = complete and bool(proof)
-                refs(proof, seq, citation=True, required_refs=True)
+                good_proof = refs(proof, seq, citation=True, required_refs=True)
+                complete = complete and bool(proof) and len(good_proof) == len(proof)
             else:
+                good_proof = []
                 complete = complete and present(proof) and proof.startswith("not_applicable: ") and present(proof[16:])
             complete = complete and all(present(entry.get(k)) for k in ("simplest_alternative", "choice_rationale", "next_hypothesis"))
             if not complete:
                 violation("E_DIAG_INCOMPLETE", seq, "classification, effective checks, runtime proof, alternative, rationale and next hypothesis required")
             if key:
-                groups[key]["diagnoses"].append({"seq": seq, "complete": complete, "class": entry.get("class")})
+                obligation = key["key"][0]
+                guard = environment_guards.get(obligation)
+                if guard and guard[0] is key and guard[1] < seq and complete and entry.get("class") != "environment/bootstrap" and any(EXECUTION_REF.fullmatch(ref) and ref not in obligation_refs.get(obligation, set()) for ref in good_proof):
+                    environment_guards.pop(obligation, None)
+                key["diagnoses"].append({"seq": seq, "complete": complete, "class": entry.get("class")})
+                obligation_refs.setdefault(obligation, set()).update(ref for ref in good_proof if EXECUTION_REF.fullmatch(ref))
         elif kind == "contract_claim":
             required(entry, seq, "definition_ref", "cited_path", "field_path", "scope", "observation", "inference", "confirmation")
             definition = entry.get("definition_ref")
@@ -188,7 +207,7 @@ def check(data, *, final=False):
             valid = mapped is not None and isinstance(entry.get("wait_reason"), str) and entry["wait_reason"] in mapped[1] and isinstance(entry.get("evidence"), list) and bool(entry["evidence"])
             refs(entry.get("evidence"), seq, required_refs=True)
             if typ == "technical":
-                valid = valid and present(entry.get("diagnosis")) and any(entry["diagnosis"] == f"seq:{d['seq']}" and d["complete"] for d in groups.get(key, {}).get("diagnoses", []))
+                valid = valid and key is not None and present(entry.get("diagnosis")) and any(entry["diagnosis"] == f"seq:{d['seq']}" and d["complete"] for d in key["diagnoses"])
             elif typ == "capacity":
                 valid = valid and present(entry.get("missing_capability"))
             elif typ == "business_decision":
@@ -196,19 +215,21 @@ def check(data, *, final=False):
             if not valid:
                 violation("E_BLOCKER", seq, "invalid blocker type, wait reason, evidence or type-specific explanation")
             if key:
-                blockers[seq] = {"key": key, "valid": valid, "state": mapped[0] if mapped else None, "wait_reason": entry.get("wait_reason")}
+                blockers[seq] = {"episode": key, "valid": valid, "state": mapped[0] if mapped else None, "wait_reason": entry.get("wait_reason")}
+                obligation_refs.setdefault(key["key"][0], set()).update(ref for ref in entry.get("evidence", []) if isinstance(ref, str) and EXECUTION_REF.fullmatch(ref))
         elif kind == "resolution":
             key = group_for(entry, seq)
             if key:
                 if type(entry.get("via_seq")) is not int or entry["via_seq"] > last_seq:
                     violation("E_WEAKENED", entry.get("via_seq"), "resolution must refer to an earlier event")
-                groups[key]["resolution"] = entry
+                key["resolution"] = entry
 
     output_groups = []
     blocker_state = "NEEDS_REPLAN" if replan_required else None
     blocker_wait_reason = None
     ready = not replan_required
-    for key, state in groups.items():
+    for state in episodes:
+        key = state["key"]
         attempts = state["attempts"]
         if not attempts:
             continue
@@ -219,18 +240,21 @@ def check(data, *, final=False):
             outcome, via = resolution.get("outcome"), resolution.get("via_seq")
             if outcome == "passed" and last.get("result") == "pass" and type(via) is int and via == last.get("seq"):
                 status = "resolved"
-            elif outcome == "blocked" and type(via) is int and via in blockers and blockers[via]["valid"] and blockers[via]["key"] == key and last.get("result") == "fail" and via > last["seq"]:
+            elif outcome == "blocked" and type(via) is int and via in blockers and blockers[via]["valid"] and blockers[via]["episode"] is state and last.get("result") == "fail" and via > last["seq"]:
                 status = "blocked"
-                if not replan_required:
+                if active[key[0]] is state and not replan_required:
                     blocker_state = blockers[via]["state"]
                     blocker_wait_reason = blockers[via]["wait_reason"]
             else:
                 violation("E_WEAKENED", via, "resolution must cite latest passing attempt or valid same-group blocker after failure")
-        if status != "resolved":
+        historical = active[key[0]] is not state
+        if historical and state["progressed"]:
+            status = "progressed"
+        if not historical and status != "resolved":
             ready = False
             if final and last.get("result") == "fail" and status != "blocked":
                 violation("E_UNRESOLVED", last.get("seq"), "last failed attempt remains unresolved")
-        output_groups.append({"key": {"obligation": key[0], "signature": key[1]}, "attempts": len(attempts), "status": status, "replan_required": replan_required})
+        output_groups.append({"key": {"obligation": key[0], "signature": key[1]}, "first_seq": state["first_seq"], "attempts": len(attempts), "attempt_seqs": [item["seq"] for item in attempts], "status": status, "replan_required": replan_required})
 
     valid = not violations
     return {"valid": valid, "ready": (valid and ready) if final else None, "groups": output_groups, "violations": violations, "blocker_state": blocker_state, "wait_reason": blocker_wait_reason}

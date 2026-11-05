@@ -44,7 +44,7 @@ A obrigação SHALL usar o mesmo ID da linha da matriz de validação no handoff
 - **THEN** o bloco preserva o raciocínio no handoff sem gravar tentativas no manifesto de cada execução
 
 ### Requirement: Agrupamento por assinatura e obrigação
-O workflow SHALL agrupar tentativas pela obrigação (requisito/cenário da matriz) e pela assinatura normalizada da falha. Comando, filtro, ordem de execução ou nome do alvo MUST NOT fazer parte da chave de agrupamento.
+O workflow SHALL agrupar tentativas pela obrigação (requisito/cenário da matriz) e pela assinatura normalizada da falha. Comando, filtro, ordem de execução ou nome do alvo MUST NOT fazer parte da chave de agrupamento. A assinatura distinta após falha SHALL tornar a assinatura anterior histórica/progredida, não aprovada; somente a última tentativa da obrigação é sua obrigação ativa.
 
 #### Scenario: Comando renomeado não reinicia a contagem
 - **WHEN** duas tentativas da mesma obrigação falham com a mesma assinatura usando comandos ou filtros diferentes
@@ -52,10 +52,18 @@ O workflow SHALL agrupar tentativas pela obrigação (requisito/cenário da matr
 
 #### Scenario: Assinatura diferente abre novo grupo
 - **WHEN** uma tentativa da mesma obrigação falha com assinatura diferente
-- **THEN** a tentativa é contada como progresso do grupo anterior e inicia um novo grupo
+- **THEN** a tentativa é contada como progresso do episódio anterior e inicia um novo episódio ativo; a falha antiga permanece visível e não aprovada, mas não bloqueia `--final` se o episódio ativo for aprovado
+
+#### Scenario: Assinatura A falha, B falha e B passa
+- **WHEN** A falha, uma assinatura B diferente falha e a tentativa seguinte de B passa com resolução `passed`
+- **THEN** A permanece histórico/progredido, B é o único episódio ativo aprovado e `--final` pode retornar `ready=true` sem resolução `passed` fictícia para A
+
+#### Scenario: Retorno à assinatura anterior
+- **WHEN** A falha duas vezes, B distinto registra progresso, e uma falha A reaparece depois de B
+- **THEN** A inicia novo episódio com uma falha, sem herdar a sequência de duas falhas anterior; A é novamente a obrigação ativa pendente até passar ou ser bloqueada validamente
 
 ### Requirement: Diagnóstico obrigatório após duas tentativas sem progresso
-Depois de duas falhas sem progresso no mesmo grupo, o workflow SHALL exigir diagnóstico antes de qualquer nova tentativa, mesmo que ela declare `pass`. O diagnóstico SHALL registrar classificação, fase/escopo/lifecycle/consumidores efetivos, prova de runtime ou não aplicabilidade justificada e a próxima hipótese.
+Depois de duas falhas sem progresso no episódio contínuo da mesma assinatura/obrigação, o workflow SHALL exigir diagnóstico antes de qualquer nova tentativa nesse episódio, mesmo que ela declare `pass`. O diagnóstico SHALL registrar classificação, fase/escopo/lifecycle/consumidores efetivos, prova de runtime ou não aplicabilidade justificada e a próxima hipótese.
 
 #### Scenario: Terceira tentativa sem diagnóstico
 - **WHEN** um grupo tem duas tentativas falhas equivalentes e uma terceira tentativa é registrada sem diagnóstico anterior a ela
@@ -73,8 +81,12 @@ Depois de duas falhas sem progresso no mesmo grupo, o workflow SHALL exigir diag
 - **WHEN** duas tentativas aplicam overrides temporários e o validador continua lendo o mesmo valor
 - **THEN** o diagnóstico registrado aponta fase/escopo efetivo da configuração e a próxima tentativa testa uma hipótese diferente
 
+#### Scenario: Progresso zera a sequência, não apaga o histórico
+- **WHEN** duas falhas A são seguidas de tentativa B com assinatura distinta e, mais tarde, uma tentativa A
+- **THEN** a tentativa B não requer diagnóstico para A e a primeira tentativa do novo episódio A não viola o limite; as duas falhas anteriores continuam registradas, sem aprovação
+
 ### Requirement: Nova tentativa declara evidência ou hipótese nova
-Cada nova tentativa do grupo SHALL declarar a mudança realizada e hipótese inédita ou evidência nova substantiva. Se repetir hipótese, SHALL registrar `observed_change` concreto, `observed_effect` diferente do da tentativa anterior dessa hipótese após normalizar minúsculas/espaços e uma referência nova em `evidence[]` que sustente a mudança. O verificador SHALL comparar efeito e refs; a revisão SHALL confirmar o conteúdo citado sem ler o manifesto de execução.
+Cada nova tentativa do episódio SHALL declarar a mudança realizada e hipótese inédita ou evidência nova substantiva. Se repetir hipótese no episódio, SHALL registrar `observed_change` concreto, `observed_effect` diferente do da tentativa anterior dessa hipótese após normalizar minúsculas/espaços e uma referência nova em `evidence[]` que sustente a mudança. O verificador SHALL comparar efeito e refs; a revisão SHALL confirmar o conteúdo citado sem ler o manifesto de execução.
 
 #### Scenario: Hipótese repetida sem evidência nova
 - **WHEN** uma tentativa repete a hipótese de uma tentativa anterior do mesmo grupo e não referencia evidência nova
@@ -104,7 +116,7 @@ O diagnóstico SHALL registrar a alternativa mais simples compatível com o cont
 - **THEN** o verificador reporta o diagnóstico como incompleto
 
 ### Requirement: Correção focada na camada classificada
-Quando a falha for classificada como ambiente/setup, a próxima tentativa SHALL alterar apenas o ambiente descartável, fixture ou setup, e MUST NOT alterar código de aplicação, salvo nova evidência que reclassifique a falha.
+Enquanto houver falha de ambiente/setup não resolvida numa obrigação, tentativas posteriores nessa obrigação MUST NOT alterar código de aplicação, mesmo após tentativas intermediárias de outra classe/assinatura. O foco cessa com tentativa `pass` posterior na obrigação ou diagnóstico completo posterior à falha que reclassifique a causa com prova nova de runtime; uma assinatura diferente, isoladamente, não prova reclassificação.
 
 #### Scenario: Falha de serviço antes do PHPUnit (T4)
 - **WHEN** a falha ocorre na inicialização de serviço antes do runner de testes e a próxima tentativa altera código de aplicação sem reclassificação
@@ -113,6 +125,18 @@ Quando a falha for classificada como ambiente/setup, a próxima tentativa SHALL 
 #### Scenario: Correção no ambiente descartável
 - **WHEN** a mesma falha classificada como ambiente/setup é seguida de tentativa que altera apenas o ambiente descartável
 - **THEN** a tentativa é aceita
+
+#### Scenario: Falha intermediária não contorna o foco
+- **WHEN** falha de ambiente é seguida por falha de outra assinatura/classe na mesma obrigação, sem sucesso nem reclassificação comprovada, e a próxima tentativa muda a aplicação
+- **THEN** o verificador reporta violação de foco
+
+#### Scenario: Sucesso posterior encerra o foco
+- **WHEN** uma tentativa posterior na mesma obrigação passa após a falha de ambiente e uma tentativa seguinte altera a aplicação
+- **THEN** a falha de ambiente anterior não produz `E_FOCUS` (outros gates continuam aplicáveis)
+
+#### Scenario: Reclassificação substantiva antes de mudar a aplicação
+- **WHEN** após a falha de ambiente um diagnóstico completo para essa falha reclassifica a causa, cita evidência de execução nova de fase/lifecycle efetivos e justifica a mudança de camada antes da edição da aplicação
+- **THEN** a edição pode prosseguir, sujeita à confirmação semântica da prova pelo revisor; diagnóstico incompleto, prova antiga ou só citação de código não libera o foco
 
 ### Requirement: Prova exigida para alegar contradição de contrato
 Uma alegação de contradição com o contrato aprovado SHALL citar a definição exata, o caminho do elemento citado, o campo e o escopo, separar observação de inferência e registrar como a leitura foi confirmada. Citar um elemento ancestral do campo (por exemplo, o grupo) sem prova de herança MUST ser rejeitado.
@@ -137,37 +161,45 @@ O workflow SHALL acionar a revisão OpenSpec existente apenas quando uma alegaç
 - **THEN** o verificador rejeita o pedido
 
 ### Requirement: Limite de tentativas não vira aprovação
-O limite de tentativas SHALL disparar investigação, não aprovação. Um grupo com última tentativa `fail` MUST permanecer não aprovado; `blocked` SHALL referenciar bloqueio válido do mesmo grupo. Resolução por skip, asserção enfraquecida ou `passed` sem referência à última tentativa `pass` do grupo MUST ser rejeitada.
+O limite de tentativas SHALL disparar investigação, não aprovação. Um episódio ativo com última tentativa `fail` MUST permanecer não aprovado; episódio histórico progredido SHALL permanecer não aprovado, mas não bloqueia sozinho a prontidão da obrigação ativa. `blocked` SHALL referenciar bloqueio válido do mesmo episódio. Skip, asserção enfraquecida ou `passed` sem referência à última tentativa `pass` do episódio MUST ser rejeitados.
 
 #### Scenario: Grupo pendente no handoff final
-- **WHEN** o handoff para `prepare-pr` contém um grupo cuja última tentativa falhou
-- **THEN** o verificador, no modo de handoff final, reporta o grupo como pendente ou bloqueado, nunca aprovado para PR
+- **WHEN** o handoff para `prepare-pr` contém episódio ativo cuja última tentativa falhou
+- **THEN** o verificador, no modo de handoff final, reporta o episódio como pendente ou bloqueado, nunca aprovado para PR
 
 #### Scenario: Bloqueio corretamente classificado no handoff final
-- **WHEN** um grupo com última tentativa falha tem resolução `blocked` referenciando um bloqueio válido do mesmo grupo
+- **WHEN** um episódio ativo com última tentativa falha tem resolução `blocked` referenciando bloqueio válido desse episódio
 - **THEN** `--final` retorna `valid=true`, `ready=false`, `status=blocked`, `blocker_state` correspondente, nenhuma violação e exit 1; `prepare-pr` não prossegue
 
 #### Scenario: Bloqueio de outro grupo não resolve a falha
-- **WHEN** uma resolução `blocked` aponta um bloqueio de obrigação ou assinatura diferente
+- **WHEN** uma resolução `blocked` aponta bloqueio de outra obrigação ou episódio
 - **THEN** a resolução é inválida e não libera o handoff
 
 #### Scenario: Aprovação antiga seguida de falha
-- **WHEN** `passed` referencia uma tentativa `pass` anterior, mas a última tentativa do grupo falhou
-- **THEN** a resolução é inválida e o grupo não é aprovado
+- **WHEN** `passed` referencia tentativa `pass` anterior, mas a última tentativa do episódio ativo falhou
+- **THEN** a resolução é inválida e o episódio não é aprovado
+
+#### Scenario: Episódio histórico não é aprovado pela assinatura seguinte
+- **WHEN** o episódio A tem última tentativa `fail` e B é aprovado após progresso de A
+- **THEN** A tem estado histórico/progredido, nunca `resolved` ou `passed`, e apenas a obrigação ativa B pode satisfazer `--final`
+
+#### Scenario: Bloqueio antigo não aprova nem oculta falha ativa
+- **WHEN** B falha após A progredir ou A volta a falhar após B
+- **THEN** `--final` permanece `ready=false` até o episódio ativo passar; bloqueio válido continua não pronto
 
 #### Scenario: Resolução por enfraquecimento
 - **WHEN** um grupo é marcado resolvido por pular o teste ou enfraquecer a asserção
 - **THEN** o verificador rejeita a resolução
 
 ### Requirement: Validade estrutural não é prontidão para PR
-O verificador SHALL emitir `valid` para estrutura/regras e `ready` para aprovação de todas as obrigações. No `--final`, grupo pendente, bloqueado ou replan pendente SHALL produzir `ready=false`, exit 1 e `NOT READY FOR PR`, mesmo com `valid=true`. Somente `valid=true && ready=true` SHALL retornar exit 0; entrada malformada retorna exit 2.
+O verificador SHALL emitir `valid` para estrutura/regras e `ready` para aprovação do episódio ativo de cada obrigação. `groups` SHALL preservar episódios históricos progredidos sem os marcar aprovados. No `--final`, episódio ativo pendente, bloqueado ou replan pendente SHALL produzir `ready=false`, exit 1 e `NOT READY FOR PR`, mesmo com `valid=true`. Somente `valid=true && ready=true` SHALL retornar exit 0; entrada malformada retorna exit 2.
 
 #### Scenario: Bloqueio estruturalmente válido sem aprovação
 - **WHEN** um bloqueio bem formado mantém a obrigação não aprovada no modo `--final`
 - **THEN** `valid=true`, `ready=false`, `violations=[]`, estado/razão de espera preservados e exit 1
 
 #### Scenario: Handoff sem bloqueios nem pendências
-- **WHEN** todos os grupos têm tentativa `pass` e resolução `passed`, sem violações nem replan pendente
+- **WHEN** o episódio ativo de cada obrigação tem tentativa `pass` e resolução `passed`, sem violações nem replan pendente (episódios históricos progredidos podem ter última tentativa `fail`)
 - **THEN** `--final` retorna `valid=true`, `ready=true` e exit 0
 
 ### Requirement: Classificação de bloqueios

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +22,116 @@ def codes(data, final=False):
     return [item["code"] for item in check(data, final=final)["violations"]]
 
 
+def attempt(seq, signature="A", *, obligation="R1", result="fail", cls="implementation", target="test", change_target="none"):
+    return {"kind": "attempt", "seq": seq, "obligation": obligation, "signature": signature,
+            "target": target, "class": cls, "hypothesis": f"hypothesis {seq}", "change": f"change {seq}",
+            "change_target": change_target, "observed_effect": f"effect {seq}", "result": result,
+            "evidence": [f"abcdef{seq}"]}
+
+
+def passed(signature, via, obligation="R1"):
+    return {"kind": "resolution", "group": {"obligation": obligation, "signature": signature},
+            "outcome": "passed", "via_seq": via}
+
+
+def diagnosis(seq, signature="A", *, obligation="R1", cls="implementation", proof=None):
+    return {"kind": "diagnosis", "seq": seq, "group": {"obligation": obligation, "signature": signature},
+            "class": cls, "checked": {"phase": "runner", "scope": "sandbox", "lifecycle": "started", "consumers": "test"},
+            "runtime_proof": ["abcdef9"] if proof is None else proof,
+            "simplest_alternative": "repair sandbox", "choice_rationale": "observed runtime cause",
+            "next_hypothesis": "new cause"}
+
+
 class AttemptLogTests(unittest.TestCase):
+    def test_progressed_history_final_ready(self):
+        data = {"attempt_log": 1, "entries": [attempt(1), attempt(2, "B"), attempt(3, "B", result="pass"), passed("B", 3)]}
+        result = check(data, final=True)
+        self.assertEqual((True, True, [], None), (result["valid"], result["ready"], result["violations"], result["blocker_state"]))
+        self.assertEqual([("progressed", 1), ("resolved", 2)], [(g["status"], g["attempts"]) for g in result["groups"]])
+        self.assertEqual([[1], [2, 3]], [g["attempt_seqs"] for g in result["groups"]])
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "attempts.json"
+            path.write_text(json.dumps(data))
+            proc = subprocess.run([str(ROOT / "scripts" / "attempt-log"), "check", str(path), "--final"], capture_output=True, text=True)
+            self.assertEqual(0, proc.returncode, proc.stderr)
+            self.assertTrue(json.loads(proc.stdout)["ready"])
+
+    def test_progressed_history_active_failure_not_ready(self):
+        data = {"attempt_log": 1, "entries": [attempt(1), attempt(2, "B")]}
+        result = check(data, final=True)
+        self.assertEqual((False, ["progressed", "open"], ["E_UNRESOLVED"], None),
+                         (result["ready"], [g["status"] for g in result["groups"]], [v["code"] for v in result["violations"]], result["blocker_state"]))
+
+    def test_signature_return_starts_new_episode(self):
+        entries = [attempt(1), attempt(2), attempt(3, "B"), attempt(4)]
+        data = {"attempt_log": 1, "entries": entries}
+        self.assertNotIn("E_RETRY_LIMIT", codes(data))
+        entries.append(attempt(5))
+        self.assertNotIn("E_RETRY_LIMIT", codes(data))
+        entries.append(attempt(6))
+        self.assertIn("E_RETRY_LIMIT", codes(data))
+        result = check(data, final=True)
+        self.assertEqual([("progressed", 1, 2), ("progressed", 3, 1), ("open", 4, 3)],
+                         [(g["status"], g["first_seq"], g["attempts"]) for g in result["groups"]])
+
+    def test_old_approval_and_blocker_do_not_hide_active_failure(self):
+        data = {"attempt_log": 1, "entries": [attempt(1, result="pass"), passed("A", 1), attempt(2)]}
+        self.assertIn("E_UNRESOLVED", codes(data, final=True))
+        self.assertFalse(check(data, final=True)["ready"])
+        data = fixture("blockers")
+        data["entries"].insert(-1, attempt(4, "B"))
+        result = check(data, final=True)
+        self.assertEqual(["progressed", "open"], [g["status"] for g in result["groups"]])
+        self.assertIsNone(result["blocker_state"])
+        self.assertFalse(result["ready"])
+
+    def test_environment_focus_cleared_by_pass(self):
+        data = {"attempt_log": 1, "entries": [attempt(1, cls="environment/bootstrap"), attempt(2, "B", result="pass"), attempt(3, "C", change_target="application")]}
+        self.assertNotIn("E_FOCUS", codes(data))
+
+    def test_environment_focus_intermediate_does_not_bypass(self):
+        data = {"attempt_log": 1, "entries": [attempt(1, cls="environment/bootstrap"), attempt(2, "B"), attempt(3, "C", change_target="application")]}
+        self.assertIn("E_FOCUS", codes(data))
+        data["entries"].insert(2, attempt(3, "X", obligation="R2"))
+        data["entries"][3]["seq"] = 4
+        self.assertIn("E_FOCUS", codes(data))
+
+    def test_other_obligation_pass_and_blocker_do_not_clear_focus(self):
+        data = {"attempt_log": 1, "entries": [attempt(1, cls="environment/bootstrap"),
+                {"kind": "blocker", "seq": 2, "group": {"obligation": "R1", "signature": "A"},
+                 "type": "capacity", "wait_reason": "runtime_capacity", "missing_capability": "runner", "evidence": ["abcdef2"]},
+                attempt(3, "other", obligation="R2", result="pass"), attempt(4, "B", change_target="application")]}
+        result = check(data)
+        self.assertIn("E_FOCUS", [v["code"] for v in result["violations"]])
+        self.assertNotIn("E_BLOCKER", [v["code"] for v in result["violations"]])
+
+    def test_environment_reclassification_requires_new_runtime_proof(self):
+        first = attempt(1, cls="environment/bootstrap")
+        edit = attempt(3, "B", change_target="application")
+        data = {"attempt_log": 1, "entries": [first, diagnosis(2), edit]}
+        self.assertNotIn("E_FOCUS", codes(data))
+        for proof in (["abcdef1"], ["src/config.py#L2"], ["abcdef1", "src/config.py#L2"], "not_applicable: source inspected"):
+            with self.subTest(proof=proof):
+                data["entries"][1] = diagnosis(2, proof=proof)
+                self.assertIn("E_FOCUS", codes(data))
+        data["entries"][1] = diagnosis(2)
+        data["entries"][1]["checked"].pop("lifecycle")
+        self.assertIn("E_FOCUS", codes(data))
+        data["entries"][1] = diagnosis(2, cls="environment/bootstrap")
+        self.assertIn("E_FOCUS", codes(data))
+        data["entries"][1] = diagnosis(2, obligation="R2")
+        self.assertIn("E_FOCUS", codes(data))
+
+    def test_environment_reclassification_after_intervening_failure(self):
+        data = {"attempt_log": 1, "entries": [attempt(1, cls="environment/bootstrap"), attempt(2, "B"), diagnosis(3), attempt(4, "C", change_target="application")]}
+        self.assertNotIn("E_FOCUS", codes(data))
+        data["entries"][2]["runtime_proof"] = ["abcdef2"]
+        self.assertIn("E_FOCUS", codes(data))
+
+    def test_new_environment_failure_reactivates_focus(self):
+        data = {"attempt_log": 1, "entries": [attempt(1, cls="environment/bootstrap"), diagnosis(2), attempt(3, "B", cls="environment/bootstrap"), attempt(4, "C", change_target="application")]}
+        self.assertIn("E_FOCUS", codes(data))
+
     def test_t1_retry_limit_requires_diagnosis(self):
         data = fixture("t1_override_no_effect")
         self.assertIn("E_RETRY_LIMIT", codes(data, final=True))
@@ -49,7 +159,8 @@ class AttemptLogTests(unittest.TestCase):
         data["entries"][1]["signature"] = "  VALIDATOR   read country=US "
         self.assertEqual(1, len(check(data)["groups"]))
         data["entries"][1]["signature"] = "validator read country=BR"
-        self.assertEqual(2, len(check(data)["groups"]))
+        self.assertEqual(3, len(check(data)["groups"]))  # A, B, then a fresh A episode
+        self.assertEqual(["progressed", "progressed", "resolved"], [g["status"] for g in check(data)["groups"]])
 
     def test_pass_resets_failure_streak(self):
         data = fixture("t1_override_no_effect")
