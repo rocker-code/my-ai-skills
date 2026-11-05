@@ -128,6 +128,38 @@ class AttemptLogTests(unittest.TestCase):
         data["entries"][2]["runtime_proof"] = ["abcdef2"]
         self.assertIn("E_FOCUS", codes(data))
 
+    def test_environment_reclassification_after_signature_return(self):
+        # The guard belongs to the first A episode; group_for now finds the returned A.
+        prefix = [attempt(1, cls="environment/bootstrap"), attempt(2, "B"), attempt(3)]
+        edit = attempt(5, "C", change_target="application")
+        data = {"attempt_log": 1, "entries": prefix + [diagnosis(4), edit]}
+        self.assertNotIn("E_FOCUS", codes(data))
+        data["entries"] = prefix + [edit]
+        self.assertIn("E_FOCUS", codes(data))
+
+        # A diagnosis before the return can also clear the same guarded group.
+        data["entries"] = prefix[:2] + [diagnosis(3)] + [attempt(4), edit]
+        self.assertNotIn("E_FOCUS", codes(data))
+
+    def test_returned_signature_diagnosis_cannot_clear_unrelated_or_unproven_guard(self):
+        prefix = [attempt(1, cls="environment/bootstrap"), attempt(2, "B"), attempt(3)]
+        edit = attempt(5, "C", change_target="application")
+        for diag in (diagnosis(4, "B"), diagnosis(4, obligation="R2"),
+                     diagnosis(4, proof=["abcdef1"]), diagnosis(4, proof=["src/config.py#L2"]),
+                     diagnosis(4, proof=["abcdef2"]), diagnosis(4, cls="environment/bootstrap")):
+            with self.subTest(diag=diag):
+                self.assertIn("E_FOCUS", codes({"attempt_log": 1, "entries": prefix + [diag, edit]}))
+        incomplete = diagnosis(4)
+        incomplete["checked"].pop("lifecycle")
+        self.assertIn("E_FOCUS", codes({"attempt_log": 1, "entries": prefix + [incomplete, edit]}))
+
+        # A diagnosis before the latest environment failure is stale for this guard.
+        entries = [attempt(1, cls="environment/bootstrap"), diagnosis(2),
+                   attempt(3, "B", cls="environment/bootstrap"), attempt(4),
+                   attempt(5, "B"), diagnosis(6, "B"), attempt(7, "C", change_target="application")]
+        entries[5]["runtime_proof"] = ["abcdef3"]
+        self.assertIn("E_FOCUS", codes({"attempt_log": 1, "entries": entries}))
+
     def test_new_environment_failure_reactivates_focus(self):
         data = {"attempt_log": 1, "entries": [attempt(1, cls="environment/bootstrap"), diagnosis(2), attempt(3, "B", cls="environment/bootstrap"), attempt(4, "C", change_target="application")]}
         self.assertIn("E_FOCUS", codes(data))

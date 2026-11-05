@@ -168,7 +168,7 @@ def check(data, *, final=False):
             if key:
                 obligation = key["key"][0]
                 guard = environment_guards.get(obligation)
-                if guard and guard[0] is key and guard[1] < seq and complete and entry.get("class") != "environment/bootstrap" and any(EXECUTION_REF.fullmatch(ref) and ref not in obligation_refs.get(obligation, set()) for ref in good_proof):
+                if guard and guard[0]["key"] == key["key"] and guard[1] < seq and complete and entry.get("class") != "environment/bootstrap" and any(EXECUTION_REF.fullmatch(ref) and ref not in obligation_refs.get(obligation, set()) for ref in good_proof):
                     environment_guards.pop(obligation, None)
                 key["diagnoses"].append({"seq": seq, "complete": complete, "class": entry.get("class")})
                 obligation_refs.setdefault(obligation, set()).update(ref for ref in good_proof if EXECUTION_REF.fullmatch(ref))
