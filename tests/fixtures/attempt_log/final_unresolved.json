@@ -1,0 +1,1 @@
+{"attempt_log":1,"entries":[{"kind":"attempt","seq":1,"obligation":"R1","signature":"assertion failed","target":"unit","class":"implementation","hypothesis":"bug","change":"first","change_target":"application","observed_effect":"assertion failed","result":"fail","evidence":["abcdef1"]}]}

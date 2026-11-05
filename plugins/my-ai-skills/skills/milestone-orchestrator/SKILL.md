@@ -77,7 +77,7 @@ GitHub issues/comments, approved product decision records, committed OpenSpec ar
 | MERGED | PR merged and issue closure verified independently. |
 | KAIZEN_DONE | Merged work reviewed by kaizen; record a concrete improvement or NO PROCESS CHANGE. |
 
-Exceptional states: NEEDS_INPUT, NEEDS_REPLAN, BLOCKED, FAILED, RESOURCE_QUEUED. Preserve the last verified state, exact blocker, evidence and next automatic action. A closed issue without verified delivered/merged work is not MERGED; empty or stale checks are not CI_GREEN.
+Exceptional states: NEEDS_INPUT, NEEDS_REPLAN, BLOCKED, FAILED, RESOURCE_QUEUED. Classify a blocker with evidence: technical → BLOCKED (`workflow-event` wait reason `environment` for sandbox/service, or `dependency`/`external`), missing capacity → RESOURCE_QUEUED (`runtime_capacity`), material business decision with options/impact → NEEDS_INPUT (`owner_input`); investigate researchable technical facts instead of escalating them. Accepted material replan → NEEDS_REPLAN through OpenSpec review; a valid blocked attempt group is not PR-ready. Preserve the last verified state, exact blocker, evidence and next automatic action. A closed issue without verified delivered/merged work is not MERGED; empty or stale checks are not CI_GREEN.
 
 Record repository and selected scope (`single_issue`, `project_queue` or `milestone`), issue/PR, state, evidence links and SHAs, dependency gate, branch/worktree, proposal revision/review evidence, PR head/checks, merge mode, blocker and next action. Use existing issue/PR records and committed artifacts; do not create a competing source of truth.
 

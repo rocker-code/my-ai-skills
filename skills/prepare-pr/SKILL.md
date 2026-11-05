@@ -16,6 +16,8 @@ Refresh issue comments/decisions, repository instructions, validated OpenSpec ar
 
 ## Pre-PR self-review
 
+When a failure was repeated, retain the single `attempt-log` block after the evidence/obligation lines in Validation and run `scripts/attempt-log check <handoff-file> --final`. Require `valid=true && ready=true` and exit 0. Exit 1 for a rule violation **or a valid but blocked/replan-pending group** means `NOT READY FOR PR`; do not treat a well-classified blocker as a passing gate. No block is required without a repeated failure.
+
 Review the complete diff against:
 
 1. issue acceptance criteria;

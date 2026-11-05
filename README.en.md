@@ -418,7 +418,7 @@ Review severities:
 [NICE TO HAVE]
 ```
 
-Test coverage follows [TEST_STRATEGY.md](protocol/TEST_STRATEGY.md) automatically in planning, implementation and review. Agents select representative scenarios from acceptance criteria and concrete risks, reuse fixtures, and avoid duplicating the full rule matrix across unit, integrated and GraphQL tests. Reviewers must justify extra tests by the failure existing evidence would miss. Required checks remain mandatory; repeated failures trigger diagnosis rather than blind retries. No new skill installation or approval step is needed. Existing tests for the affected behavior are also checked for redundancy or obsolete expectations. Broader suite simplification runs as a dedicated, measured task with proof preserved for every consolidated, migrated or removed test.
+Test coverage follows [TEST_STRATEGY.md](protocol/TEST_STRATEGY.md) automatically in planning, implementation and review. Agents select representative scenarios from acceptance criteria and concrete risks, reuse fixtures, and avoid duplicating the full rule matrix across unit, integrated and GraphQL tests. Reviewers must justify extra tests by the failure existing evidence would miss. Required checks remain mandatory; repeated failures are grouped by obligation/signature in one handoff `attempt-log` block, diagnosed before a third attempt and checked by the helper; a valid blocker is not PR approval. No new skill installation or approval step is needed. Existing tests for the affected behavior are also checked for redundancy or obsolete expectations. Broader suite simplification runs as a dedicated, measured task with proof preserved for every consolidated, migrated or removed test.
 The pre-flight review identifies real consumers of shared configuration, a focused sample and fixture assumptions before the broad suite, reconciles current policy on resume, and keeps checks proportionate for changes without cross-cutting impact.
 
 Read [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol/GITHUB_CONVENTIONS.md) [REVIEW_POLICY.md](protocol/REVIEW_POLICY.md) and [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md) for the canonical rules.
@@ -559,6 +559,8 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-evidence .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_evidence.py .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/preflight-check .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/attempt-log .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/attempt_log.py .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
   .ai-workflow/scripts/workflow-status \
@@ -566,7 +568,8 @@ chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/workflow-report \
   .ai-workflow/scripts/worktree-reservation \
   .ai-workflow/scripts/workflow-evidence \
-  .ai-workflow/scripts/preflight-check
+  .ai-workflow/scripts/preflight-check \
+  .ai-workflow/scripts/attempt-log
 ```
 
 | Installed files | Purpose |
@@ -582,6 +585,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Cooperative write reservation, versioned fingerprint, inventory-based recovery and restricted bytecode handling; require Git and Python 3.10+ on POSIX (`fcntl`). See `protocol/WORKTREES.md`. |
 | `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py` | Test evidence capture, verification and transport; require Python 3.10+, Git and `gh` only for GitHub operations. |
 | `scripts/preflight-check` | Optional read-only Composer/npm lock-versus-installed and policy-change pre-flight; requires Python 3.10+ and Git for `policy`. If unavailable, check manually. |
+| `scripts/attempt-log`, `scripts/attempt_log.py` | Structural validation of the hypothesis/attempt block in the existing handoff/PR; requires Python 3.10+ and never reads the evidence manifest. |
 
 Example: `.ai-workflow/scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest discover -s tests` emits an ID before execution and stores its log in the Git common directory. `verify <id> --format json` checks HEAD, index/diff, configuration and declared environment IDs; `export <id> --output bundle.tar.gz` and `import bundle.tar.gz` move logs between clones. Declare a non-secret `--env-id NAME=ID` for each relevant profile (never use environment values or credentials) and `--report`/`--output-dir` for generated outputs. `publish <id> --issue URL` posts metadata only: a local comment without the package is not complete proof. Review packages before sharing; `prune --older-than 30` only previews until `--yes`. Record and verify the final local gate at the clean HEAD after the archive/PR-preparation commit; its ID stays outside the commit and any subsequent commit requires a fresh gate. This helper does not replace checkout reservations or required tests.
 Declared outputs cannot exclude tracked code. A passing untyped (`required_gate: null`) local record is inspectable as `verified/passed`, but its obligation is `not_required` and `verify` exits 3: it does not establish a required local gate. Only a typed local gate on a clean final HEAD can satisfy that gate; first confirm the requirement independently from repository policy, not from an imported producer's manifest, selection, or status claims. An imported bundle's checksum proves transport integrity, not that its producer's claims are trustworthy. A public hosted projection confirms only the execution: `verify <id> --from-github <URL> --base-branch main --hosted-obligation <ID>` requires independent binding to protected policy and the run's job/check; without an obligation or binding, it exits 3. Binding currently supports branch protection checks; a ruleset-only policy or unconfirmable check source leaves the gate pending. Import limits expanded packages (256 MiB total, 64 MiB per member, 1024 members).
@@ -630,6 +634,8 @@ test -f .ai-workflow/scripts/worktree_registry.py
 test -x .ai-workflow/scripts/workflow-evidence
 test -f .ai-workflow/scripts/workflow_evidence.py
 test -x .ai-workflow/scripts/preflight-check
+test -x .ai-workflow/scripts/attempt-log
+test -f .ai-workflow/scripts/attempt_log.py
 python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```

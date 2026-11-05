@@ -417,7 +417,7 @@ Severidades de revisão:
 [NICE TO HAVE]
 ```
 
-A cobertura segue [TEST_STRATEGY.md](protocol/TEST_STRATEGY.md) automaticamente no planejamento, implementação e revisão. Os agentes selecionam cenários representativos a partir dos critérios de aceite e riscos concretos, reutilizam massas de teste e evitam duplicar toda a matriz de regras em testes unitários, integrados e GraphQL. Revisores devem justificar testes extras pela falha que as evidências atuais não detectariam. As verificações exigidas continuam obrigatórias; falhas repetidas exigem diagnóstico, não tentativas cegas. Nenhuma instalação extra de skill ou etapa de aprovação é necessária. Testes existentes do comportamento afetado também são avaliados por redundância ou expectativas obsoletas. Uma simplificação ampla da suíte é uma tarefa dedicada e medida, preservando a comprovação de cada teste consolidado, migrado ou removido.
+A cobertura segue [TEST_STRATEGY.md](protocol/TEST_STRATEGY.md) automaticamente no planejamento, implementação e revisão. Os agentes selecionam cenários representativos a partir dos critérios de aceite e riscos concretos, reutilizam massas de teste e evitam duplicar toda a matriz de regras em testes unitários, integrados e GraphQL. Revisores devem justificar testes extras pela falha que as evidências atuais não detectariam. As verificações exigidas continuam obrigatórias; falhas repetidas são agrupadas por obrigação/assinatura num único bloco `attempt-log` do handoff, com diagnóstico antes da terceira tentativa e verificação pelo auxiliar; bloqueio válido não é aprovação para PR. Nenhuma instalação extra de skill ou etapa de aprovação é necessária. Testes existentes do comportamento afetado também são avaliados por redundância ou expectativas obsoletas. Uma simplificação ampla da suíte é uma tarefa dedicada e medida, preservando a comprovação de cada teste consolidado, migrado ou removido.
 A revisão de pré-flight identifica consumidores reais de configuração compartilhada, amostra focal e premissas de fixture antes da suíte ampla, reconcilia política vigente na retomada e mantém verificações proporcionais para mudanças sem impacto transversal.
 
 Consulte [AI_WORKFLOW.md](protocol/AI_WORKFLOW.md), [GITHUB_CONVENTIONS.md](protocol/GITHUB_CONVENTIONS.md), [REVIEW_POLICY.md](protocol/REVIEW_POLICY.md) e [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md) para as regras oficiais.
@@ -558,6 +558,8 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-evidence .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_evidence.py .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/preflight-check .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/attempt-log .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/attempt_log.py .ai-workflow/scripts/
 chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/pr-context \
   .ai-workflow/scripts/workflow-status \
@@ -565,7 +567,8 @@ chmod +x .ai-workflow/scripts/issue-context \
   .ai-workflow/scripts/workflow-report \
   .ai-workflow/scripts/worktree-reservation \
   .ai-workflow/scripts/workflow-evidence \
-  .ai-workflow/scripts/preflight-check
+  .ai-workflow/scripts/preflight-check \
+  .ai-workflow/scripts/attempt-log
 ```
 
 | Arquivos instalados | Finalidade |
@@ -581,6 +584,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Reserva cooperante de escrita, fingerprint versionado, retomada com inventário e tratamento restrito de bytecode; exige Git e Python 3.10+ em POSIX (`fcntl`). Consulte `protocol/WORKTREES.md`. |
 | `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py` | Registro, verificação e transporte de evidência de testes; exige Python 3.10+, Git e `gh` apenas para GitHub. |
 | `scripts/preflight-check` | Pré-flight opcional de dependências Composer/npm versus lock e alterações de política desde o commit do plano; somente leitura, exige Python 3.10+ e Git para `policy`. Se indisponível, faça a verificação manual. |
+| `scripts/attempt-log`, `scripts/attempt_log.py` | Verificação estrutural do bloco de hipóteses e tentativas no handoff/PR; exige Python 3.10+, sem ler o manifesto de evidência. |
 
 Exemplo: `.ai-workflow/scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest discover -s tests` emite um ID antes de executar e armazena o log no diretório Git comum. `verify <id> --format json` confere HEAD, index/diff, configuração e identificadores de ambiente declarados; `export <id> --output bundle.tar.gz` e `import bundle.tar.gz` transportam logs entre clones. Declare `--env-id NAME=ID` não secreto para cada perfil relevante (não use valores de env/credenciais), e `--report`/`--output-dir` para saídas. `publish <id> --issue URL` publica apenas metadados: comentários locais sem pacote não são prova completa. Revise pacotes antes de compartilhá-los; `prune --older-than 30` apenas simula até `--yes`. O gate local final deve ser registrado e verificado no HEAD limpo depois do commit de archive/preparação da PR; seu ID fica fora do commit e qualquer commit seguinte exige novo gate. O helper não substitui a reserva de checkout nem testes obrigatórios.
 Saídas declaradas não podem excluir código rastreado. Um registro local aprovado sem gate tipado (`required_gate: null`) pode ser inspecionado como `verified/passed`, mas sua obrigação é `not_required` e `verify` retorna 3: isso não comprova gate local obrigatório. Só gate local tipado no HEAD final limpo pode satisfazê-lo; confirme antes a exigência independentemente na política do repositório, não no manifesto, seleção ou status declarados pelo produtor importado. O checksum do pacote prova a integridade do transporte, não a confiabilidade das alegações do produtor. Uma projeção pública hospedada confirma apenas a execução: `verify <id> --from-github <URL> --base-branch main --hosted-obligation <ID>` exige vínculo independente à política protegida e ao job/check do run; sem obrigação ou vínculo, o exit code é 3. O vínculo atual suporta branch protection com checks; se a política depender só de rulesets ou a API não confirmar a origem do check, o gate permanece pendente. Importação limita a expansão do pacote (256 MiB no total, 64 MiB por membro, 1024 membros).
@@ -629,6 +633,8 @@ test -f .ai-workflow/scripts/worktree_registry.py
 test -x .ai-workflow/scripts/workflow-evidence
 test -f .ai-workflow/scripts/workflow_evidence.py
 test -x .ai-workflow/scripts/preflight-check
+test -x .ai-workflow/scripts/attempt-log
+test -f .ai-workflow/scripts/attempt_log.py
 python3 --version
 .ai-workflow/scripts/issue-context https://github.com/owner/repo/issues/123
 ```

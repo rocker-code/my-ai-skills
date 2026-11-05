@@ -77,7 +77,7 @@ If the environment cannot update it, report the exact pending user action.
 
 - If complementary project copies exist, compare them with the same source SHA.
   Refresh protocols, templates and runtime helpers described by the current README.
-  Include required companion files such as `workflow_metrics.py`, `workflow_evidence.py` and `worktree_registry.py` (both Python companions required by `workflow-evidence`) and retain script
+  Include required companion files such as `workflow_metrics.py`, `workflow_evidence.py`, `worktree_registry.py` (both Python companions required by `workflow-evidence`) and `attempt_log.py` (required by `attempt-log`); retain script
   executable permissions. Do not copy the source maintenance script `sync-plugin`
   into application runtime helpers.
 - Establish ownership before overwriting. Use the prior source revision or a
