@@ -41,6 +41,10 @@ O adaptador SHALL aceitar vínculo validado de repositório, issue, run, etapa, 
 - **WHEN** uma sessão muda de localização ou o vínculo aponta a uma incarnação encerrada
 - **THEN** a atividade posterior não confirma a incarnação antiga e o vínculo exige reconciliação explícita
 
+#### Scenario: Sessão muda de worktree entre duas coletas
+- **WHEN** uma sessão vinculada permanece ativa mas seu diretório muda para outra worktree do mesmo projeto antes da próxima coleta
+- **THEN** a próxima amostra revalida a localização, recusa confirmar atividade no vínculo antigo e não usa projectID compartilhado nem concatenação de subpath como prova de igualdade
+
 ### Requirement: Captura oficial não invasiva
 O adaptador OpenCode SHALL usar mecanismos oficiais compatíveis com a versão declarada e registrar somente metadados permitidos. Sessão ativa significa atividade de sessão, não aprovação de teste, término de etapa ou merge. Falha, indisponibilidade ou ausência de sessão SHALL ser distinguíveis sem alterar o workflow.
 
@@ -51,6 +55,10 @@ O adaptador OpenCode SHALL usar mecanismos oficiais compatíveis com a versão d
 #### Scenario: Runtime indisponível
 - **WHEN** a API falha, nega acesso ou retorna contrato incompatível
 - **THEN** o monitor preserva o histórico, informa desconhecido/indisponível e não interfere no agente
+
+#### Scenario: Contexto ou versão do servidor muda
+- **WHEN** server.info indica versão diferente do release fixado ou mudança de processo/contexto em relação ao vínculo
+- **THEN** o monitor não transfere confirmação automaticamente nem renova TTL pelo cache, revalida o vínculo e exige nova conferência de contrato para release divergente
 
 ### Requirement: Frescor separado por fonte
 O monitor SHALL exibir última coleta bem-sucedida, última observação e falha por fonte. Atividade vencida MUST NOT aparecer como executando confirmado. Cache carregado e GitHub indisponível SHALL ser marcados como desatualizados, não como atualização ao vivo.

@@ -3,7 +3,7 @@
 ## 1. Pré-flight e fronteiras de confiança
 
 - [ ] 1.1 Em fresh Apply, verificar SHA de proposta revisado, issue/comentários/PRs atuais, reserva exclusiva e dependências #17/#44 ancestrais; registrar parecer independente e reconciliação das políticas lidas na base ee33197 antes de implementar.
-- [ ] 1.2 Conferir contrato OpenCode V2 no release/contexto alvo (versão, session.active, session.get/location, ausência/401/404), guardar fixture mínima sem dados pessoais e evidência de CONTRACT FROZEN; divergência material volta ao plano, não vira parsing de texto. Verificar fixture e smoke read-only de sessão própria conforme M8.
+- [ ] 1.2 Revalidar freeze técnico já documentado no design: release oficial OpenCode 2.2.5/commit `9bbb8ce18c80f099e0e448775f59d965ead40a21`, CLI e server.info/version, contexto compartilhado descoberto ou --server explícito (nunca --standalone), session.active e session.get/location. Criar fixture mínima dos envelopes oficiais sem dados pessoais e provas de ausência/401/404; divergência material volta ao plano. Rodar smoke read-only próprio M8; não tratar pesquisa já resolvida como pergunta ao usuário.
 - [ ] 1.3 Criar estrutura de scripts/milestone_monitor e CLI aew com config versionada/caminhos XDG/help/validação sem fontes obrigatórias; provar M6 com tests de config inválida/sem alvos e documentar configuração inicial em pt-BR/en.
 
 ## 2. Persistência e ingestão v1
@@ -21,7 +21,7 @@
 ## 4. Adaptador OpenCode e projeção
 
 - [ ] 4.1 Implementar bind/unbind transacional explícito por incarnação/sessão/worktree/contexto, branch somente verificada, sem inferência de texto; provar rejeição sem alterar vínculo anterior, local incompatível, sessão reutilizada e incarnação terminal em M8; documentar comandos reais de vínculo.
-- [ ] 4.2 Implementar consultas oficiais dirigidas de runtime, filtrar dados não vinculados, distinguir ausente/inativa/erro e validar localização ao retomar; provar contrato fake + smoke read-only próprio, indisponibilidade não invasiva e sessão ativa sem prova de test_run em M8/M9.
+- [ ] 4.2 Implementar consultas oficiais dirigidas de runtime, filtrar dados não vinculados, distinguir ausente/inativa/erro e revalidar server.info/contexto e session.get/location em cada ciclo que confirme atividade; provar movimento sem restart, mesmo projeto/worktrees distintos, subpath não concatenado, envelopes sem data de location/info, troca de processo/versão, contrato fake + smoke read-only próprio e sessão ativa sem prova de test_run em M8/M9. Falha não renova TTL nem altera o agente.
 - [ ] 4.3 Implementar precedência exclusiva D5, frescor por fonte, conflitos, timestamps UTC e tempos canônicos sem estimativas; provar matriz M4/M11 com espera humana, outros waits, falha/interrupção, paralelo, terminal seguido de running, TTL e clock futuro; documentar significado de fechado vs entregue.
 
 ## 5. TUI operacional
