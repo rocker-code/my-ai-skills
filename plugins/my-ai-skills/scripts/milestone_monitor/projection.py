@@ -45,6 +45,9 @@ def issue_view(issue, snapshots, runtime, bindings, now, timing, session_started
         running, failures = False, []
         intervals = details["intervals"]
         latest = {}
+        # Aggregate only each worker's latest incarnation. An open worker
+        # outranks completion elsewhere; rework supersedes its own old result.
+        stage_priority = {"completed": 0, "unknown": 1, "interrupted": 2, "failed": 3, "current": 4}
         for interval in intervals:
             pair = interval["stage"], interval["worker_id"]
             if pair not in latest or interval["start"] >= latest[pair]["start"]:
@@ -53,6 +56,9 @@ def issue_view(issue, snapshots, runtime, bindings, now, timing, session_started
             key = incarnation_key(issue["repository"], issue["number"], record["run_id"], interval)
             binding = bindings.get(key)
             observation = runtime.get(key) if binding else None
+            if observation and (not binding.get("revision") or
+                                observation.get("binding_revision") != binding["revision"]):
+                observation = None
             terminal = interval["terminal"]
             last = interval["last_confirmed"]
             state, label = "unknown", "desconhecida"
@@ -84,7 +90,10 @@ def issue_view(issue, snapshots, runtime, bindings, now, timing, session_started
             if latest.get((interval["stage"], interval["worker_id"])) is interval and state == "failed":
                 failures.append(label)
             status = "current" if not closed and not terminal else "completed" if state in {"completed", "closed"} else state
-            view["stages"][interval["stage"]] = status
+            if latest.get((interval["stage"], interval["worker_id"])) is interval:
+                previous = view["stages"].get(interval["stage"])
+                if previous is None or stage_priority[status] > stage_priority[previous]:
+                    view["stages"][interval["stage"]] = status
             view["workers"].append({"stage": interval["stage"], "worker": interval["worker_id"], "execution": interval["execution"],
                                     "state": state, "label": label, "opened_at": iso_time(interval["start"]), "key": key,
                                     "last_observed_at": last.get("last_seen_at") or last.get("at") if last else None,

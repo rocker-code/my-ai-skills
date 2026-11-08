@@ -2,6 +2,7 @@
 import json
 import os
 import sqlite3
+from uuid import uuid4
 from pathlib import Path
 
 from .common import MonitorError, iso_time, parse_time
@@ -65,15 +66,23 @@ class Store:
             raise MonitorError("armazenamento ocupado ou indisponível") from None
 
     def publish(self, key, generation, payload, now=None):
-        encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True)
         observed = now or iso_time()
         if key.startswith("comments:"):
             times = [event.get("last_seen_at") or event.get("at") for snapshot in payload for event in snapshot["record"]["events"]]
             observed = max((at for at in times if parse_time(at)), key=parse_time, default=None)
-        elif key == "runtime":
-            observed = max((item["at"] for item in payload.values() if parse_time(item.get("at"))), key=parse_time, default=None)
         try:
             with self.connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                if key == "runtime":
+                    # Bind/unbind and publication share the write transaction:
+                    # an in-flight result must still belong to this revision.
+                    bindings = {row[0]: json.loads(row[1]) for row in db.execute(
+                        "SELECT key,payload FROM local WHERE key LIKE 'binding:%'")}
+                    payload = {identity: item for identity, item in payload.items()
+                               if item.get("binding_revision") and
+                               item["binding_revision"] == bindings.get(identity, {}).get("revision")}
+                    observed = max((item["at"] for item in payload.values() if parse_time(item.get("at"))), key=parse_time, default=None)
+                encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True)
                 result = db.execute("""UPDATE sources SET accepted=?, payload=?, fetched_at=?, observed_at=?,
                     error=NULL, retry_at=NULL, failures=0 WHERE key=? AND generation=?""",
                                     (generation, encoded, now or iso_time(), observed, key, generation))
@@ -138,6 +147,8 @@ class Store:
                     other = json.loads(row[1])
                     if row[0] != key and other["session_id"] == value["session_id"] and other["context"] == value["context"]:
                         raise MonitorError("sessão já vinculada; remova o vínculo anterior")
+                # Fresh even for an identical rebind or unbind/rebind (ABA).
+                value = {**value, "revision": uuid4().hex}
                 db.execute("INSERT INTO local VALUES (?,?) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload", (key, json.dumps(value)))
         except sqlite3.Error:
             raise MonitorError("armazenamento ocupado ou indisponível") from None

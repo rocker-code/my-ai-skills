@@ -11,9 +11,40 @@ from unittest.mock import patch
 from milestone_monitor_fixtures import *
 from milestone_monitor.store import Store, ClosingConnection
 from milestone_monitor.common import MonitorError
+from milestone_monitor.projection import model
 
 
 class StoreTests(unittest.TestCase):
+    def test_rebind_rejects_cached_and_inflight_runtime_of_previous_revision(self):
+        seed(self.store)
+        key = model(self.store, CONFIG, STARTED, NOW)["milestones"][0]["issues"][0]["workers"][0]["key"]
+        config = {**CONFIG, "runtime": {**CONFIG["runtime"], "enabled": True}}
+        def group():
+            return model(self.store, config, STARTED, NOW)["milestones"][0]["issues"][0]["group"]
+        self.store.bind(key, {"session_id": "ses_A", "context": {}})
+        first = self.store.bindings()[key]
+        observation = {"state": "active", "at": NOW.isoformat(), "binding_revision": first.get("revision")}
+        publish(self.store, "runtime", {key: observation})
+        self.assertEqual(group(), "running")
+        generation = self.store.begin("runtime")
+        self.store.bind(key, {"session_id": "ses_B", "context": {}})
+        second = self.store.bindings()[key]
+        self.assertEqual(group(), "pending", "B has not been queried; A's cached confirmation is not B's")
+        self.assertNotEqual(first["revision"], second["revision"])
+        # A response already in flight must neither confirm nor invalidate B.
+        for state in ("active", "incompatible", "context_changed"):
+            with self.subTest(state=state):
+                self.store.publish("runtime", generation, {key: {**observation, "state": state}})
+                self.assertEqual(group(), "pending")
+                self.assertNotIn(key, self.store.source("runtime")["payload"])
+                self.assertNotIn("invalidated", Store(self.directory).bindings()[key])
+        publish(self.store, "runtime", {key: {**observation, "state": "inactive", "binding_revision": second["revision"]}})
+        self.assertEqual(group(), "pending")
+        # Unbind/rebind to identical metadata must not reuse a revision (ABA).
+        self.store.unbind(key)
+        self.store.bind(key, {"session_id": "ses_B", "context": {}})
+        self.assertNotEqual(second["revision"], self.store.bindings()[key]["revision"])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -99,9 +130,12 @@ s=Store(sys.argv[2]);g=s.begin('two');s.publish('two',g,{'writer':sys.argv[3]})
         publish(self.store, "a", "history")
         value = {"session_id": "ses_test", "context": {"pid": 1}}
         self.store.bind("binding:one", value)
+        saved = self.store.bindings()["binding:one"]
+        self.assertTrue(saved["revision"])
+        self.assertEqual({k: v for k, v in saved.items() if k != "revision"}, value)
         with self.assertRaises(MonitorError):
             self.store.bind("binding:two", value)
-        self.assertEqual(self.store.bindings(), {"binding:one": value})
+        self.assertEqual(self.store.bindings(), {"binding:one": saved})
         self.store.unbind("binding:one")
         self.assertEqual(self.store.source("a")["payload"], "history")
 
@@ -109,7 +143,8 @@ s=Store(sys.argv[2]);g=s.begin('two');s.publish('two',g,{'writer':sys.argv[3]})
         seed(self.store)
         generation = self.store.source(f"comments:{REPO}:7")["accepted"]
         self.store.bind("binding:one", {"session_id": "ses_test", "context": {}}, guards=((f"comments:{REPO}:7", generation),))
-        publish(self.store, "runtime", {"binding:one": {"state": "incompatible", "at": NOW.isoformat()}})
+        revision = self.store.bindings()["binding:one"]["revision"]
+        publish(self.store, "runtime", {"binding:one": {"state": "incompatible", "at": NOW.isoformat(), "binding_revision": revision}})
         self.assertEqual(Store(self.directory).bindings()["binding:one"]["invalidated"], "incompatible")
         publish(self.store, f"comments:{REPO}:7", snapshots(record()))
         before = self.store.bindings()

@@ -75,7 +75,7 @@ class Runtime:
                     state = "incompatible"
                 else:
                     raise
-            result[key] = {"state": state, "at": iso_time()}
+            result[key] = {"state": state, "at": iso_time(), "binding_revision": binding.get("revision")}
         return result
 
 

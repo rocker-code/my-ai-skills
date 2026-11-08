@@ -20,7 +20,7 @@ class RuntimeTests(unittest.TestCase):
         self.runtime = Runtime({"enabled": True, "expected_version": "2.2.5", "server": None}, self.call)
         self.key = "binding:fixture"
         self.binding = {"session_id": "ses_fixture", "worktree": "/fixture/worktree", "repository": REPO,
-                        "branch": "feature", "context": self.runtime.context()}
+                        "branch": "feature", "context": self.runtime.context(), "revision": "revision-fixture"}
         self.git = patch("milestone_monitor.runtime.git_identity", return_value="feature")
         self.git.start()
         self.addCleanup(self.git.stop)
@@ -44,6 +44,7 @@ class RuntimeTests(unittest.TestCase):
         self.fixture["server.info"]["token"] = "PRIVATE_SECRET"
         result = self.collect()
         self.assertEqual(result["state"], "active")
+        self.assertEqual(result["binding_revision"], self.binding["revision"])
         self.assertNotIn("PRIVATE", json.dumps(result))
         self.assertNotIn("ses_private", json.dumps(result))
         self.assertTrue(all("--standalone" not in argv for argv in self.calls))

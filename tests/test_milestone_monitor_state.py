@@ -9,9 +9,32 @@ from milestone_monitor.common import MonitorError
 from milestone_monitor.ingest import record_of
 from milestone_monitor.projection import analyze, incarnation_key, issue_view
 from workflow_metrics import summarize_run
+from milestone_monitor.tui import ruler
 
 
 class StateTests(unittest.TestCase):
+    def test_stage_aggregates_latest_workers_and_preserves_rework(self):
+        other = {"worker_id": "b", "execution": {"kind": "worker", "id": "worker-b"}}
+        value = record(event("stage_started"), event("stage_started", 10, **other),
+                       event("state_observed", 20, state="running", source="runtime_query"),
+                       event("state_observed", 25, state="completed", source="runtime_event", **other),
+                       event("stage_finished", 26, **other))
+        view = self.view(value)
+        self.assertEqual(view["group"], "running")
+        self.assertEqual([w["state"] for w in view["workers"]], ["running", "completed"])
+        self.assertEqual(view["stages"]["apply"], "current")
+        self.assertIn("[> Aplicar]", ruler(view, 1000, ascii_only=True))
+        self.assertNotIn("[+ Aplicar]", ruler(view, 1000, ascii_only=True))
+        # Failure in another worker is not erased by completion either.
+        value["events"][2] = event("state_observed", 20, state="failed", source="runtime_event")
+        self.assertEqual(self.view(value)["stages"]["apply"], "failed")
+        # A completed new incarnation supersedes that worker's old failure.
+        value["events"] += [event("stage_finished", 27),
+                             event("stage_started", 28, execution={"kind": "worker", "id": "retry-a"}),
+                             event("state_observed", 29, state="completed", source="runtime_event",
+                                   execution={"kind": "worker", "id": "retry-a"})]
+        self.assertEqual(self.view(value)["stages"]["apply"], "completed")
+
     def view(self, value, issue=None, runtime=None, bindings=None, now=NOW, started=STARTED):
         return issue_view(issue or ISSUE, snapshots(value), runtime or {}, bindings or {}, now, DEFAULTS, started)
 
@@ -96,8 +119,9 @@ class StateTests(unittest.TestCase):
             value = record(event("stage_started", execution={"kind": kind, "id": "a"}))
             interval = analyze(value, NOW)[1]["intervals"][0]
             key = incarnation_key(REPO, 7, value["run_id"], interval)
-            runtime = {key: {"state": "active", "at": NOW.isoformat()}}
-            self.assertEqual(self.view(value, runtime=runtime, bindings={key: {"session_id": "ses_test"}})["group"], expected)
+            binding = {key: {"session_id": "ses_test", "revision": "revision-a"}}
+            runtime = {key: {"state": "active", "at": NOW.isoformat(), "binding_revision": "revision-a"}}
+            self.assertEqual(self.view(value, runtime=runtime, bindings=binding)["group"], expected)
             value["events"].append(event("state_observed", 20, state="running", source="runtime_query", execution={"kind": kind, "id": "a"}))
-            inactive = {key: {"state": "inactive", "at": NOW.isoformat()}}
-            self.assertEqual(self.view(value, runtime=inactive, bindings={key: {"session_id": "ses_test"}})["group"], "pending" if kind == "worker" else "running")
+            inactive = {key: {"state": "inactive", "at": NOW.isoformat(), "binding_revision": "revision-a"}}
+            self.assertEqual(self.view(value, runtime=inactive, bindings=binding)["group"], "pending" if kind == "worker" else "running")
