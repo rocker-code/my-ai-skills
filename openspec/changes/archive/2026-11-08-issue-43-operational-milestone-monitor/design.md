@@ -153,3 +153,95 @@ Este commit contém somente planejamento. Revisão inline: critérios #43 cobert
 Reviewer: ler issue/comentários atuais, proposta, ambas specs, D5/D6 e M1–M11 no SHA; conferir precedência, foreground vs filho, completude da paginação, ausência de aprovação implícita, limites de bind e cache. Rodar validação oficial exata e publicar parecer no SHA; achado material volta ao planejamento. Não editar produção.
 
 Fresh Apply: somente após aprovação independente e contrato conferido, usar a MESMA branch/worktree, verificar SHA limpo e dependências ancestrais, comparar políticas atuais, transferir reserva após retorno do planejador, carregar apply-issue e skill oficial openspec-apply-change. Não fazer Apply no contexto de planejamento. Não iniciar segunda PR/worktree por fase. Coordenador é único escritor de workflow-event: ID local da reserva `issue-43-planning` não é run GitHub; este worker retorna observações, não cria run concorrente.
+
+## Verificação de Apply — 2026-11-08
+
+Fresh Apply na mesma worktree, SHA de entrada `b4696ebbfca477ad82287a6f7603a02822555595`,
+parecer independente `#issuecomment-6726395594` conferido ao vivo. Provas de plano
+`ev-20261108T195805Z-256cb4f7` / `ev-20261108T195816Z-7e959ace` acessíveis como
+verified/passed; não usadas como aprovação da implementação. #17/#44 ancestrais,
+nenhuma PR operacional existente. Políticas protocol/skills/sync-plugin sem
+divergência da base ee33197. Python 3.14.8/OpenSpec 1.16.1/curses/SQLite/tmux
+presentes; sem lockfile/vendor/DB/container externos. Cada fixture usa diretório
+descartável; escritores reais SQLite em subprocessos separados. Descoberta mantém
+`tests`, sem exclusões, alteração de CI ou enfraquecimento de provas existentes.
+
+O único ajuste interno ao consumidor canônico é o parâmetro privado `_details`
+de summarize_run: entrega os intervalos já correlacionados ao monitor sem mudar
+seu resultado público. Não existe outro emparelhador. Fila/projeção, GitHub e
+runtime têm threads separadas: uma fonte lenta não deixa a outra sem agendamento;
+TTL também expira por transformação pura durante renderização.
+
+### Matriz implementada cenário → código → prova
+
+Todos os arquivos abaixo têm prefixo `scripts/milestone_monitor/` ou `tests/`.
+
+| ID | Implementação | Prova comportamental executada |
+|---|---|---|
+| M1 | Demo não alterada; docs distinguem simulação | cli: `test_demo_preserved_and_compiles_without_credentials`; py_compile para temp; diff vazio em examples |
+| M2 | github.inventory/pages, projection.model | github: `test_full_paging_above_500_including_uninstrumented_and_excludes_prs` (505 issues/vazio/PRs); multi-repo com número 7 repetido |
+| M3 | tui.UIState/render/ruler | testes sanfonas/seleção/filtro/histórico/viewport; smoke curses/tmux real `tests/milestone_monitor_smoke.py`, cache **fixture**, 110x30 → 40x12 com Aplicar visível |
+| M4 | projection.issue_view/analyze | state: espera humana/tests/CI ganha de paralelo; terminal vs running; rework; TTL/futuro/cache reaberto; worker vs filho |
+| M5 | ingest.comments_snapshot + store.publish | state: hash/last_seen/duplicata/empate/legado/A-B/malformado; store: restart, geração antiga, rollback de processo antes de commit |
+| M6 | config.load, Collector.update, saúde por fonte | config vazia/inválida, página 2 falha preserva snapshot/backoff; 401/403/404/429, JSON/timeout/fonte ausente; schema futuro/ro e expiração durante fonte lenta |
+| M7 | github.pull_requests e projeção por inventário | referência de fechamento paginada e ambiguidade; mera menção #44 excluída por fixture; aberta com merge não é done; fechada sem PR, reaberta/movida com histórico |
+| M8 | runtime.bind/collect/location + store.bind | fixture oficial mínima 2.2.5; local muda mesmo projectID; subpath ignorado; versões/processo/envelopes; bind rejeitado preserva anterior; terminal/reuso; smoke real próprio sem mensagens; q não interrompe sessão |
+| M9 | common.command/text; SQLite transacional | título ANSI, segredo em erro/payload descartado antes do DB; concorrência dois subprocessos, morte antes de commit, lock e ENOSPC categorizados; fila limitada; geração/guard e invalidação persistente |
+| M10 | aew/install-aew/sync-plugin; README/docs pt/en | launcher de outro cwd, XDG vazio, bin temporário e symlink conflitante; help/coleta fake no pacote gerado; dois projetos/restart/offline |
+| M11 | summarize_run sem alteração de resultado + detalhe/régua | 8 metrics + 43 execution antes da ampla; 107 workflow no conjunto; relatório/evidence não aprova, stage-end não é resultado, régua não conclui Explore por posição |
+
+Provas de desenvolvimento: 43 testes monitor passaram; regressões workflow
+`ev-20261108T202157Z-30b7daf4` (107, OK, 34,284s); suíte preliminar completa
+`ev-20261108T202835Z-6db0e62f` (251, OK, 77,012s). Smoke tmux corrigido e aprovado
+`ev-20261108T202835Z-52ac4dbb`. IDs são históricos com fingerprint da árvore suja,
+não gate final de HEAD limpo. Gate final obrigatório será registrado **após**
+archive/sync/commit e publicado na PR, fora deste commit. Verificador automático
+de implementação **NOT RUN**: CLI 1.16.1 não oferece comando verify; esta matriz,
+testes e strict validate são a verificação explícita exigida, sem comando inventado.
+
+Smoke externo real: schema imutável baixado novamente, 726513 bytes/hash do freeze
+conferidos; CLI/server.info 2.2.5, própria session.get/location e active válidos,
+ID deliberadamente ausente categorizado. GET real gh da issue #43 com --include
+confirmou parsing de headers. Após sair da TUI, própria sessão permaneceu ativa.
+Nenhum ID/payload privado publicado ou persistido. 401 real **NOT RUN** (não
+alterar autenticação do usuário); fixture negativa cobre o consumidor. Testes do
+produtor OpenCode **NOT RUN**, inspecionados no planejamento. Smoke integrado
+multi-projeto/restart/offline usa gh fake e SQLite reais, não alega integração live
+de dois projetos. Não houve Figma/web: alvo curses sem artefato Figma aprovado.
+
+Falhas corrigidas sem mudar o contrato: primeiro lote detectou seleção inicial
+na última sanfona e fixture com casing diferente do aviso da demo; corrigidos
+reducer/assertion preservando demo. Warnings SQLite corrigidos fechando conexões.
+Smoke estreito detectou título selecionado na última linha sem régua; viewport
+passou a reservar também a régua, com regressão específica e smoke aprovado.
+Nenhuma assinatura falhou duas vezes; attempt-log repetido não é exigido.
+
+Reserva: ACTIVE issue43-fresh-apply, sem outro escritor. Houve uma lacuna de
+verify após checkpoint num lote inicial; helper recusou novo checkpoint. Todos
+os 23 caminhos foram inspecionados (apenas patches próprios, HEAD inalterado),
+e `reconcile --accept-external` registrou explicitamente a aceitação em
+2026-11-08T20:14:56Z, seguida de verify. Não se apresentou essa lacuna como prova
+de exclusão perfeita de terceiros. Lotes seguintes usam checkpoint/verify.
+
+Limites mantidos: foreground não prova filhos/CI; amostras não são atômicas;
+sem Enterprise/Codex runtime/notificações; clone deve ser retido para symlink.
+Não foram removidos/consolidados testes existentes (sem redundância específica
+que justificasse remoção). CI performance: apenas checklist leve de preservação;
+nenhuma otimização/benchmark/novo gate hospedado. Merge expressamente proibido;
+entrega será PR para pr-audit/architecture-audit independentes, reserva WAITING.
+
+Fechamento antes de prepare-pr: Apply oficial confirmou 21/21; archive oficial
+`openspec archive issue-43-operational-milestone-monitor --yes --json` sincronizou
+19 requisitos novos. As duas deltas arquivadas são byte a byte iguais ao SHA de
+proposta aprovado, e Purpose/requisitos das specs live coincidem integralmente.
+`openspec validate --all --strict --json --no-interactive`: 9/9 specs válidas,
+zero findings. Distribuição byte a byte igual à fonte; demo sem diff.
+
+Última revisão acrescentou prova de alvos removidos não consultarem runtime e
+coleta fake **bem-sucedida** do pacote em cache próprio, além de confirmar CLI e
+servidor no adaptador. Resultado atualizado: **44 testes monitor / 252 na suíte
+completa**, OK. Suíte preliminar `ev-20261108T203657Z-cefece40` (78,757s); smoke
+real read-only próprio `ev-20261108T203412Z-ef0b8dd2` (sem IDs/payloads em logs).
+Ainda são provas de desenvolvimento; gate local final no HEAD limpo é obrigatório
+após os commits e será publicado na PR. Não há workflow .github na base nem
+ruleset ativo exigindo hosted check na consulta atual; isso não é CI_GREEN.

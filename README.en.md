@@ -2,6 +2,14 @@
 
 [Português (Brasil)](README.md) · English
 
+## Operational Milestone Monitor
+
+`scripts/install-aew --bin-dir "$HOME/.local/bin"` makes `aew dashboard` available
+from any directory. Read-only multi-project TUI, SQLite/XDG cache, GitHub/workflow
+v1 integration, and opt-in OpenCode **2.2.5**. No config means no target discovery.
+See [installation, configuration, keys, sources and limits](docs/milestone-monitor.en.md).
+The [offline demo](examples/milestone-monitor/) remains separate: **SIMULATED DATA**.
+
 **AI Engineering Workflow** is the project’s display name. The repository remains at `rocker-code/my-ai-skills`; existing URLs, installation commands, paths and identifiers stay valid at this stage.
 
 Reusable skills and tools for a supervised, issue-driven AI software development lifecycle using GitHub, OpenSpec, ChatGPT, Codex, Claude and Claude Code.
