@@ -92,7 +92,7 @@ def correlate_observations(intervals: list[dict[str, Any]], events: list[dict[st
             candidates[0]["observations"].append(event)
 
 
-def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict[str, Any]:
+def summarize_run(record: dict[str, Any], as_of: datetime | None = None, *, _details=None) -> dict[str, Any]:
     as_of = as_of or utc_now()
     events = sorted(
         (event for event in record.get("events", []) if parse_time(event.get("at"))),
@@ -282,6 +282,10 @@ def summarize_run(record: dict[str, Any], as_of: datetime | None = None) -> dict
                       "insufficient_signal": {"state": weak.get("state"), "source": weak.get("source"), "at": weak.get("at")} if weak else None,
                       "blocker": blocker, "next_action": next_action,
                       "verified_at": iso_time(verified_at) if verified_at else None}
+    if _details is not None:
+        # Internal consumer API: share the canonical incarnation correlation,
+        # never reconstruct execution identity from the public stage aggregates.
+        _details.update(intervals=intervals, open_waits=open_waits)
     return {
         "run_id": record["run_id"],
         "repository": record.get("repository"),
