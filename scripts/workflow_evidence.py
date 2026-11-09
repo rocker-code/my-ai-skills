@@ -344,6 +344,17 @@ def gh(*args):
     result = subprocess.run(["gh", *args], capture_output=True, text=True)
     if result.returncode:
         raise ValueError(result.stderr.strip() or "GitHub API unavailable")
+    if "--paginate" in args:
+        decoder = json.JSONDecoder()
+        pages, offset = [], 0
+        output = result.stdout
+        while offset < len(output):
+            while offset < len(output) and output[offset].isspace():
+                offset += 1
+            if offset < len(output):
+                page, offset = decoder.raw_decode(output, offset)
+                pages.append(page)
+        return pages
     return json.loads(result.stdout)
 
 
@@ -437,7 +448,7 @@ def target_url(value):
 
 
 def comments(repo, number):
-    pages = gh("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/comments")
+    pages = gh("api", "--paginate", f"repos/{repo}/issues/{number}/comments")
     return [item for page in pages for item in page]
 
 
@@ -494,7 +505,7 @@ def gate_binding(repo, base_branch, obligation, run_id, head):
         run_path = run.get("path", "").split("@", 1)[0]
         if run["head_sha"] != head or run_path != workflow:
             return False
-        pages = gh("api", "--paginate", "--slurp", f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
+        pages = gh("api", "--paginate", f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
         jobs = [job for page in pages for job in page["jobs"]]
         matches = [job for job in jobs if job.get("name") == check and job.get("run_id") == int(run_id)
                    and job.get("head_sha") == head and job.get("status") == "completed"

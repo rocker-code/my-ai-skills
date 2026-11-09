@@ -3,7 +3,7 @@ import os
 import re
 import subprocess
 
-from .common import MonitorError, command, identifier, iso_time, issue_identity
+from .common import MonitorError, command, identifier, iso_time, issue_identity, parse_time, utc_now
 from .projection import analyze, incarnation_key
 
 
@@ -41,10 +41,70 @@ class Runtime:
         except (KeyError, TypeError, ValueError, AttributeError):
             raise MonitorError("resposta inválida") from None
 
+    def pending(self, session_id):
+        result = []
+        for kind, operation, prefix in (("permission", "session.permission.list", "per"),
+                                        ("form", "session.form.list", "frm_")):
+            raw = self.api(operation, "--param", "sessionID=" + session_id)
+            if not isinstance(raw, dict) or not isinstance(raw.get("data"), list) or len(raw["data"]) > 1000:
+                raise MonitorError("resposta inválida")
+            seen = set()
+            for item in raw["data"]:
+                if not isinstance(item, dict) or item.get("sessionID") != session_id:
+                    raise MonitorError("resposta inválida")
+                request_id = identifier(item.get("id"))
+                if not request_id.startswith(prefix) or request_id in seen:
+                    raise MonitorError("resposta inválida")
+                seen.add(request_id)
+                result.append({"kind": kind, "request_id": request_id})
+        return result
+
+    def validate_fact(self, fact, bindings, open_keys, sample=None):
+        """Um fato não é resultado semântico; revalida apenas sua correlação."""
+        import json
+        from .observations import normalize
+        key = fact.get("binding_key")
+        binding = bindings.get(key) if key in open_keys else None
+        if not binding or binding.get("invalidated"):
+            return None
+        projected = normalize(json.dumps(fact).encode(), binding["context"], {key: binding}, fact.get("collector_epoch"))
+        if not projected or projected.get("binding_key") != key:
+            return None
+        if sample is not None:
+            # Prova de consulta oficial iniciada depois do recebimento do fato,
+            # com Git/localização validados e a mesma revisão/contexto.
+            started, received = parse_time(sample.get("query_started_at")), parse_time(fact.get("received_at"))
+            if (sample.get("binding_revision") != binding["revision"] or sample.get("context") != binding["context"]
+                    or sample.get("state") not in {"active", "inactive"} or not started or not received or started < received):
+                return None
+            return projected
+        if self.context() != binding["context"]:
+            raise MonitorError("contexto alterado")
+        self.location(binding["session_id"], binding["worktree"])
+        git_identity(binding["worktree"], binding["repository"], binding.get("branch"))
+        return projected
+
+    def project_facts(self, store, open_keys, epoch):
+        source = store.source("runtime")
+        if source.get("error"):
+            return
+        samples, bindings = source.get("payload") or {}, store.bindings()
+        for fact in store.runtime_facts():
+            if (not isinstance(fact, dict) or fact.get("version") != 1 or fact.get("projected")
+                    or fact.get("collector_epoch") != epoch or fact.get("binding_key") not in open_keys):
+                continue
+            sample = samples.get(fact["binding_key"], {})
+            if sample.get("collector_epoch") != epoch:
+                continue
+            validated = self.validate_fact(fact, bindings, open_keys, sample)
+            if validated:
+                store.project_runtime_fact(validated, epoch)
+
     def collect(self, bindings, open_keys):
         bindings = {key: value for key, value in bindings.items() if key in open_keys}
         if not bindings:
             return {}
+        query_started = utc_now().isoformat()
         context = self.context()
         raw = self.api("session.active")
         if not isinstance(raw, dict) or not isinstance(raw.get("data"), dict):
@@ -55,6 +115,7 @@ class Runtime:
             if key not in open_keys:
                 continue
             state = "unknown"
+            requests = []
             try:
                 if binding.get("invalidated"):
                     state = binding["invalidated"]
@@ -68,6 +129,7 @@ class Runtime:
                     if item is not None and (not isinstance(item, dict) or item.get("type") != "running"):
                         raise MonitorError("resposta inválida")
                     state = "active" if item else "inactive"
+                    requests = self.pending(binding["session_id"])
             except MonitorError as error:
                 if error.category == "ausente":
                     state = "absent"
@@ -75,7 +137,8 @@ class Runtime:
                     state = "incompatible"
                 else:
                     raise
-            result[key] = {"state": state, "at": iso_time(), "binding_revision": binding.get("revision")}
+            result[key] = {"state": state, "at": utc_now().isoformat(), "binding_revision": binding.get("revision"),
+                           "query_started_at": query_started, "requests": requests, "context": context}
         return result
 
 
@@ -135,7 +198,7 @@ def bind(store, runtime, args):
     key = incarnation_key(repo, number, args.run_id, interval)
     store.bind(key, {"repository": repo, "issue": number, "run_id": args.run_id, "stage": args.stage,
                      "worker_id": args.worker_id, "execution": interval["execution"], "session_id": args.session_id,
-                     "worktree": worktree, "branch": branch, "context": context, "bound_at": iso_time()},
+                      "worktree": worktree, "branch": branch, "context": context, "bound_at": utc_now().isoformat()},
                guards=(("inventory:" + repo, inventory_source.get("accepted")),
                        (f"comments:{repo}:{number}", comments_source.get("accepted"))))
     return key

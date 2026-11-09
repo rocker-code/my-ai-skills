@@ -42,7 +42,8 @@ if args[0] == "api":
     endpoint = next((arg for arg in args if arg.startswith("repos/")), "")
     body = next((arg[5:] for arg in args if arg.startswith("body=")), None)
     if body is None:
-        print(json.dumps([[item for item in state["comments"] if item["body"].split('"number":')[1].split(',')[0].strip() == endpoint.split('/')[4]]]))
+        comments = [item for item in state["comments"] if item["body"].split('"number":')[1].split(',')[0].strip() == endpoint.split('/')[4]]
+        print(json.dumps([comments] if '--slurp' in args else comments))
     elif "--method" in args:
         item = next(item for item in state["comments"] if item["id"] == int(endpoint.split("/")[-1]))
         item["body"] = body
@@ -67,7 +68,7 @@ class FakeGitHub(unittest.TestCase):
         fake.write_text(FAKE_GH)
         fake.chmod(0o755)
         self.env = dict(os.environ, PATH=f"{self.temp.name}:{os.environ['PATH']}", FAKE_GH_STATE=str(self.path),
-                        PYTHONDONTWRITEBYTECODE="1")
+                        PYTHONDONTWRITEBYTECODE="1", XDG_STATE_HOME=str(Path(self.temp.name) / "local-state"))
         self.issue = "https://github.com/owner/repo/issues/1"
         self.invoke("run-start")
 

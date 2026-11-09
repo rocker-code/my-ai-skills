@@ -83,6 +83,17 @@ During implementation, if new evidence changes the validated contract, stop the 
 
 For a run managed by `milestone-orchestrator`, use the optional `workflow-event` and `workflow-report` helpers when installed and GitHub write access is available. Create one stable run ID, reuse it across issues/workers, and record a run comment for each issue in scope. Record timestamps at actual stage boundaries and explicitly mark blocking waits; do not derive timings from labels, status text or chat history. The orchestrator is the single writer for each issue/run record. If timing instrumentation fails, report metrics as unavailable and continue the workflow.
 
+Quando houver workflow executor explicitamente autorizado, aplicar o
+[contrato de instrumentação estruturada](WORKFLOW_INSTRUMENTATION.md): o coordenador
+emite `aew workflow transition` nas 13 fronteiras reais, preserva issue/run/etapa/
+worker/execução, IDs de operação e horários no handoff, e executa `workflow reconcile`
+na retomada. Não exigir comando do usuário por etapa. Workers devolvem identidade,
+sessão real quando disponível, worktree e evidência, mas não se tornam escritores.
+Skill isolada, monitor read-only e sucesso de turno não criam autorização, abertura
+ou aprovação. Runtime/ponte/observador continuam opt-in; GitHub-only/Codex permanece
+utilizável. Não mudar payload/ID para contornar falha de publicação; não inferir
+horários ausentes nem converter sinal de sessão em conclusão de etapa/teste.
+
 The report separates issue/milestone calendar duration, registered stage work, declared waits, rework and CI/review evidence. Registered work is measured wall-clock time in marked stage windows minus declared waits; it is not model-internal thinking time. Parallel workers may make summed work exceed calendar duration. Use milestone medians and show P90 only with at least five samples. Missing model/token/cost data stays unavailable.
 
 After an issue or milestone completes, kaizen may use the report as additional evidence. Consider timings together with sample size, repeated work, CI failures and review findings. A single slow step is not sufficient to change the process. Never change gates automatically from timing metrics; if no recurring, evidence-backed improvement is justified, report `NO PROCESS CHANGE`.

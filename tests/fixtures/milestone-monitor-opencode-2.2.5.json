@@ -4,5 +4,7 @@
   "server.info": {"version": "2.2.5", "pid": 1234, "urls": ["http://localhost:4096"]},
   "location.get": {"directory": "/fixture/worktree", "project": {"id": "proj_fixture", "directory": "/fixture/worktree", "canonical": "/fixture/main"}},
   "session.get": {"data": {"id": "ses_fixture", "projectID": "proj_fixture", "location": {"directory": "/fixture/worktree"}, "subpath": "optional-relative"}},
-  "session.active": {"data": {"ses_fixture": {"type": "running"}}}
+  "session.active": {"data": {"ses_fixture": {"type": "running"}}},
+  "session.permission.list": {"data": []},
+  "session.form.list": {"data": []}
 }

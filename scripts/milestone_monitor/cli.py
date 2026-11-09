@@ -17,7 +17,7 @@ from .tui import dashboard, ascii_locale
 def parser():
     root = argparse.ArgumentParser(prog="aew", description="Milestone Monitor: leitura GitHub/workflow/OpenCode; sem alvos não há descoberta.")
     commands = root.add_subparsers(dest="command", required=True)
-    for name in ("dashboard", "collect", "bind", "unbind"):
+    for name in ("dashboard", "collect", "observe", "bind", "unbind"):
         cmd = commands.add_parser(name)
         cmd.add_argument("--config", help="config JSON schema_version 1 (XDG_CONFIG_HOME/aew/config.json)")
         cmd.add_argument("--state-dir", help="cache SQLite (XDG_STATE_HOME/aew)")
@@ -27,6 +27,8 @@ def parser():
             cmd.add_argument("--ascii", action="store_true")
         elif name == "collect":
             cmd.add_argument("--once", action="store_true", required=True)
+        elif name == "observe":
+            cmd.description = "Observador foreground opt-in; lê fontes e não publica workflow nem controla agentes."
         else:
             for arg in ("issue", "run-id", "stage", "worker-id", "execution-id"):
                 cmd.add_argument("--" + arg, required=True)
@@ -35,6 +37,19 @@ def parser():
                 cmd.add_argument("--session-id", required=True)
                 cmd.add_argument("--worktree", required=True)
                 cmd.add_argument("--branch")
+    workflow = commands.add_parser("workflow", help="publicação exclusiva do coordenador autorizado; não é coleta read-only")
+    actions = workflow.add_subparsers(dest="workflow_action", required=True)
+    for action in ("transition", "reconcile"):
+        cmd = actions.add_parser(action)
+        cmd.add_argument("--config")
+        cmd.add_argument("--state-dir")
+        if action == "transition":
+            cmd.add_argument("--input", required=True, help="JSON limitado, arquivo ou - para stdin; exige coordinator:true")
+        else:
+            cmd.add_argument("--issue", required=True)
+            cmd.add_argument("--run-id", required=True)
+            cmd.add_argument("--coordinator", action="store_true", help="declara contexto prévio de workflow autorizado para este escopo")
+            cmd.add_argument("--binding-input", help="JSON limitado com operation_id/session_id tardio; não altera a abertura")
     return root
 
 
@@ -42,11 +57,26 @@ def main(argv=None):
     args = parser().parse_args(argv)
     try:
         config = load(args.config)
+        if args.command == "workflow":
+            from .coordinator import workflow_cli
+            return workflow_cli(args, config)
         if args.command == "dashboard" and (not sys.stdin.isatty() or not sys.stdout.isatty()):
             raise MonitorError("dashboard exige TTY; use aew collect --once")
         store, started = Store(args.state_dir or state_path()), utc_now()
+        if args.command == "observe":
+            from .observer import Observer
+            Observer(store, config).run()
+            return 0
         if args.command == "collect":
-            Collector(store, config).collect(force=True)
+            try:
+                lease = store.acquire_collector("collect")
+            except MonitorError as error:
+                if error.category not in {"coleta já possui dono", "coleta reservada ao observador"}:
+                    raise
+                store.request_collection()
+            else:
+                with lease:
+                    Collector(store, config, epoch=lease.epoch).collect(force=True)
             value = model(store, config, started)
             # Public headless projection is the same metadata shown by the UI.
             print(json.dumps(value, ensure_ascii=False))
@@ -77,5 +107,8 @@ def main(argv=None):
     except (MonitorError, curses.error, sqlite3.Error, OSError) as error:
         category = (error.category if isinstance(error, MonitorError) else "terminal indisponível" if isinstance(error, curses.error)
                     else "armazenamento indisponível")
-        print("aew: " + category, file=sys.stderr)
+        if args.command == "workflow":
+            print(json.dumps({"version": 1, "accepted": False, "publication": "not_attempted", "binding": "not_attempted", "error": category}, ensure_ascii=False))
+        else:
+            print("aew: " + category, file=sys.stderr)
         return 1

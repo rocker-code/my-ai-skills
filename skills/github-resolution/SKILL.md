@@ -5,6 +5,16 @@ description: Execute actionable audited outcomes from issue-audit or pr-audit by
 
 # GitHub Resolution
 
+## Handoff instrumentado (condicional)
+
+Somente com `workflow_instrumentation.enabled: true` e contexto executor autorizado,
+seguir [o contrato](references/WORKFLOW_INSTRUMENTATION.md): preservar issue/run/
+etapa/worker/execução, `operation_ids`, sessão real ou `session_id: null`, worktree/
+branch. Devolver horários, CI/head/merge e evidência ao coordenador, único escritor
+do registro de workflow; não criar outro escritor para esse comentário.
+Outra issue/rework exige identidade própria. Invocação isolada não ativa
+instrumentação; merge_mode, gates de resolução/merge e escritas autorizadas permanecem.
+
 Turn audited decisions into delivered work. This skill owns execution and sequencing for one issue/PR or an explicitly selected batch; `issue-audit`/`pr-audit` establish findings, `address-pr-review` implements PR corrections, and an independent `post-pr-audit` makes the final merge decision. Natural requests such as "Cuide da issue: <issue URL>" enter through `milestone-orchestrator` in `scope=single_issue`; it owns the complete lifecycle and delegates this audited resolution stage here. Preserve the selected issue boundary and merge mode; reading dependency evidence does not authorize implementing or merging another ticket. The `milestone-orchestrator` owns dependency planning across a milestone and invokes this skill for each eligible PR; do not build a competing milestone scheduler here.
 
 ## Entry and trust gate

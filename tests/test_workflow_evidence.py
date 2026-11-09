@@ -491,8 +491,8 @@ class EvidenceTests(unittest.TestCase):
         from workflow_evidence import comment_payload, save_manifest
         script = Path(self.temp.name) / "gh"
         script.write_text("#!/usr/bin/env python3\nimport json,sys\n" +
-                          f"print(json.dumps({repr([[{'body': comment_payload(projection)}]])} " +
-                          f"if '--slurp' in sys.argv else {repr(self.fake_run())}))\n")
+                           f"print(json.dumps({repr([{'body': comment_payload(projection)}])} " +
+                           f"if '--paginate' in sys.argv else {repr(self.fake_run())}))\n")
         script.chmod(0o755)
         env = {**self.env, "PATH": str(script.parent) + os.pathsep + self.env["PATH"]}
         public = self.cli("verify", projection["evidence_id"], "--from-github",
@@ -539,7 +539,7 @@ class EvidenceTests(unittest.TestCase):
                 return {"id": 456, "name": "required-job", "head_sha": self.git("rev-parse", "HEAD"),
                         "status": "completed", "conclusion": "success", "app": {"id": 15368}}
             if "/jobs?" in endpoint:
-                self.assertIn("--slurp", args)
+                self.assertIn("--paginate", args)
                 return [{"jobs": []}, {"jobs": [{"name": "required-job", "run_id": 123,
                          "head_sha": self.git("rev-parse", "HEAD"), "status": "completed", "conclusion": "success",
                          "check_run_url": "https://api.github.com/repos/example/repo/check-runs/456"}]}]
@@ -592,7 +592,7 @@ class EvidenceTests(unittest.TestCase):
         state = []
 
         def fake_api(*args):
-            if "--slurp" in args:
+            if "--paginate" in args:
                 return [state.copy()]
             body = next(a[5:] for a in args if a.startswith("body="))
             if "PATCH" in args:

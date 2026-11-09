@@ -1,0 +1,10 @@
+{
+  "name": "@ai-engineering-workflow/opencode-observer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ponte opcional de metadados OpenCode 2.2.5, sem controle de agentes",
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {"test": "node --test test/*.test.js"},
+  "dependencies": {"@opencode/client": "2.2.5"}
+}

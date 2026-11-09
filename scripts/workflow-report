@@ -24,11 +24,22 @@ def gh_json(*args: str) -> Any:
     result = subprocess.run(["gh", *args], text=True, capture_output=True)
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or f"gh exited with status {result.returncode}")
+    if "--paginate" in args:
+        decoder = json.JSONDecoder()
+        pages, offset = [], 0
+        output = result.stdout
+        while offset < len(output):
+            while offset < len(output) and output[offset].isspace():
+                offset += 1
+            if offset < len(output):
+                page, offset = decoder.raw_decode(output, offset)
+                pages.append(page)
+        return pages
     return json.loads(result.stdout)
 
 
 def issue_runs(repo: str, number: int) -> list[dict[str, Any]]:
-    pages = gh_json("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/comments")
+    pages = gh_json("api", "--paginate", f"repos/{repo}/issues/{number}/comments")
     comments = [item for page in pages for item in page]
     runs = []
     for comment in comments:

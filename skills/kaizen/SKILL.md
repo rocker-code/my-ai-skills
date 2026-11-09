@@ -5,6 +5,16 @@ description: Review a completed issue or merged PR for recurring process failure
 
 # Kaizen
 
+## Handoff instrumentado (condicional)
+
+Somente com `workflow_instrumentation.enabled: true` e contexto executor autorizado,
+seguir [o contrato](references/WORKFLOW_INSTRUMENTATION.md): preservar issue/run/
+etapa/worker/execução, `operation_ids`, sessão real ou `session_id: null`, worktree/
+branch; devolver horários, resultado ou NO PROCESS CHANGE e evidência ao coordenador.
+Não publicar o registro de workflow como worker; invocação isolada não ativa
+instrumentação nem transforma um sinal local em entrega/merge verificado.
+Preservar os gates de entrega e o escopo de melhoria desta skill.
+
 Read the issue, approved decisions, proposal, PR history, audit findings, CI failures and final outcome. Identify actual friction: repeated question, wrong architecture, escaped defect, slow check or lost handoff. Cite evidence and choose at most the smallest durable improvement per distinct cause:
 
 - Project-specific fact/invariant → repository AGENTS.md.

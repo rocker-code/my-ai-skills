@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from milestone_monitor_fixtures import *
-from milestone_monitor.common import MonitorError
+from milestone_monitor.common import MonitorError, utc_now
 from milestone_monitor.runtime import Runtime, bind
 from milestone_monitor.projection import analyze, incarnation_key
 from milestone_monitor.store import Store
@@ -113,3 +113,65 @@ class RuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(MonitorError, "terminal"):
                 bind(store, self.runtime, args)
             self.assertEqual(store.bindings(), before)
+
+    def test_pending_queries_minimize_content_and_are_scoped_to_session(self):
+        self.fixture["session.permission.list"] = {"data": [{"id": "per_fixture", "sessionID": "ses_fixture",
+                "message": "PRIVATE_SECRET", "resources": ["PRIVATE_SECRET"]}]}
+        self.fixture["session.form.list"] = {"data": [{"id": "frm_fixture", "sessionID": "ses_fixture",
+                "title": "PRIVATE_SECRET", "fields": [{"default": "PRIVATE_SECRET"}]}]}
+        sample = self.collect()
+        self.assertEqual(sample["requests"], [{"kind": "permission", "request_id": "per_fixture"},
+                                             {"kind": "form", "request_id": "frm_fixture"}])
+        self.assertNotIn("PRIVATE_SECRET", json.dumps(sample))
+        self.fixture["session.form.list"]["data"][0]["sessionID"] = "ses_other"
+        with self.assertRaises(MonitorError):
+            self.collect()
+
+    def test_fact_revalidates_revision_context_checkout_and_temporal_boundary(self):
+        from datetime import timedelta
+        now = utc_now()
+        self.binding["bound_at"] = (now - timedelta(seconds=1)).isoformat()
+        fact = {"version": 1, "type": "permission.asked", "event_id": "evt_fixture", "context": self.binding["context"],
+                "created": int(now.timestamp() * 1000), "received_at": now.isoformat(), "binding_key": self.key,
+                "binding_revision": self.binding["revision"], "session_id": "ses_fixture", "request_id": "per_fixture",
+                "collector_epoch": "epoch-fixture", "secret": "PRIVATE_SECRET"}
+        def validate(value=fact):
+            return self.runtime.validate_fact(value, {self.key: self.binding}, {self.key})
+        self.assertNotIn("PRIVATE_SECRET", json.dumps(validate()))
+        self.assertIsNone(validate({**fact, "created": fact["created"] - 2000}))
+        self.binding["revision"] = "revision-B"
+        self.assertIsNone(validate())
+        self.binding["revision"] = fact["binding_revision"]
+        self.fixture["server.info"]["pid"] += 1
+        with self.assertRaisesRegex(MonitorError, "contexto"):
+            validate()
+        self.fixture["server.info"]["pid"] -= 1
+        self.fixture["session.get"]["data"]["location"]["directory"] = "/fixture/moved"
+        with self.assertRaisesRegex(MonitorError, "localização"):
+            validate()
+
+    def test_fact_consumption_requires_new_query_and_never_closes_workflow(self):
+        from datetime import timedelta
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            self.binding["bound_at"] = (utc_now() - timedelta(seconds=5)).isoformat()
+            store.bind(self.key, self.binding)
+            self.binding = store.bindings()[self.key]
+            with store.acquire_collector("observe") as lease:
+                store.observation_gap(lease.epoch, "reinício do observador")
+                now = utc_now()
+                fact = {"version": 1, "type": "session.execution.failed", "event_id": "evt_failed",
+                    "context": self.binding["context"], "created": int(now.timestamp() * 1000), "received_at": now.isoformat(),
+                    "binding_revision": self.binding["revision"], "session_id": "ses_fixture", "sequence": 2}
+                store.append_runtime_fact(fact, lease.epoch)
+                self.runtime.project_facts(store, {self.key}, lease.epoch)
+                self.assertIsNone(store.local(store.observation_key(self.key)))
+                sample = {**self.collect(), "collector_epoch": lease.epoch}
+                generation = store.begin("runtime", epoch=lease.epoch)
+                store.publish("runtime", generation, {self.key: sample}, epoch=lease.epoch)
+                self.runtime.project_facts(store, {self.key}, lease.epoch)
+                self.assertEqual(store.local(store.observation_key(self.key))["type"], "session.execution.failed")
+                self.assertEqual(store.source("runtime")["payload"][self.key]["state"], "active")
+                self.assertTrue(store.runtime_facts()[0]["projected"])
+                self.assertFalse(store.runtime_facts()[0]["consumed"])
+                self.assertEqual(store.sources("comments:"), [])

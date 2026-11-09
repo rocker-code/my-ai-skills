@@ -10,6 +10,24 @@ v1 integration, and opt-in OpenCode **2.2.5**. No config means no target discove
 See [installation, configuration, keys, sources and limits](docs/milestone-monitor.en.md).
 The [offline demo](examples/milestone-monitor/) remains separate: **SIMULATED DATA**.
 
+`aew observe` is a **voluntary foreground observer**, independent of the TUI;
+it requires enabled runtime and explicit targets. The optional bridge pins
+`@opencode/client@2.2.5`: manually run `npm ci --ignore-scripts --no-audit --no-fund`
+in `integrations/opencode-observer/` (Node >=22). Nothing automatically installs a
+service or changes configuration. Without Node/the bridge, CLI snapshots remain
+available in degraded mode; GitHub-only/Codex remains supported, without a native
+Codex runtime adapter.
+
+`aew workflow transition` and `aew workflow reconcile` are **publishers exclusive
+to the authorized coordinator**, not dashboard readers. The idempotent outbox
+preserves IDs/timestamps on retry; publication and binding have separate states.
+Pending permissions/forms never invent duration or approve tests. See the guide's
+examples/concurrency limits and the [handoff contract](protocol/WORKFLOW_INSTRUMENTATION.md).
+Rollback: stop only this observer/bridge, preserve SQLite/outbox and comments,
+and prefer offline reading until pending work is reconciled. Never run old/new
+publishers concurrently. **Real OpenCode smoke: NOT RUN** for this revision;
+simulated tests neither authorize activation nor validate real integration.
+
 **AI Engineering Workflow** is the project’s display name. The repository remains at `rocker-code/my-ai-skills`; existing URLs, installation commands, paths and identifiers stay valid at this stage.
 
 Reusable skills and tools for a supervised, issue-driven AI software development lifecycle using GitHub, OpenSpec, ChatGPT, Codex, Claude and Claude Code.
@@ -445,7 +463,7 @@ scripts/workflow-report https://github.com/owner/repo/issues/123
 
 ### Workflow timing metrics
 
-The orchestrator creates a shared run ID, then uses `workflow-event` at real gate boundaries. A single hidden, structured GitHub issue comment is maintained per issue/run; each event updates that comment instead of adding a comment per transition. For a milestone, initialize every issue in the selected scope with the same run ID, including blocked or queued issues. Record stage start/end and explicit wait start/end events. Rework is recorded only when a completed gate must be revisited because of a review finding, failed check, replan or reopening.
+The orchestrator creates a shared run ID and prefers `aew workflow transition` at real boundaries when available; `workflow-event` remains compatible as the manual CLI. Never use both for one transition or switch paths after uncertain acceptance without reconciling the outbox. A single hidden, structured GitHub issue comment is maintained per issue/run; each event updates that comment instead of adding a comment per transition. For a milestone, initialize every selected issue with the same run ID, including blocked or queued issues, but operation IDs are unique per issue within the state domain. Record stage start/end and explicit wait start/end events. Rework is recorded only when a completed gate must be revisited because of a review finding, failed check, replan or reopening. Examples below use the manual CLI; structured operations and late session binding are covered in the operational guide.
 
 ```bash
 RUN_ID=$(scripts/workflow-event new-run-id)
@@ -562,6 +580,10 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-status .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-event .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_events.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_lock.py .ai-workflow/scripts/
+cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_waits.py .ai-workflow/scripts/
+cp -R "$MY_AI_SKILLS_SOURCE"/scripts/milestone_monitor .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree-reservation .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-evidence .ai-workflow/scripts/
@@ -589,7 +611,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `protocol/TEST_STRATEGY.md` | Risk-based coverage, proving layers, diagnosis and stopping criteria. |
 | `templates/pull-request.md`, `templates/github/*.md` | PR, question, decision, review and integration-contract formats. |
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Read-only live GitHub context helpers, requiring `gh` and `jq`. |
-| `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py` | Optional workflow timing capture and issue/milestone reports; require `gh` and Python 3.10+. |
+| `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py`, `scripts/workflow_events.py`, `scripts/workflow_lock.py`, `scripts/workflow_waits.py`, `scripts/milestone_monitor/` | Optional v1 capture/shared API, publication locking and reports; require `gh` and Python 3.10+, not Node on the GitHub-only path. |
 | `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Cooperative write reservation, versioned fingerprint, inventory-based recovery and restricted bytecode handling; require Git and Python 3.10+ on POSIX (`fcntl`). See `protocol/WORKTREES.md`. |
 | `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py` | Test evidence capture, verification and transport; require Python 3.10+, Git and `gh` only for GitHub operations. |
 | `scripts/preflight-check` | Optional read-only Composer/npm lock-versus-installed and policy-change pre-flight; requires Python 3.10+ and Git for `policy`. If unavailable, check manually. |

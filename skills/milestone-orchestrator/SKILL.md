@@ -115,6 +115,19 @@ architecture_constraints: [<repository-instructions-or-decision-links>]
 validation_commands: [<actual-supported-commands>]
 evidence_ids: [<evidence:ev-... plus state and obligation; package location if another runtime>]
 merge_mode: auto-if-green
+workflow_instrumentation:
+  enabled: true # somente em workflow executor previamente autorizado
+  issue_url: https://github.com/owner/name/issues/123
+  run_id: <run-id-duravel>
+  stage: apply
+  worker_id: <worker-id-duravel>
+  execution: {kind: worker, id: <execution-id-da-incarnacao>}
+  operation_ids: {dispatch: <operation-id-unico-no-estado>}
+  dispatched_at: <UTC-real>
+  session_id: null # ID real do executor quando disponível; nunca fallback
+  worktree: /absolute/path/to/issue-worktree
+  branch: issue-123-short-name
+  state_dir: /absolute/path/to/shared-state
 ```
 
 Reject a handoff when issue, validated proposal SHA, review/validation evidence, worktree tree, or merged dependencies disagree. Never pass the planning transcript as the only evidence.
@@ -130,6 +143,19 @@ For a report-only milestone request, route to `milestone-progress` without start
 Return a compact dashboard of the selected scope's issues and PRs, dependency graph/order, active workers, states, evidence/SHAs, checks, blockers, merge mode, and the next automatic action. In manual mode, report all `READY_TO_MERGE` items together. In auto-if-green mode, report which PRs are queued for GitHub auto-merge and why any could not be queued. ghpending may aid triage; GitHub Project is a product view, not an execution gate.
 
 ## Workflow timing instrumentation
+
+No workflow executor autorizado, seguir [o contrato de instrumentação](references/WORKFLOW_INSTRUMENTATION.md).
+Preferir `aew workflow transition` para as 13 fronteiras abaixo, com `operation_id`
+estável, payload imutável, horário real e dependências; o coordenador permanece o
+único escritor. Executar `aew workflow reconcile --issue ... --run-id ... --coordinator`
+na retomada e após retorno correlacionado, sem pedir comando do usuário por etapa.
+Workers devolvem metadados/evidência, não publicam. ID tardio usa `--binding-input`,
+nunca sessão coordenadora como fallback. Não ativar runtime/config/observador nem
+instalar dependências automaticamente. Uma skill isolada não ativa instrumentação.
+
+As regras abaixo descrevem as fronteiras e o fallback manual: com a rota estruturada,
+enviá-las como JSON, sem chamar também o logger manual para a mesma transição.
+Após aceitação incerta, reconciliar a outbox no mesmo domínio antes de qualquer fallback.
 
 When the helper scripts are installed and GitHub access is available, record timing events for every orchestrated issue. Instrumentation is evidence collection; if it is unavailable or fails, report that fact and continue the development workflow.
 

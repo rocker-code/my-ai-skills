@@ -23,9 +23,19 @@ class WorkflowMetricsTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as temp:
             fake = Path(temp) / "gh"
-            fake.write_text("#!/usr/bin/env python3\nimport json\nprint(json.dumps([[]]))\n")
+            fake.write_text('''#!/usr/bin/env python3
+import json,os,sys
+from pathlib import Path
+path=Path(os.environ['FAKE_GH_STATE'])
+comments=json.loads(path.read_text()) if path.exists() else []
+body=next((arg[5:] for arg in sys.argv if arg.startswith('body=')),None)
+if body is not None:
+    comments=[{'id':1,'body':body}];path.write_text(json.dumps(comments));print('{}')
+else: print(json.dumps([comments] if '--slurp' in sys.argv else comments))
+''')
             fake.chmod(0o755)
-            env = {**os.environ, "PATH": f"{temp}:{os.environ['PATH']}"}
+            env = {**os.environ, "PATH": f"{temp}:{os.environ['PATH']}", "XDG_STATE_HOME": str(Path(temp) / "local-state"),
+                   "FAKE_GH_STATE": str(Path(temp) / "fake-comments.json")}
             base = [str(root / "scripts/workflow-event"), "run-start", "--issue",
                     "https://github.com/example/repo/issues/12", "--run-id", "wf-test"]
             good = subprocess.run([*base, "--evidence", "evidence:ev-20261104T030000Z-1a2b3c4d"],
@@ -121,7 +131,7 @@ if args[0] == "api":
     endpoint = next(arg for arg in args if arg.startswith("repos/"))
     body_arg = next((arg[5:] for arg in args if arg.startswith("body=")), None)
     if method == "GET" and "--paginate" in args:
-        print(json.dumps([state["comments"]]))
+        print(json.dumps([state["comments"]] if '--slurp' in args else state["comments"]))
     elif method == "POST":
         state["comments"].append({"id": state["next_id"], "body": body_arg})
         state["next_id"] += 1
@@ -146,7 +156,7 @@ elif args[0] == "pr":
             fake_path.write_text(fake_gh)
             fake_path.chmod(0o755)
             state_path = Path(temp) / "state.json"
-            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}", FAKE_GH_STATE=str(state_path))
+            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}", FAKE_GH_STATE=str(state_path), XDG_STATE_HOME=str(Path(temp) / "local-state"))
 
             def invoke(*args):
                 return subprocess.run([str(event_cli), *args], env=env, text=True, capture_output=True, check=True)

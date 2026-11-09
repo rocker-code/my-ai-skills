@@ -8,6 +8,15 @@ metadata:
 
 # Issue Explore
 
+## Handoff instrumentado (condicional)
+
+Somente com `workflow_instrumentation.enabled: true` e contexto executor autorizado,
+seguir [o contrato](references/WORKFLOW_INSTRUMENTATION.md): preservar issue/run/
+etapa/worker/execução, `operation_ids`, sessão real ou `session_id: null`, worktree/
+branch; devolver fronteiras/horários, resultado e evidência ao coordenador.
+Não publicar o registro de workflow como worker; invocação isolada não ativa
+instrumentação. Preservar gates de exploração, decisões e handoff para proposta.
+
 This skill augments, but never replaces, OpenSpec's official CLI command:
 
 ```text
