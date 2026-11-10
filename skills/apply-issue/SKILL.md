@@ -5,17 +5,6 @@ description: Apply a pinned, validated OpenSpec change for a GitHub issue in a f
 
 # Apply Issue
 
-## Handoff instrumentado (condicional)
-
-Somente com `workflow_instrumentation.enabled: true` e workflow executor autorizado,
-seguir [o contrato de handoff](references/WORKFLOW_INSTRUMENTATION.md). Conferir
-issue/run/etapa/worker/execução, `operation_ids`, sessão real ou `session_id: null`,
-worktree/branch e evidência antes de agir. Não reutilizar a sessão de planning nem
-usar sessão coordenadora como fallback. Devolver horários, resultado, candidato/SHA
-e PASS/FAIL/NOT RUN ao coordenador; nunca publicar o registro de workflow como worker.
-Rework recebe nova execução; outra issue exige envelope próprio. Invocação isolada
-não ativa instrumentação nem altera qualquer gate de Apply/teste/archive.
-
 Start in a genuinely new agent session from the planning session. Rehydrate from the issue and `[DECISION]` comments, pinned OpenSpec change and commit, repository instructions and concise handoff. ai-memory may supplement this context; it is never the sole source of validation evidence or source of truth.
 
 ## Entry gate

@@ -5,17 +5,6 @@ description: Plan a GitHub issue through issue-audit, OpenSpec explore and propo
 
 # Implement Issue: planning
 
-## Handoff instrumentado (condicional)
-
-Somente com `workflow_instrumentation.enabled: true` e workflow executor autorizado,
-seguir [o contrato de handoff](references/WORKFLOW_INSTRUMENTATION.md). Preservar
-issue/run/etapa/worker/execução, `operation_ids`, sessão real ou `session_id: null`,
-worktree/branch e evidência. Planning → Apply transfere revisão validada, não
-identidade fictícia nem transcript como única prova; Apply exige sessão fresca.
-Devolver fronteiras/horários, resultado e evidência ao coordenador, único escritor
-do registro de workflow. Não chamar `workflow transition`/`workflow reconcile`
-como worker. Invocação isolada não ativa instrumentação; todos os gates permanecem.
-
 Fetch the live issue, comments, linked PRs and repository instructions. Resume an existing audit, OpenSpec change or PR when present. If a PR exists, hand off to review rather than duplicating work.
 
 1. Run `issue-audit`. Resolve evidence gaps through issue refinement or `[QUESTION]` and approved `[DECISION]`.

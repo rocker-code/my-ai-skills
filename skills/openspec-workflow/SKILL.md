@@ -5,15 +5,6 @@ description: Enforce the required OpenSpec contract across planning, implementat
 
 # OpenSpec Contract
 
-## Handoff instrumentado (condicional)
-
-Somente com `workflow_instrumentation.enabled: true` e contexto executor autorizado,
-seguir [o contrato](references/WORKFLOW_INSTRUMENTATION.md): preservar issue/run/
-etapa/worker/execução, `operation_ids`, sessão real ou `session_id: null`, worktree/
-branch e evidência entre explore/propose/Apply/verify/archive. Devolver fronteiras
-ao coordenador, não publicar o registro de workflow como worker. Invocação isolada
-não ativa instrumentação; comandos oficiais, revisão exata e gates continuam válidos.
-
 Own the OpenSpec-specific commands and evidence gates. `implement-issue` owns issue planning, `apply-issue` owns implementation in a fresh session, and `github-resolution` owns PR corrections. This skill defines the contract each of them must enforce, rather than acting as another end-to-end issue orchestrator.
 
 Command names follow OpenSpec's per-agent convention: `/opsx-explore`, `/opsx-propose`, `/opsx-apply` and `/opsx-archive` in Codex and OpenCode; `/opsx:explore`, `/opsx:propose`, `/opsx:apply` and `/opsx:archive` in Claude Code. Use the form installed for the current agent.

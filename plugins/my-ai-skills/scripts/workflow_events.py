@@ -198,7 +198,6 @@ def parser():
     parser.add_argument("--report", choices=sorted(REPORTS))
     parser.add_argument("--log-ref")
     parser.add_argument("--next", dest="next_action")
-    parser.add_argument("--state-dir", help="domínio local de lock/publicação (XDG_STATE_HOME/aew)")
     return parser
 
 
@@ -449,12 +448,11 @@ def build_record(args, comments, now=None, operation=None, atomic_wait=False):
 
 
 def register(args):
-    from milestone_monitor.publisher import manual_register
-    from milestone_monitor.common import MonitorError
-    try:
-        return manual_register(args)
-    except MonitorError as error:
-        raise RuntimeError(error.category) from None
+    repo, number = parse_issue_url(args.issue)
+    comments = read_comments(repo, number)
+    record, existing_id, result = build_record(args, comments)
+    save_record(repo, number, record, existing_id)
+    return result
 
 
 def main(argv=None) -> int:

@@ -8,15 +8,6 @@ metadata:
 
 # Resolve Questions
 
-## Handoff instrumentado (condicional)
-
-Somente com `workflow_instrumentation.enabled: true` e contexto executor autorizado,
-seguir [o contrato](references/WORKFLOW_INSTRUMENTATION.md): preservar issue/run/
-etapa/worker/execução, `operation_ids`, sessão real ou `session_id: null`, worktree/
-branch; devolver horários, decisões e evidência ao coordenador, único escritor do run.
-Invocação isolada não ativa instrumentação. Uma pergunta técnica pesquisável não
-vira espera humana; manter o gate existente de decisão material e escopo autorizado.
-
 Refresh the issue and all comments. Collect unresolved `[QUESTION]` items and inspect relevant code, OpenSpec, architecture, linked issues/PRs and framework behavior before answering.
 
 For each question:

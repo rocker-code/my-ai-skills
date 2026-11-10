@@ -38,12 +38,6 @@ bundle_reference contract-handoff templates/github/integration-contract.md
 bundle_reference issue-explore templates/github/question.md
 bundle_reference milestone-orchestrator protocol/AI_WORKFLOW.md
 bundle_reference milestone-progress protocol/AI_WORKFLOW.md
-bundle_reference milestone-orchestrator protocol/WORKFLOW_INSTRUMENTATION.md
-bundle_reference milestone-progress protocol/WORKFLOW_INSTRUMENTATION.md
-for skill in issue-audit issue-explore resolve-questions implement-issue openspec-workflow apply-issue prepare-pr pr-audit architecture-audit github-resolution address-pr-review post-pr-audit kaizen; do
-  bundle_reference "$skill" protocol/WORKFLOW_INSTRUMENTATION.md
-done
-
 for skill in milestone-orchestrator milestone-progress implement-issue apply-issue prepare-pr github-resolution address-pr-review; do
   bundle_reference "$skill" protocol/WORKTREES.md
 done
@@ -81,37 +75,15 @@ sync_directory "$repo_root/templates" "$plugin_root/templates"
 
 mkdir -p "$plugin_root/scripts"
 find "$plugin_root/scripts" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-for helper in issue-context pr-context workflow-status workflow-event workflow-report worktree-reservation workflow-evidence preflight-check attempt-log aew install-aew; do
+for helper in issue-context pr-context workflow-status workflow-event workflow-report worktree-reservation workflow-evidence preflight-check attempt-log; do
   install -m 0755 "$repo_root/scripts/$helper" "$plugin_root/scripts/$helper"
 done
 install -m 0644 "$repo_root/scripts/workflow_metrics.py" "$plugin_root/scripts/workflow_metrics.py"
-for module in workflow_events workflow_lock workflow_waits; do
+for module in workflow_events; do
   install -m 0644 "$repo_root/scripts/$module.py" "$plugin_root/scripts/$module.py"
 done
 install -m 0644 "$repo_root/scripts/worktree_registry.py" "$plugin_root/scripts/worktree_registry.py"
 install -m 0644 "$repo_root/scripts/workflow_evidence.py" "$plugin_root/scripts/workflow_evidence.py"
 install -m 0644 "$repo_root/scripts/attempt_log.py" "$plugin_root/scripts/attempt_log.py"
-mkdir -p "$plugin_root/scripts/milestone_monitor"
-for module in "$repo_root/scripts/milestone_monitor/"*.py; do
-  install -m 0644 "$module" "$plugin_root/scripts/milestone_monitor/$(basename "$module")"
-done
-
-# Pacote opcional explícito: nunca copiar node_modules, credenciais ou cache.
-bridge_root="$plugin_root/integrations/opencode-observer"
-mkdir -p "$bridge_root/test" "$plugin_root/tests/fixtures" "$plugin_root/docs"
-for file in bridge.js connection.js main.js protocol.js transport.js package.json package-lock.json README.md; do
-  install -m 0644 "$repo_root/integrations/opencode-observer/$file" "$bridge_root/$file"
-done
-for test in "$repo_root/integrations/opencode-observer/test/"*.test.js; do
-  install -m 0644 "$test" "$bridge_root/test/$(basename "$test")"
-done
-install -m 0644 "$repo_root/tests/fixtures/opencode-observer-2.2.5.json" "$plugin_root/tests/fixtures/opencode-observer-2.2.5.json"
-for language in '' .en; do
-  install -m 0644 "$repo_root/docs/milestone-monitor$language.md" "$plugin_root/docs/milestone-monitor$language.md"
-done
-mkdir -p "$plugin_root/examples/milestone-monitor"
-for file in dashboard.py README.md; do
-  install -m 0644 "$repo_root/examples/milestone-monitor/$file" "$plugin_root/examples/milestone-monitor/$file"
-done
 
 echo "Synchronized plugin package: $plugin_root"
