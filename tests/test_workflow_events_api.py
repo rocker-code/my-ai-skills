@@ -14,6 +14,17 @@ from workflow_metrics import summarize_run
 
 
 class EventAPITests(unittest.TestCase):
+    def test_cli_register_publishes_without_monitor_package(self):
+        args = self.args("run-start")
+        with patch.object(events, "read_comments", return_value=[]) as read, \
+             patch.object(events, "save_record") as save:
+            result = events.register(args)
+        read.assert_called_once_with("owner/repo", 1)
+        record, comment_id = save.call_args.args[2:]
+        self.assertIsNone(comment_id)
+        self.assertEqual(record["run_id"], "wf-api")
+        self.assertEqual(result["event"], "run_started")
+
     def test_read_comments_supports_paginated_output_without_slurp(self):
         pages = '[{"id": 1, "body": "first"}]\n[{"id": 2, "body": "second"}]\n'
         with patch.object(events, "gh", return_value=pages) as gh:

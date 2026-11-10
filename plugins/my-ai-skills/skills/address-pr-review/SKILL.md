@@ -8,15 +8,6 @@ metadata:
 
 # Address PR Review
 
-## Handoff instrumentado (condicional)
-
-Somente com `workflow_instrumentation.enabled: true` e contexto executor autorizado,
-seguir [o contrato](references/WORKFLOW_INSTRUMENTATION.md): preservar issue/run/
-etapa/worker/execução, `operation_ids`, sessão real ou `session_id: null`, worktree/
-branch; devolver horários, revisão/correção e evidência ao coordenador. Rework usa
-nova execução, não confirma a anterior por aproximação. Não publicar o registro de
-workflow como worker; invocação isolada não ativa instrumentação nem muda os gates.
-
 For test evidence handed off as `evidence:<id>`, use `workflow-evidence verify <id> --format json` when installed, inspect `recovery` and rerun only genuinely affected obligations without bypassing the final repository gates. A correction commit invalidates the final local gate even if a prior obligation was `unaffected`: record and verify the required final suite anew on the new clean HEAD, then update the PR Validation line with the new ID outside the commit. Hosted gates require base-policy/check binding and exact-SHA API confirmation; local public metadata is not a log. Without the helper, mark helper verification NOT RUN and retain the manual proof/gates.
 
 Correct the implementation, not merely the comment count.

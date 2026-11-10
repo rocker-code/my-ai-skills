@@ -2,31 +2,6 @@
 
 Português (Brasil) · [English](README.en.md)
 
-## Milestone Monitor operacional
-
-`scripts/install-aew --bin-dir "$HOME/.local/bin"` disponibiliza `aew dashboard`
-de qualquer diretório. TUI read-only, multi-projeto, cache SQLite/XDG e integração
-GitHub/workflow v1/OpenCode **2.2.5** opt-in. Sem configuração, não descobre alvos.
-Veja [instalação, configuração, teclas, fontes e limites](docs/milestone-monitor.md).
-A [demo offline](examples/milestone-monitor/) permanece separada: **DADOS SIMULADOS**.
-
-`aew observe` é um observador **foreground e voluntário**, independente da TUI;
-exige runtime habilitado e alvos explícitos. A ponte opcional fixa
-`@opencode/client@2.2.5`: instalação manual com `npm ci --ignore-scripts --no-audit --no-fund`
-em `integrations/opencode-observer/` (Node >=22). Nada instala serviço ou altera
-configuração automaticamente. Sem Node/ponte, snapshots CLI continuam em modo
-degradado; o fluxo GitHub-only/Codex permanece, sem adaptador runtime nativo Codex.
-
-`aew workflow transition` e `aew workflow reconcile` são **publicadores exclusivos
-do coordenador autorizado**, não leitores do painel. Outbox/idempotência preservam
-IDs e horários no retry; publicação e vínculo têm estados separados. Permissão ou
-formulário pendente não inventa duração nem aprova testes. Veja os exemplos e
-limites de concorrência no guia e o [contrato de handoff](protocol/WORKFLOW_INSTRUMENTATION.md).
-Rollback: parar somente o observador/ponte próprios, preservar SQLite/outbox e
-comentários; preferir leitura offline até reconciliar pendências. Não executar
-publicadores antigos/novos em paralelo. **Smoke real OpenCode: NOT RUN** nesta revisão;
-testes simulados não autorizam ativação nem validam integração real.
-
 **AI Engineering Workflow** é o nome de apresentação do projeto. O repositório continua em `rocker-code/my-ai-skills`; URLs, comandos de instalação, caminhos e identificadores existentes permanecem válidos nesta etapa.
 
 Skills e ferramentas reutilizáveis para um ciclo supervisionado de desenvolvimento com IA, orientado por issues, usando GitHub, OpenSpec, ChatGPT, Codex, Claude e Claude Code.
@@ -461,7 +436,7 @@ scripts/workflow-report https://github.com/owner/repo/issues/123
 
 ### Métricas de tempo
 
-O orquestrador cria um identificador de execução compartilhado e prefere a operação estruturada `aew workflow transition` nas fronteiras reais quando disponível; `workflow-event` permanece compatível como CLI manual. Não executar ambas para a mesma transição nem trocar de rota após aceitação incerta sem reconciliar a outbox. Mantém um comentário estruturado oculto por issue/execução; cada evento atualiza esse comentário em vez de publicar outro. Para um milestone, inicialize todas as issues selecionadas com o mesmo identificador, inclusive bloqueadas ou em fila, mas IDs de operação são únicos por issue no domínio de estado. Registre início/fim das etapas e início/fim explícitos das esperas. Retrabalho só é registrado quando uma etapa já concluída precisa ser refeita por achado de revisão, verificação reprovada, replanejamento ou reabertura. Os exemplos abaixo são da CLI manual; a rota estruturada e a sessão tardia estão no guia operacional.
+O orquestrador cria um identificador de execução compartilhado e registra as fronteiras reais com `workflow-event`. Mantém um comentário estruturado oculto por issue/execução; cada evento atualiza esse comentário em vez de publicar outro. Para um milestone, inicialize todas as issues selecionadas com o mesmo identificador, inclusive bloqueadas ou em fila. Registre início/fim das etapas e início/fim explícitos das esperas. Retrabalho só é registrado quando uma etapa já concluída precisa ser refeita por achado de revisão, verificação reprovada, replanejamento ou reabertura. Os exemplos abaixo usam a CLI opcional.
 
 ```bash
 RUN_ID=$(scripts/workflow-event new-run-id)
@@ -579,9 +554,6 @@ cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-event .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-report .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_metrics.py .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_events.py .ai-workflow/scripts/
-cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_lock.py .ai-workflow/scripts/
-cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow_waits.py .ai-workflow/scripts/
-cp -R "$MY_AI_SKILLS_SOURCE"/scripts/milestone_monitor .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree-reservation .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/worktree_registry.py .ai-workflow/scripts/
 cp "$MY_AI_SKILLS_SOURCE"/scripts/workflow-evidence .ai-workflow/scripts/
@@ -609,7 +581,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 | `protocol/TEST_STRATEGY.md` | Cobertura por risco, camadas de comprovação, diagnóstico e critérios de parada. |
 | `templates/pull-request.md`, `templates/github/*.md` | Formatos de PR, pergunta, decisão, revisão e contrato de integração. |
 | `scripts/issue-context`, `scripts/pr-context`, `scripts/workflow-status` | Consulta de contexto atual do GitHub; exige `gh` e `jq`. |
-| `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py`, `scripts/workflow_events.py`, `scripts/workflow_lock.py`, `scripts/workflow_waits.py`, `scripts/milestone_monitor/` | Registro opcional v1/API compartilhada, lock/publicação e relatórios; exige `gh` e Python 3.10+, não Node no caminho GitHub-only. |
+| `scripts/workflow-event`, `scripts/workflow-report`, `scripts/workflow_metrics.py`, `scripts/workflow_events.py` | Registro opcional de eventos e relatórios; exige `gh` e Python 3.10+. |
 | `scripts/worktree-reservation`, `scripts/worktree_registry.py` | Reserva cooperante de escrita, fingerprint versionado, retomada com inventário e tratamento restrito de bytecode; exige Git e Python 3.10+ em POSIX (`fcntl`). Consulte `protocol/WORKTREES.md`. |
 | `scripts/workflow-evidence`, `scripts/workflow_evidence.py`, `scripts/worktree_registry.py` | Registro, verificação e transporte de evidência de testes; exige Python 3.10+, Git e `gh` apenas para GitHub. |
 | `scripts/preflight-check` | Pré-flight opcional de dependências Composer/npm versus lock e alterações de política desde o commit do plano; somente leitura, exige Python 3.10+ e Git para `policy`. Se indisponível, faça a verificação manual. |
