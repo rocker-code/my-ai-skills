@@ -22,6 +22,8 @@ REFERENCES = {
     "resolve-questions": ("templates/github/decision.md",),
     "chatgpt-web-create-issue": ("protocol/CHATGPT_WEB_ISSUES.md", "protocol/VISUAL_ARTIFACTS.md"),
     "chatgpt-web-refine-issue": ("protocol/CHATGPT_WEB_ISSUES.md", "protocol/VISUAL_ARTIFACTS.md"),
+    "create-issue": ("protocol/CHATGPT_WEB_ISSUES.md", "protocol/VISUAL_ARTIFACTS.md"),
+    "refine-issue": ("protocol/CHATGPT_WEB_ISSUES.md", "protocol/VISUAL_ARTIFACTS.md"),
     "issue-audit": ("protocol/CI_PERFORMANCE.md",),
     "kaizen": ("protocol/CI_PERFORMANCE.md",),
     "ci-performance-audit": ("protocol/CI_PERFORMANCE.md",),
