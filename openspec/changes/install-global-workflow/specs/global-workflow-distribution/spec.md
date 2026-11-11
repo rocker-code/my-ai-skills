@@ -17,6 +17,17 @@ O instalador SHALL aceitar um ou mais agentes suportados escolhidos explicitamen
 - **WHEN** a invocação não seleciona agente ou escolhe um agente sem integração comprovada
 - **THEN** o instalador falha com indicação dos agentes suportados e não configura silenciosamente outros agentes
 
+### Requirement: Origem imutável autenticada antes de executar
+O instalador SHALL obter a entrada pública por revisão Git imutável previamente aprovada e conferir seu digest contra referência confiável independente do download antes de executar a entrada. SHALL vincular o snapshot e o manifesto à mesma revisão aprovada e MUST NOT confiar em hash recebido somente do mesmo canal do artefato.
+
+#### Scenario: Script e snapshot correspondem à revisão aprovada
+- **WHEN** o script baixado corresponde ao digest publicado independentemente e o snapshot corresponde ao commit aprovado
+- **THEN** a instalação pode prosseguir e registra a revisão efetivamente verificada
+
+#### Scenario: Divergência de origem, hash ou revisão
+- **WHEN** o script ou snapshot difere do digest/revisão esperados, inclusive redirecionamento para outra revisão
+- **THEN** a execução é recusada antes de executar o script divergente ou publicar o pacote, e a instalação anterior permanece utilizável
+
 ### Requirement: Pacote completo e rastreável
 A instalação SHALL conter os componentes oficiais necessários à execução e SHALL registrar origem, revisão exata e inventário dos arquivos que gerencia, sem incluir dados locais de projetos ou dependência operacional do plugin pessoal.
 
@@ -66,15 +77,19 @@ O instalador SHALL ser idempotente para a mesma revisão e seleção de agentes.
 - **THEN** o instalador preserva o conteúdo, informa o conflito e não substitui o arquivo silenciosamente
 
 ### Requirement: Primeiro uso de OpenSpec por projeto
-A instalação SHALL disponibilizar o CLI OpenSpec quando suportado; a preparação de configuração local necessária SHALL ocorrer apenas no primeiro uso pelo agente, após inspecionar o repositório, sem sobrescrever configuração existente e sem reinstalar o workflow.
+A instalação SHALL disponibilizar o CLI OpenSpec quando suportado; no primeiro uso autorizado pelo agente a integração oficial para o agente selecionado SHALL disponibilizar skills e comandos `/opsx-*` aplicáveis ao perfil do projeto. Preparação local MUST NOT ocorrer na instalação global e MUST preservar configurações, artefatos e integrações existentes.
 
 #### Scenario: Repositório ainda sem OpenSpec
 - **WHEN** o agente inicia um fluxo que precisa de OpenSpec em repositório sem raiz configurada
-- **THEN** prepara a configuração local necessária somente conforme autorização e regras do projeto, antes de qualquer proposta ou Apply
+- **THEN** verifica autorização e localização correta, inicializa por comando oficial para OpenCode e comprova arquivos oficiais de skills e comandos antes de qualquer proposta ou Apply
 
 #### Scenario: Repositório com OpenSpec existente
 - **WHEN** o agente inicia o fluxo em repositório já configurado
-- **THEN** reutiliza sua configuração e comandos oficiais sem inicializar novamente ou substituir configurações locais
+- **THEN** verifica integração efetiva, usa a existente quando completa e só propõe atualização/adição necessária com inspeção de alterações e autorização, sem sobrescrever configurações ou integrações personalizadas
+
+#### Scenario: OpenCode recém-aberto após primeiro uso autorizado
+- **WHEN** o agente prepara OpenSpec com autorização em projeto novo ou existente e uma sessão OpenCode nova é aberta no projeto
+- **THEN** comandos `/opsx-explore`, `/opsx-propose`, `/opsx-apply` e `/opsx-archive` do perfil ativo e suas skills oficiais são descobertos e invocáveis, ou um bloqueio específico é reportado sem alegar integração completa
 
 ### Requirement: Isolamento de dados de execução
 O pacote global SHALL compartilhar apenas ferramentas e orientação. Helpers de estado, reservas, logs e evidências MUST continuar escrevendo no escopo do repositório/worktree definido por seus contratos existentes e MUST NOT usar o diretório de instalação como armazenamento compartilhado de execuções.
