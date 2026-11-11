@@ -14,7 +14,7 @@ The lifecycle moves through discovery, readiness, implementation, review and com
 
 [See the full workflow in the wiki](https://github.com/rocker-code/my-ai-skills/wiki/Workflow-guide).
 
-## Install or update (OpenCode)
+## Install or update
 
 Linux/macOS prerequisites: Git, Python 3.10+, `curl`, `gh`, `jq`, and OpenCode V2 on `PATH`. OpenSpec is required **to use the workflow**, but it need not be preinstalled: the installer preserves an existing CLI or installs the official standalone distribution for your user when missing. Authenticate GitHub CLI separately with `gh auth login`.
 

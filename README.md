@@ -14,7 +14,7 @@ O ciclo passa por descoberta, prontidão, implementação, revisão e conclusão
 
 [Veja o fluxo completo na wiki](https://github.com/rocker-code/my-ai-skills/wiki/Guia-do-fluxo).
 
-## Instalar ou atualizar (OpenCode)
+## Instalar ou atualizar
 
 Linux/macOS: requer Git, Python 3.10+, `curl`, `gh`, `jq` e OpenCode V2 no `PATH`. Para usar o workflow, o OpenSpec é necessário, mas **não precisa estar instalado antes**: o instalador preserva o CLI existente ou instala a distribuição standalone oficial para seu usuário se estiver ausente. Autentique o GitHub CLI separadamente com `gh auth login`.
 

@@ -409,7 +409,7 @@ class GlobalInstallTests(unittest.TestCase):
                        "fi\nexec /usr/bin/git \"$@\"\n")
         git.chmod(0o755)
         readme = (ROOT / "README.md").read_text()
-        snippet = readme.split("## Instalar ou atualizar (OpenCode)", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
+        snippet = readme.split("## Instalar ou atualizar\n", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
         result = call("bash", "-c", snippet, cwd=self.root,
                       env={k: v for k, v in self.env.items()
                            if k != "MY_AI_SKILLS_TEST_SOURCE"}, timeout=90)
