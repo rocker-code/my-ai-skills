@@ -476,19 +476,19 @@ The context helpers normalize live GitHub context so agents refresh comments, de
 
 ## Global installation (OpenCode)
 
-On Linux/macOS, install for your user with **one command**. No source clone,
+On Linux/macOS, install or explicitly request an update for your user with **one command**. No source clone,
 per-repository copying or activation is needed. Verify this command's
 provenance before running it: the full approved revision
-(`8ddd9e60fbe773ca363293b8f0ff3a7b452eed37`) and the **literal SHA-256
+(`184a66c4cda981e6b262dfc2e26e3c789bc0c9c1`) and the **literal SHA-256
 published here independently of the download**
-(`26771ab2d4302b48973e46b71ea0fb83a2163e50bfc79e36e664c5af68fe0721`).
+(`edfc687a4015edf444eb43cf80285ae6057c8bcafb74ef1e913c7578205dc0b3`).
 Do not fetch a checksum from the same downloaded artifact.
 
 ```bash
 ( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
-  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/8ddd9e60fbe773ca363293b8f0ff3a7b452eed37/scripts/install-global' -o "$tmp" &&
-  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '26771ab2d4302b48973e46b71ea0fb83a2163e50bfc79e36e664c5af68fe0721' &&
-  python3 "$tmp" --revision 8ddd9e60fbe773ca363293b8f0ff3a7b452eed37 --agent opencode )
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/184a66c4cda981e6b262dfc2e26e3c789bc0c9c1/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" 'edfc687a4015edf444eb43cf80285ae6057c8bcafb74ef1e913c7578205dc0b3' &&
+  python3 "$tmp" --revision 184a66c4cda981e6b262dfc2e26e3c789bc0c9c1 --agent opencode )
 ```
 
 External prerequisites: Git, Python 3.10+ POSIX, `curl`, `gh`, `jq` and
@@ -509,6 +509,37 @@ idempotent; conflicts/failures do not overwrite custom files or the previous
 active pointer. Old versions are retained. Existing `.ai-workflow/` copies and
 local skills are not touched; OpenCode prefers a project-local skill with the
 same ID to the global one.
+
+To update, approve a full Git source revision, review the entrypoint and
+literal digest above, and replace **only** the `--revision` SHA with the
+approved revision (the entrypoint remains pinned to the URL's commit). Do not
+run `active/scripts/install-global` or `npx skills update`: local active
+content is not a trust root and the skills manager cannot update the entire
+bundle. Output includes `state=installed|updated|already current|partial|blocked`,
+`previous`, `target`, `active`, agent and pending items. `partial` means a
+coherent global package with pending local migration; `blocked` is not success.
+Check the actual `active` after failure. The command does not change agent
+binaries, credentials, local rules or application dependencies.
+
+A legacy `skills.sh` global skill occupying the same name blocks activation:
+the installer checks `~/.agents/.skill-lock.json` (or
+`$XDG_STATE_HOME/skills/.skill-lock.json`), origin, full `ref`, Git baseline,
+bytes/modes and link destination. Modified, foreign or unproven entries stay
+untouched. Only after inventory and **separate** per-name authorization pass
+`--migrate-global-skill <name>`; the original remains under
+`migration-backups/`, without removing other agents' universal installation.
+Non-colliding legacy skills stay untouched.
+
+To diagnose shadows in **only** the identified project, add
+`--project /absolute/project/path`: this reads local files only, even if a
+copy matches the baseline. A separate authorization for that project and
+enumerated paths can pass `--project /absolute/project/path
+--baseline-revision <old-SHA> --reconcile-path .opencode/skills/<name>`
+(repeat the option per listed path). Only byte-identical copies from the
+verified revision are moved to backup; local rules are never changed.
+Unproven `.ai-workflow/` copies, legacy clones and closed projects are not
+automatically migrated; no other repository is scanned. Restart OpenCode to
+reload discovery.
 
 Verify after installing (from any repository):
 
@@ -540,7 +571,7 @@ the records. V2 API discovery is asynchronous and location-scoped: an initial
 empty list is not proof of absence. No model credentials are used, so the
 smoke does not establish an AI response to the commands.
 
-Automatic updates are outside this delivery (#51). Re-running this command
+There are no automatic updates. Re-running this command
 installs only this approved revision; do not replace its literals with `main`
 or a digest calculated from the downloaded file itself.
 

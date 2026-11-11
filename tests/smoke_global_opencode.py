@@ -16,7 +16,7 @@ import time
 from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[1]
-ENTRY_REVISION = "8ddd9e60fbe773ca363293b8f0ff3a7b452eed37"
+ENTRY_REVISION = "184a66c4cda981e6b262dfc2e26e3c789bc0c9c1"
 ACTIONS = {"explore": "openspec-explore", "propose": "openspec-propose",
            "apply": "openspec-apply-change", "archive": "openspec-archive-change"}
 

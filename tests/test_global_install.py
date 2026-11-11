@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -113,6 +114,18 @@ class GlobalInstallTests(unittest.TestCase):
         other.mkdir()
         (other / "SKILL.md").write_text("unrelated")
         revision = self.next_revision()
+        original_lock = lock.read_bytes()
+        for origin in ("elsewhere/tools", None):
+            record = json.loads(original_lock)
+            if origin is None:
+                record["skills"].pop("apply-issue")
+            else:
+                record["skills"]["apply-issue"]["source"] = origin
+            lock.write_text(json.dumps(record))
+            blocked = self.install("--migrate-global-skill", "apply-issue", revision=revision)
+            self.assertIn("outra origem, alterada ou sem baseline", blocked.stderr)
+            self.assertTrue(link.is_symlink())
+        lock.write_bytes(original_lock)
         for changed in (False, True):
             if changed:
                 (legacy / "SKILL.md").write_text("personalized")
@@ -193,6 +206,47 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertIn("Web-only", routing)
         self.assertIn("A separate\n   explicit request", routing)
         self.assertNotIn("npx skills add", routing)
+
+    def test_published_recipe_matches_verified_entry_and_parity(self):
+        revision = "184a66c4cda981e6b262dfc2e26e3c789bc0c9c1"
+        published = "edfc687a4015edf444eb43cf80285ae6057c8bcafb74ef1e913c7578205dc0b3"
+        self.assertEqual(hashlib.sha256(ENTRY.read_bytes()).hexdigest(), published)
+        for readme in ("README.md", "README.en.md"):
+            text = (ROOT / readme).read_text()
+            self.assertIn(f"/{revision}/scripts/install-global", text)
+            self.assertIn(f"--revision {revision} --agent opencode", text)
+            self.assertEqual(text.count(published), 2)
+            self.assertIn("--baseline-revision", text)
+            self.assertIn("--migrate-global-skill", text)
+            self.assertIn("--reconcile-path", text)
+            self.assertNotIn("8ddd9e60fbe773ca363293b8f0ff3a7b452eed37", text)
+            self.assertRegex(text, r"state=installed\|updated\|already current\|partial\|blocked")
+        self.assertEqual(revision, re.search(r'ENTRY_REVISION = "([0-9a-f]{40})"',
+                                             (ROOT / "tests/smoke_global_opencode.py").read_text()).group(1))
+
+    def test_published_recipe_in_disposable_home(self):
+        # The immutable Git object exists locally before the feature branch is
+        # published. Substitute only the download and remote transports; run
+        # the README command itself and its independent digest gate unchanged.
+        revision = "184a66c4cda981e6b262dfc2e26e3c789bc0c9c1"
+        curl = self.bin / "curl"
+        curl.write_text("#!/bin/sh\n"
+                        f"case \"$2\" in *{revision}/scripts/install-global) ;; *) exit 2;; esac\n"
+                        f"/usr/bin/git -C {str(ROOT)!r} show {revision}:scripts/install-global > \"$4\"\n")
+        curl.chmod(0o755)
+        git = self.bin / "git"
+        git.write_text("#!/bin/sh\n"
+                       "if [ \"$3\" = remote ] && [ \"$4\" = add ] && [ \"$5\" = origin ]; then\n"
+                       f"  exec /usr/bin/git \"$1\" \"$2\" remote add origin {str(ROOT)!r}\n"
+                       "fi\nexec /usr/bin/git \"$@\"\n")
+        git.chmod(0o755)
+        readme = (ROOT / "README.md").read_text()
+        snippet = readme.split("## Instalação global (OpenCode)", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
+        result = call("bash", "-c", snippet, env={k: v for k, v in self.env.items()
+                                                 if k != "MY_AI_SKILLS_TEST_SOURCE"}, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"active={revision}", result.stdout)
+        self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"], revision)
 
     def test_install_complete_idempotent_and_preserves_instructions(self):
         config = self.home / ".config/opencode"
