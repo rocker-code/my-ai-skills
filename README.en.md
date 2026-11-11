@@ -479,16 +479,16 @@ The context helpers normalize live GitHub context so agents refresh comments, de
 On Linux/macOS, install for your user with **one command**. No source clone,
 per-repository copying or activation is needed. Verify this command's
 provenance before running it: the full approved revision
-(`016508abd9ccfb1ebc197a7d1e9bee04209c1193`) and the **literal SHA-256
+(`8ddd9e60fbe773ca363293b8f0ff3a7b452eed37`) and the **literal SHA-256
 published here independently of the download**
-(`ac69de47d886e52279ce624e517825a86d03f068cef267e532dc973129834d5d`).
+(`26771ab2d4302b48973e46b71ea0fb83a2163e50bfc79e36e664c5af68fe0721`).
 Do not fetch a checksum from the same downloaded artifact.
 
 ```bash
 ( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
-  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/016508abd9ccfb1ebc197a7d1e9bee04209c1193/scripts/install-global' -o "$tmp" &&
-  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" 'ac69de47d886e52279ce624e517825a86d03f068cef267e532dc973129834d5d' &&
-  python3 "$tmp" --revision 016508abd9ccfb1ebc197a7d1e9bee04209c1193 --agent opencode )
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/8ddd9e60fbe773ca363293b8f0ff3a7b452eed37/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '26771ab2d4302b48973e46b71ea0fb83a2163e50bfc79e36e664c5af68fe0721' &&
+  python3 "$tmp" --revision 8ddd9e60fbe773ca363293b8f0ff3a7b452eed37 --agent opencode )
 ```
 
 External prerequisites: Git, Python 3.10+ POSIX, `curl`, `gh`, `jq` and
