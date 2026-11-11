@@ -138,6 +138,19 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual(original.read_text(), "custom")
         self.assertFalse((self.data / "active").exists())
 
+    def test_failure_after_skills_leaves_previous_snapshot(self):
+        self.assertEqual(self.install().returncode, 0)
+        old = os.readlink(self.data / "active")
+        (self.source / "skills/extra").mkdir()
+        (self.source / "skills/extra/SKILL.md").write_text("---\nname: extra\ndescription: extra\n---\n")
+        self.git("add", "skills/extra")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-qm", "extra")
+        next_revision = self.git("rev-parse", "HEAD").stdout.strip()
+        fail = self.install(revision=next_revision, env={**self.env, "MY_AI_SKILLS_FAIL_AT": "skills"})
+        self.assertIn("Falha simulada", fail.stderr)
+        self.assertEqual(os.readlink(self.data / "active"), old)
+        self.assertFalse((self.home / ".config/opencode/skills/extra").is_symlink())
+
     def test_public_download_digest_checked_before_execution(self):
         # Model the published command's download→independent literal digest→execution gate.
         payload = self.root / "entry"
@@ -173,12 +186,34 @@ class GlobalInstallTests(unittest.TestCase):
             self.assertEqual(call(str(evidence), "--help", cwd=repo, env=self.env).returncode, 0)
             if name == "one":
                 worktree = self.root / "worktree with spaces"
+                planned = call(str(helper), "reserve", "--planned", "--path", str(worktree),
+                               "--repository", str(repo), "--issue", "https://github.com/example/one/issues/50",
+                               "--branch", "test-branch", "--session", "tester", "--run", "run-50",
+                               cwd=repo, env=self.env)
+                self.assertEqual(planned.returncode, 0, planned.stderr)
                 self.git("worktree", "add", "-qb", "test-branch", str(worktree), cwd=repo)
                 common = self.git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=worktree).stdout.strip()
                 self.assertEqual(common, self.git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=repo).stdout.strip())
-                self.assertEqual(call(str(helper), "list", "--repository", str(worktree), cwd=worktree, env=self.env).returncode, 0)
+                owned = call(str(helper), "reserve", "--path", str(worktree),
+                             "--issue", "https://github.com/example/one/issues/50", "--branch", "test-branch",
+                             "--session", "tester", "--run", "run-50", cwd=worktree, env=self.env)
+                self.assertEqual(owned.returncode, 0, owned.stderr)
+                verified = call(str(helper), "verify", "--path", str(worktree), "--session", "tester", cwd=worktree, env=self.env)
+                self.assertEqual(verified.returncode, 0, verified.stderr)
+                self.assertTrue((Path(common) / "ai-workflow/worktrees.json").is_file())
+                checkout = worktree
             else:
                 self.assertNotEqual(common, self.git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=repo).stdout.strip())
+                self.assertFalse((Path(self.git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=repo).stdout.strip()) / "ai-workflow/worktrees.json").exists())
+                checkout = repo
+            recorded = call(str(evidence), "--checkout", str(checkout), "record", "--obligation", "T2:file",
+                            "--selection", "file", "--", "python3", "-c", "print('ok')", cwd=checkout, env=self.env)
+            self.assertEqual(recorded.returncode, 0, recorded.stderr)
+            receipt = json.loads(recorded.stderr.splitlines()[0])
+            own_common = Path(self.git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=checkout).stdout.strip())
+            self.assertTrue((own_common / "ai-workflow/evidence" / receipt["evidence_id"]).exists())
+            if name == "two":
+                self.assertFalse((Path(common) / "ai-workflow/evidence" / receipt["evidence_id"]).exists())
 
     @unittest.skipUnless(shutil.which("openspec"), "official OpenSpec CLI unavailable")
     def test_openspec_first_use_new_and_existing_preserves_artifacts(self):
@@ -223,6 +258,33 @@ class GlobalInstallTests(unittest.TestCase):
                 self.assertIn("# custom configuration", config.read_text())
                 dry = call(str(self.bin / "openspec"), "update", "--dry-run", "--json", str(repo), env=env)
                 self.assertEqual(dry.returncode, 0, dry.stderr)
+
+    @unittest.skipUnless(shutil.which("openspec"), "official OpenSpec CLI unavailable")
+    def test_existing_other_tool_requires_explicit_union_on_first_use(self):
+        (self.bin / "openspec").unlink()
+        (self.bin / "openspec").symlink_to(shutil.which("openspec"))
+        env = {**self.env, "OPENSPEC_TELEMETRY": "0"}
+        repo = self.root / "existing-other-tool"
+        repo.mkdir()
+        initial = call(str(self.bin / "openspec"), "init", "--tools", "codex", str(repo), env=env)
+        self.assertEqual(initial.returncode, 0, initial.stderr)
+        config = repo / "openspec/config.yaml"
+        before = config.read_bytes()
+        self.assertEqual(self.install(env=env).returncode, 0)
+        self.assertFalse((repo / ".opencode").exists())
+        self.assertEqual(config.read_bytes(), before)
+        dry = call(str(self.bin / "openspec"), "update", "--dry-run", "--json", str(repo), env=env)
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertTrue((repo / ".agents/skills/openspec-explore/SKILL.md").exists())
+        # Explicitly authorized union, never 'init --tools opencode' alone.
+        union = call(str(self.bin / "openspec"), "init", "--tools", "codex,opencode", str(repo), env=env)
+        self.assertEqual(union.returncode, 0, union.stderr)
+        self.assertTrue((repo / ".agents/skills/openspec-explore/SKILL.md").exists())
+        self.assertTrue((repo / ".opencode/skills/openspec-apply-change/SKILL.md").exists())
+        # CLI success is not a successful chat integration: the migrated
+        # custom profile may be skills-only and omit all /opsx-* commands.
+        if not (repo / ".opencode/commands/opsx-apply.md").exists():
+            self.assertIn("sem essa prova reporte bloqueio", (self.home / ".config/opencode/AGENTS.md").read_text())
 
 
 if __name__ == "__main__":

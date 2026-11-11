@@ -473,7 +473,71 @@ As métricas apoiam `kaizen`: após a conclusão, compare gargalos recorrentes c
 
 Os auxiliares de contexto normalizam os dados atuais do GitHub para que os agentes atualizem comentários, decisões, revisões e CI em vez de depender de conversas antigas.
 
-## Instalação passo a passo
+## Instalação global (OpenCode)
+
+Em Linux/macOS, instale para seu usuário com **um único comando**. Não é
+necessário clonar a fonte, copiar complementos nem alterar cada repositório.
+Antes de executar, confira a origem deste comando: o SHA completo da revisão
+aprovada (`016508abd9ccfb1ebc197a7d1e9bee04209c1193`) e o SHA-256
+**literal, publicado aqui independentemente do download**
+(`ac69de47d886e52279ce624e517825a86d03f068cef267e532dc973129834d5d`).
+Não obtenha o hash novamente do arquivo que acabou de baixar.
+
+```bash
+( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/016508abd9ccfb1ebc197a7d1e9bee04209c1193/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" 'ac69de47d886e52279ce624e517825a86d03f068cef267e532dc973129834d5d' &&
+  python3 "$tmp" --revision 016508abd9ccfb1ebc197a7d1e9bee04209c1193 --agent opencode )
+```
+
+Requisitos externos: Git, Python 3.10+ POSIX, `curl`, `gh`, `jq` e OpenCode V2
+no `PATH`. O CLI OpenSpec existente é preservado; se ausente, o instalador
+usa a distribuição standalone oficial no escopo do usuário, verifica a versão
+e solicita inclusão de seu diretório no `PATH` quando necessário. Não instala
+Node, stacks Magento/Mobile, não autentica `gh` nem altera o shell.
+Para operações GitHub, autentique-se com `gh auth login` por conta própria.
+Somente `--agent opencode` tem integração verificada; Codex e Claude Code
+não são suportados por este comando. ChatGPT Web não recebe instalação local.
+
+O pacote versionado fica em `${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/`,
+com `active/manifest.json` registrando origem, revisão, agentes, arquivos,
+permissões e hashes. As skills são descobertas por
+`${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills/` e somente um bloco
+identificado é acrescentado ao `AGENTS.md` global. Repetir o comando é
+idempotente; conflitos ou falhas não substituem arquivos personalizados nem
+o ponteiro para a instalação anterior. Versões antigas permanecem disponíveis.
+Arquivos `.ai-workflow/` e skills locais já existentes são preservados; no
+OpenCode, a skill local homônima tem precedência sobre a global.
+
+Verifique após a instalação (sem entrar neste repositório):
+
+```bash
+test -f "${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active/manifest.json"
+test -x "${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active/scripts/worktree-reservation"
+test -f "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills/apply-issue/SKILL.md"
+openspec --version
+```
+
+No **primeiro uso de OpenSpec por projeto**, o agente inspeciona contexto,
+perfil, resíduos e arquivos oficiais. Só com sua autorização inicializa
+`openspec init --tools opencode` no root pretendido; em projetos existentes,
+reutiliza a integração completa ou propõe atualização após
+`openspec update --dry-run --json` e inspeção das outras ferramentas. Não há
+`init/update` nem escrita no projeto durante a instalação global. Abra uma
+nova sessão OpenCode após a preparação e confirme `/opsx-explore`,
+`/opsx-propose`, `/opsx-apply`, `/opsx-archive` e respectivas skills antes
+de começar a implementação. Regras e configurações locais prevalecem;
+reservas/evidências continuam no Git common dir do checkout invocado.
+
+Atualizações automáticas não fazem parte desta entrega (#51). Reinvocar este
+comando aplica apenas esta revisão aprovada; não substitua os literais por
+`main` ou por um hash calculado do próprio download.
+
+## Instalação passo a passo (legado, para instalações por projeto)
+
+As etapas abaixo descrevem o procedimento anterior e **não são necessárias**
+para a instalação global acima; não misture os dois métodos sem conferir
+precedência de skills e personalizações existentes.
 
 Use o terminal no repositório da aplicação em que os agentes vão trabalhar. Os exemplos usam Bash (Linux, macOS ou Git Bash) e OpenCode; substitua `opencode` por `codex` ou `claude-code` conforme seu agente.
 
@@ -532,7 +596,7 @@ O instalador de skills copia seus diretórios e referências embarcadas. Ele **n
 Clone a fonte uma vez em um local separado. Mantenha o terminal no repositório da aplicação:
 
 ```bash
-MY_AI_SKILLS_SOURCE="$HOME/.local/share/my-ai-skills"
+MY_AI_SKILLS_SOURCE="$HOME/.local/share/my-ai-skills-legacy-source"
 mkdir -p "$(dirname "$MY_AI_SKILLS_SOURCE")"
 gh repo clone rocker-code/my-ai-skills "$MY_AI_SKILLS_SOURCE"
 ```
