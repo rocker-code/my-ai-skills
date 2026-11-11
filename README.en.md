@@ -530,6 +530,16 @@ a new OpenCode session after setup and check `/opsx-explore`, `/opsx-propose`,
 Local restrictions/configuration prevail; reservations and evidence remain
 in the invoked checkout's Git common directory.
 
+To reproduce the real smoke without using your HOME, run
+`python3 tests/smoke_global_opencode.py` in this checkout with OpenCode V2
+and OpenSpec on PATH. It creates disposable HOME/XDG directories under
+`/tmp/opencode`, installs the immutable snapshot, prepares two projects and
+a worktree, then checks discovery, expansion of all four `/opsx-*` commands,
+and skill activation in fresh sessions. The printed evidence directory keeps
+the records. V2 API discovery is asynchronous and location-scoped: an initial
+empty list is not proof of absence. No model credentials are used, so the
+smoke does not establish an AI response to the commands.
+
 Automatic updates are outside this delivery (#51). Re-running this command
 installs only this approved revision; do not replace its literals with `main`
 or a digest calculated from the downloaded file itself.

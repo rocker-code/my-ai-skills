@@ -529,6 +529,16 @@ nova sessão OpenCode após a preparação e confirme `/opsx-explore`,
 de começar a implementação. Regras e configurações locais prevalecem;
 reservas/evidências continuam no Git common dir do checkout invocado.
 
+Para reproduzir o smoke real sem usar seu HOME, rode
+`python3 tests/smoke_global_opencode.py` neste checkout com OpenCode V2 e
+OpenSpec no PATH. O script cria HOME/XDG descartáveis em `/tmp/opencode`,
+instala o snapshot imutável, prepara dois projetos e uma worktree e confere,
+em sessões novas, descoberta e expansão dos quatro `/opsx-*` e carregamento
+das skills. Os registros ficam no diretório de evidências impresso. A
+listagem da API V2 é assíncrona e depende da localização: a primeira resposta
+vazia não prova ausência. O smoke não usa credenciais/modelo e não comprova
+uma resposta de IA aos comandos.
+
 Atualizações automáticas não fazem parte desta entrega (#51). Reinvocar este
 comando aplica apenas esta revisão aprovada; não substitua os literais por
 `main` ou por um hash calculado do próprio download.
