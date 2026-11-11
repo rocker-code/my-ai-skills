@@ -478,16 +478,16 @@ Os auxiliares de contexto normalizam os dados atuais do GitHub para que os agent
 Em Linux/macOS, instale ou atualize sob pedido explícito para seu usuário com **um único comando**. Não é
 necessário clonar a fonte, copiar complementos nem alterar cada repositório.
 Antes de executar, confira a origem deste comando: o SHA completo da revisão
-aprovada (`184a66c4cda981e6b262dfc2e26e3c789bc0c9c1`) e o SHA-256
+aprovada (`1e6062f38562fe32784ff8d188313ad4ef0a153a`) e o SHA-256
 **literal, publicado aqui independentemente do download**
-(`edfc687a4015edf444eb43cf80285ae6057c8bcafb74ef1e913c7578205dc0b3`).
+(`7bc36e6956a42c4b634421ee8f63c8bfe60648dcc5684aba9d8a859040e0bf81`).
 Não obtenha o hash novamente do arquivo que acabou de baixar.
 
 ```bash
 ( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
-  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/184a66c4cda981e6b262dfc2e26e3c789bc0c9c1/scripts/install-global' -o "$tmp" &&
-  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" 'edfc687a4015edf444eb43cf80285ae6057c8bcafb74ef1e913c7578205dc0b3' &&
-  python3 "$tmp" --revision 184a66c4cda981e6b262dfc2e26e3c789bc0c9c1 --agent opencode )
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/1e6062f38562fe32784ff8d188313ad4ef0a153a/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '7bc36e6956a42c4b634421ee8f63c8bfe60648dcc5684aba9d8a859040e0bf81' &&
+  python3 "$tmp" --revision 1e6062f38562fe32784ff8d188313ad4ef0a153a --agent opencode )
 ```
 
 Requisitos externos: Git, Python 3.10+ POSIX, `curl`, `gh`, `jq` e OpenCode V2
@@ -527,7 +527,9 @@ Git, bytes/modos e destino do link. Entradas editadas, de outra origem ou sem
 baseline ficam intactas. Somente após inventário e autorização **separada**
 por nome use `--migrate-global-skill <nome>`; o original fica em
 `migration-backups/`, sem remover a instalação universal de outros agentes.
-Skills sem colisão permanecem intactas.
+Skills sem colisão permanecem intactas. Backups em symlink ou migração entre
+filesystems são recusados antes de mover qualquer cópia; mantenha os originais
+e escolha uma localização segura no mesmo filesystem para nova tentativa.
 
 Para diagnosticar sombras **somente** no projeto identificado, acrescente
 `--project /caminho/absoluto/projeto`: é leitura local, mesmo se a cópia for

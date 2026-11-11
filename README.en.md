@@ -479,16 +479,16 @@ The context helpers normalize live GitHub context so agents refresh comments, de
 On Linux/macOS, install or explicitly request an update for your user with **one command**. No source clone,
 per-repository copying or activation is needed. Verify this command's
 provenance before running it: the full approved revision
-(`184a66c4cda981e6b262dfc2e26e3c789bc0c9c1`) and the **literal SHA-256
+(`1e6062f38562fe32784ff8d188313ad4ef0a153a`) and the **literal SHA-256
 published here independently of the download**
-(`edfc687a4015edf444eb43cf80285ae6057c8bcafb74ef1e913c7578205dc0b3`).
+(`7bc36e6956a42c4b634421ee8f63c8bfe60648dcc5684aba9d8a859040e0bf81`).
 Do not fetch a checksum from the same downloaded artifact.
 
 ```bash
 ( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
-  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/184a66c4cda981e6b262dfc2e26e3c789bc0c9c1/scripts/install-global' -o "$tmp" &&
-  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" 'edfc687a4015edf444eb43cf80285ae6057c8bcafb74ef1e913c7578205dc0b3' &&
-  python3 "$tmp" --revision 184a66c4cda981e6b262dfc2e26e3c789bc0c9c1 --agent opencode )
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/1e6062f38562fe32784ff8d188313ad4ef0a153a/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '7bc36e6956a42c4b634421ee8f63c8bfe60648dcc5684aba9d8a859040e0bf81' &&
+  python3 "$tmp" --revision 1e6062f38562fe32784ff8d188313ad4ef0a153a --agent opencode )
 ```
 
 External prerequisites: Git, Python 3.10+ POSIX, `curl`, `gh`, `jq` and
@@ -528,7 +528,9 @@ bytes/modes and link destination. Modified, foreign or unproven entries stay
 untouched. Only after inventory and **separate** per-name authorization pass
 `--migrate-global-skill <name>`; the original remains under
 `migration-backups/`, without removing other agents' universal installation.
-Non-colliding legacy skills stay untouched.
+Non-colliding legacy skills stay untouched. Symlinked backup directories or
+cross-filesystem migrations are refused before moving any copies; retain the
+originals and choose a safe same-filesystem location before retrying.
 
 To diagnose shadows in **only** the identified project, add
 `--project /absolute/project/path`: this reads local files only, even if a
