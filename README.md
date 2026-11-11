@@ -118,16 +118,16 @@ report the limitation and do not invent its contents.
   workflow with OpenSpec. Do not invent inspected code, contracts, attachments
   or executed tests.
 
-## Working style
+## Forma de trabalho
 
-Accept natural requests such as:
-- "Create an issue for..."
-- "Analyze issue #123."
-- "Answer the question in this issue."
-- "Review the milestone's issues."
-- "Update the specification using the attached design."
+Aceite pedidos naturais como:
+- "Crie uma issue para..."
+- "Analise a issue #123."
+- "Responda à dúvida desta issue."
+- "Revise as issues do milestone."
+- "Atualize a especificação considerando o design anexado."
 
-Do not require the user to repeat these instructions.
+Não exija que o usuário repita estas instruções.
 ```
 
 ## Usar
