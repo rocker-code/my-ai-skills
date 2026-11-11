@@ -45,88 +45,89 @@ O mesmo texto pode ser usado nas instruções de projeto do ChatGPT, Claude ou d
 ### Instruções para copiar
 
 ```text
-# Rocker Code — Instruções do Projeto
+# Rocker Code — Project Instructions
 
-Este projeto utiliza o AI Engineering Workflow, disponível em
-https://github.com/rocker-code/my-ai-skills, como referência
-para engenharia de software e gerenciamento de GitHub Issues.
+This project uses AI Engineering Workflow, available at
+https://github.com/rocker-code/my-ai-skills, as its reference
+for software engineering and GitHub issue management.
 
-## Skills do agente Web (ChatGPT, Claude ou equivalente)
+## Web agent skills (ChatGPT, Claude or equivalent)
 
-Use estas instruções no ChatGPT, Claude ou outro agente com instruções de projeto.
-Os nomes chatgpt-web-* são mantidos por compatibilidade. É necessário acesso de
-leitura às fontes; alterações de issues exigem integração GitHub autorizada.
+Use these instructions in ChatGPT, Claude or another agent with project instructions.
+The chatgpt-web-* names are retained for compatibility. Source read access is required;
+issue mutations require an authorized GitHub integration.
 
-No início de cada tarefa de criação ou revisão de issues, consulte pela integração
-GitHub disponível a versão atual em main da skill correspondente e do protocolo compartilhado:
+At the start of each issue creation or review task, use the available GitHub
+integration to read the current main version of the relevant skill and shared protocol:
 
-- Criação: skills/chatgpt-web-create-issue/SKILL.md
-- Revisão/refinamento: skills/chatgpt-web-refine-issue/SKILL.md
-- Protocolo: protocol/CHATGPT_WEB_ISSUES.md
-- Design visual, quando aplicável: protocol/VISUAL_ARTIFACTS.md
+- Creation: skills/chatgpt-web-create-issue/SKILL.md
+- Review/refinement: skills/chatgpt-web-refine-issue/SKILL.md
+- Protocol: protocol/CHATGPT_WEB_ISSUES.md
+- Visual design, when applicable: protocol/VISUAL_ARTIFACTS.md
 
-Para consultas rápidas de roadmap (“me situa”, “onde estamos”, “como estamos no MVP”,
-“o que faço agora”), consulte em main skills/roadmap-status/SKILL.md pela integração
-GitHub e siga suas instruções. Mostre até 5 linhas de tabela, um próximo passo
-e decisões pendentes; informe limitações de acesso e não execute alterações.
+For quick roadmap queries (“me situa”, “where are we”, “how is the MVP”,
+“what should I do next”), read skills/roadmap-status/SKILL.md on main through
+GitHub integration and follow it. Show up to 5 table rows, one next step and
+pending decisions; disclose access limitations and do not execute changes.
 
-Quando eu pedir “atualize o my-ai-skills” ou “atualize o workflow de IA deste projeto”,
-consulte em main skills/update-ai-workflow/SKILL.md e siga suas instruções.
-Execute apenas sob pedido explícito, preservando agentes, escopo e ajustes locais.
-Se não houver acesso ao ambiente local, informe a limitação e entregue o próximo
-comando necessário; não afirme que minha instalação foi atualizada.
+When I ask “update my-ai-skills” or “update this project’s AI workflow”, read
+skills/update-ai-workflow/SKILL.md on main and follow it. Run only on explicit
+request, preserving agents, scope and local changes. If local execution is
+unavailable, report the limitation and give the next required CLI command;
+do not claim my local installation was updated.
 
-Leia também as referências necessárias indicadas nesses arquivos. Reutilize a
-leitura dentro da mesma tarefa; atualize-a se houver mudança relevante. Se uma
-fonte estiver inacessível, informe a limitação e não invente seu conteúdo.
+Also read the necessary references linked by these files. Reuse the reads within
+the same task; refresh them after relevant changes. If a source is inaccessible,
+report the limitation and do not invent its contents.
 
-## Regras
+## Rules
 
-- Aplique a skill conforme a solicitação, sem exigir comandos especiais.
-- Consulte issues, comentários, decisões, PRs e código relevante; identifique a
-  revisão inspecionada e o que já existe para evitar trabalho duplicado.
-- Preserve os padrões dos projetos Magento, Mobile e App Operacional. Distinga
-  fatos verificados, decisões aprovadas, propostas e questões abertas.
-- Abra a issue com um resumo simples: o que muda, onde muda e de que depende.
-  Defina comportamento esperado, escopo, fora do escopo e critérios observáveis.
-- Inclua cenários de teste em tabela com preparação/ação, resultado esperado e
-  camada sugerida. Priorize riscos reais, reutilize testes e massas de teste e evite
-  matrizes exaustivas ou cobertura duplicada.
-- Em integrações, documente a assinatura atual e a esperada, exemplos, estados,
-  erros, autorização e dependências entre produtor e consumidor. Identifique
-  contratos propostos como não implementados/não congelados; registre a
-  assinatura efetiva após o entrega do contrato antes da integração final.
-- Para backend, integração ou arquitetura, inclua system design Mermaid simples,
-  com responsabilidades e fluxo dos dados verificáveis.
-- Para interfaces, inclua esboço em caracteres em bloco text, principais estados
-  e ações, além de referências visuais aprovadas, acessíveis e versionadas quando
-  houver design. Valores ilustrativos não são dados reais. Siga VISUAL_ARTIFACTS.md;
-  um link privado de Claude Artifacts sozinho não comprova acesso ao design.
-- Quando houver conteúdo apresentado ao usuário, inclua i18n e tradução conforme
-  o mecanismo e locale do projeto: textos, estados, erros, acessibilidade, datas,
-  números, moeda e plurais. Defina quem traduz os textos da API; não exponha enums
-  ou chaves cruas. Preserve nomes/dados de domínio e preveja fallback traduzido
-  seguro para códigos desconhecidos, com critérios e testes representativos.
-- Mantenha comportamento, design, esboço, contrato, critérios e testes coerentes.
-  Ajustes pontuais devem preservar o conteúdo e as decisões fora de seu escopo.
-- Explique questões técnicas e alternativas de forma simples quando houver uma
-  decisão material pendente do usuário. Resolva detalhes rotineiros por evidências
-  e não peça confirmações extras para ações já solicitadas ou autorizadas.
-- Registre decisões aprovadas nas issues quando solicitado. Verifique as alterações
-  no GitHub antes de afirmar sucesso e forneça os links e bloqueios restantes.
-- Não implemente código ao criar/refinar issues; a execução segue o fluxo CLI com
-  OpenSpec. Não invente código inspecionado, contratos, anexos ou testes executados.
+- Apply the appropriate skill without requiring special commands.
+- Inspect issues, comments, decisions, PRs and relevant code; identify the inspected
+  revision and existing implementation to avoid duplicate work.
+- Preserve Magento, Mobile and Operational App conventions. Distinguish verified
+  facts, approved decisions, proposals and open questions.
+- Start each issue with a plain summary: what changes, where and what it depends on.
+  Define expected behavior, scope, non-goals and observable acceptance criteria.
+- Include test scenarios in a table with setup/action, expected result and suggested
+  proving layer. Focus on real risks, reuse tests and fixtures and avoid exhaustive
+  matrices or duplicate coverage.
+- For integrations, document current and expected signatures, examples, states,
+  errors, authorization and producer/consumer dependencies. Mark proposed contracts
+  as unimplemented/unfrozen; record the effective signature after the handoff
+  before final integration.
+- For backend, integration or architecture changes, include a simple Mermaid system
+  design with verifiable responsibilities and data flow.
+- For interfaces, include a character wireframe in a text block, key states/actions
+  and accessible, versioned, approved visual references when a design exists.
+  Illustrative values are not real data. Follow VISUAL_ARTIFACTS.md; a private
+  Claude Artifacts link alone does not prove design access.
+- For user-facing content, include i18n and translation using the project's existing
+  mechanism and locale: copy, states, errors, accessibility, dates, numbers, currency
+  and plurals. Define who localizes API text; do not expose raw enums or keys.
+  Preserve domain names/data and provide safe translated fallbacks for unknown
+  codes, with representative acceptance criteria and tests.
+- Keep behavior, design, wireframes, contract, criteria and tests consistent.
+  Narrow changes must preserve unrelated content and decisions.
+- Explain technical questions and alternatives simply when a material user decision
+  is pending. Resolve routine details through evidence and do not request extra
+  confirmation for actions already requested or authorized.
+- Record approved decisions in issues when requested. Verify GitHub mutations before
+  claiming success and provide links and remaining blockers.
+- Do not implement code while authoring/refining issues; execution follows the CLI
+  workflow with OpenSpec. Do not invent inspected code, contracts, attachments
+  or executed tests.
 
-## Forma de trabalho
+## Working style
 
-Aceite pedidos naturais como:
-- "Crie uma issue para..."
-- "Analise a issue #123."
-- "Responda à dúvida desta issue."
-- "Revise as issues do milestone."
-- "Atualize a especificação considerando o design anexado."
+Accept natural requests such as:
+- "Create an issue for..."
+- "Analyze issue #123."
+- "Answer the question in this issue."
+- "Review the milestone's issues."
+- "Update the specification using the attached design."
 
-Não exija que o usuário repita estas instruções.
+Do not require the user to repeat these instructions.
 ```
 
 ## Usar
