@@ -53,7 +53,21 @@ class LauncherTests(unittest.TestCase):
             "printf '%s\\trefs/heads/main\\n' \"$FAKE_MAIN_REVISION\"\n"
         )
         git.chmod(0o755)
+        openspec = bin_dir / "openspec"
+        openspec.write_text("#!/bin/sh\n[ \"$FAIL_OPENSPEC\" != 1 ] || exit 1\necho 'OpenSpec test version'\n")
+        openspec.chmod(0o755)
+        data = root / "data/my-ai-skills/active"
+        (data / "scripts").mkdir(parents=True)
+        (data / "manifest.json").write_text("{}\n")
+        worktree = data / "scripts/worktree-reservation"
+        worktree.write_text("#!/bin/sh\n")
+        worktree.chmod(0o755)
+        self.skill = root / "config/opencode/skills/apply-issue/SKILL.md"
+        self.skill.parent.mkdir(parents=True)
+        self.skill.write_text("test skill\n")
         self.env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                    "HOME": str(root), "XDG_DATA_HOME": str(root / "data"),
+                    "XDG_CONFIG_HOME": str(root / "config"), "FAIL_OPENSPEC": "0",
                     "ENTRY_SOURCE": str(ENTRY), "LAUNCHER_SOURCE": str(LAUNCHER),
                     "REAL_PYTHON": sys.executable, "FAKE_MAIN_REVISION": "a" * 40,
                     "GIT_FAIL": "0",
@@ -73,6 +87,7 @@ class LauncherTests(unittest.TestCase):
             args = () if revision == REVISION else ("--revision", revision)
             result = self.run_launcher(*args)
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Post-install verification passed", result.stdout)
             self.assertEqual(self.log.read_text().splitlines()[1:],
                              ["--revision", revision, "--agent", "opencode"])
             self.assertEqual(Path(self.env["CURL_LOG"]).read_text().splitlines()[-1],
@@ -97,6 +112,7 @@ class LauncherTests(unittest.TestCase):
     def test_update_resolves_latest_main_and_uses_verified_entry(self):
         result = self.run_updater()
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Post-install verification passed", result.stdout)
         self.assertEqual(self.log.read_text().splitlines()[1:],
                          ["--revision", "a" * 40, "--agent", "opencode"])
         self.assertEqual(Path(self.env["CURL_LOG"]).read_text().splitlines(), [
@@ -109,6 +125,18 @@ class LauncherTests(unittest.TestCase):
             result = self.run_updater(env={**self.env, **changes})
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(self.log.exists())
+
+    def test_missing_skill_or_openspec_fails_install_and_update(self):
+        self.skill.unlink()
+        for run in (self.run_launcher, self.run_updater):
+            result = run()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Post-install verification failed", result.stderr)
+        self.skill.write_text("test skill\n")
+        for run in (self.run_launcher, self.run_updater):
+            result = run(env={**self.env, "FAIL_OPENSPEC": "1"})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Post-install verification failed", result.stderr)
 
 
 if __name__ == "__main__":

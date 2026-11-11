@@ -30,3 +30,12 @@ python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb
     exit 1
 }
 python3 "$tmp" --revision "$revision" --agent opencode
+
+data=${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active
+skills=${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills
+if ! test -f "$data/manifest.json" || ! test -x "$data/scripts/worktree-reservation" ||
+   ! test -f "$skills/apply-issue/SKILL.md" || ! openspec --version; then
+    echo 'Post-install verification failed; inspect the installer output and active installation.' >&2
+    exit 1
+fi
+echo 'Post-install verification passed (package, skill and OpenSpec).'

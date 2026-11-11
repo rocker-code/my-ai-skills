@@ -24,15 +24,9 @@ curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scrip
 
 `update.sh` trusts current `main` and calls the installer with the resolved revision; the installer's entrypoint SHA-256 check remains in place. It does not verify the launcher itself when fetched from `main`. **Re-running `install.sh` does not automatically fetch the latest revision.** Do not use `npx skills update` or the active installation's installer to update the bundle. [Details, conflicts and migration](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation).
 
-## Verify and use
+## Use
 
-```bash
-test -f "${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active/manifest.json"
-test -f "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills/apply-issue/SKILL.md"
-openspec --version
-```
-
-Open a new OpenCode session. On first use in a project, the agent checks OpenSpec integration and asks for authorization before initializing it; global installation does not modify projects. Check `/opsx-explore`, `/opsx-propose`, `/opsx-apply`, and `/opsx-archive` before implementing.
+The installer and updater verify the package, a skill, and OpenSpec at the end. Open a new OpenCode session. On first use in a project, the agent checks OpenSpec integration and asks for authorization before initializing it; global installation does not modify projects. Check `/opsx-explore`, `/opsx-propose`, `/opsx-apply`, and `/opsx-archive` before implementing.
 
 Ask **“Take care of this issue: URL”**, **“Take care of this project queue”**, or **“Take care of this milestone: URL”**; add **“no merge”** for manual integration. The workflow plans with OpenSpec, implements, tests, prepares the PR and reviews; default merge happens only after required checks pass. The agent needs GitHub access and isolated sessions/worktrees to run the full flow.
 
