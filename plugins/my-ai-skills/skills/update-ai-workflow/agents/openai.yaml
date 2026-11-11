@@ -1,4 +1,0 @@
-interface:
-  display_name: "Atualizar my-ai-skills"
-  short_description: "Atualizar o workflow instalado somente quando solicitado"
-  default_prompt: "Use $update-ai-workflow para atualizar o my-ai-skills instalado neste projeto, preservando agentes, escopo e ajustes locais."

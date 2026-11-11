@@ -2,26 +2,6 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-plugin_root="$repo_root/plugins/my-ai-skills"
-
-[[ -f "$plugin_root/.codex-plugin/plugin.json" ]] || {
-  echo "error: plugin scaffold not found at $plugin_root" >&2
-  exit 1
-}
-
-sync_directory() {
-  local source_dir=$1
-  local target_dir=$2
-
-  [[ -d "$source_dir" ]] || {
-    echo "error: source directory not found: $source_dir" >&2
-    exit 1
-  }
-
-  mkdir -p "$target_dir"
-  find "$target_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-  cp -R "$source_dir"/. "$target_dir"/
-}
 
 # skills.sh installs only each skill directory, so shared protocol and
 # templates a skill links to must be copied into that skill.
@@ -30,6 +10,14 @@ bundle_reference() {
   local source=$2
   local target_dir="$repo_root/skills/$skill/references"
 
+  [[ -f "$repo_root/$source" ]] || {
+    echo "error: reference source not found: $repo_root/$source" >&2
+    exit 1
+  }
+  [[ -d "$repo_root/skills/$skill" ]] || {
+    echo "error: skill directory not found: $repo_root/skills/$skill" >&2
+    exit 1
+  }
   mkdir -p "$target_dir"
   install -m 0644 "$repo_root/$source" "$target_dir/$(basename "$source")"
 }
@@ -69,21 +57,4 @@ done
 
 bundle_reference optimize-ci skills/ci-performance-audit/references/magento.md
 
-sync_directory "$repo_root/skills" "$plugin_root/skills"
-sync_directory "$repo_root/protocol" "$plugin_root/protocol"
-sync_directory "$repo_root/templates" "$plugin_root/templates"
-
-mkdir -p "$plugin_root/scripts"
-find "$plugin_root/scripts" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-for helper in issue-context pr-context workflow-status workflow-event workflow-report worktree-reservation workflow-evidence preflight-check attempt-log; do
-  install -m 0755 "$repo_root/scripts/$helper" "$plugin_root/scripts/$helper"
-done
-install -m 0644 "$repo_root/scripts/workflow_metrics.py" "$plugin_root/scripts/workflow_metrics.py"
-for module in workflow_events; do
-  install -m 0644 "$repo_root/scripts/$module.py" "$plugin_root/scripts/$module.py"
-done
-install -m 0644 "$repo_root/scripts/worktree_registry.py" "$plugin_root/scripts/worktree_registry.py"
-install -m 0644 "$repo_root/scripts/workflow_evidence.py" "$plugin_root/scripts/workflow_evidence.py"
-install -m 0644 "$repo_root/scripts/attempt_log.py" "$plugin_root/scripts/attempt_log.py"
-
-echo "Synchronized plugin package: $plugin_root"
+echo "Synchronized skill references"

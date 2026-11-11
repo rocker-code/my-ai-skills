@@ -43,10 +43,7 @@ class PreflightProcedureTests(unittest.TestCase):
             with self.subTest(skill=name):
                 reference = f"skills/{name}/references/TEST_STRATEGY.md"
                 self.assertEqual((ROOT / reference).read_bytes(), content)
-                self.assertEqual((ROOT / "plugins/my-ai-skills" / reference).read_bytes(), content)
-        self.assertEqual((ROOT / "plugins/my-ai-skills/protocol/TEST_STRATEGY.md").read_bytes(), content)
-        self.assertEqual((ROOT / "plugins/my-ai-skills/scripts/preflight-check").read_bytes(),
-                         (ROOT / "scripts/preflight-check").read_bytes())
+        self.assertTrue((ROOT / "scripts/preflight-check").is_file())
 
 
 if __name__ == "__main__":

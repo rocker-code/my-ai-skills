@@ -1,4 +1,0 @@
-interface:
-  display_name: "Visão do roadmap"
-  short_description: "Onde estamos e qual é o próximo passo do projeto"
-  default_prompt: "Use $roadmap-status para me situar no projeto e recomendar o próximo passo."

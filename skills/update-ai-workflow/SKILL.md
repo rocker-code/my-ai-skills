@@ -23,8 +23,8 @@ or a local customization cannot be reconciled safely.
   current source revision and local modifications. Do not infer an agent from an
   installed binary alone. Preserve a deliberately partial skill selection.
 - Detect `.ai-workflow/` copies, alternate documented paths, `AGENTS.md`,
-  `CLAUDE.md` and plugin installations. Update only identified installations in
-  the requested scope; do not create duplicate plugin and skills.sh installations.
+  `CLAUDE.md` and any legacy personal plugin installation. Update only identified
+  official installations in the requested scope; do not create duplicate installations.
 - Default a project request to that project's existing installation. If only a
   global installation exists, identify its cross-project effect before updating.
   If multiple possible targets remain, ask one focused question. If none exists,
@@ -68,17 +68,16 @@ against it. Do not use `--all`, which selects all agents. Do not run an unscoped
 added skills are installed. Preserve locally edited skill files before replacement;
 reconcile them or leave affected entries blocked rather than overwriting them.
 
-For a plugin installation, use only the plugin manager's documented update
-capability discovered through its help/tools. Do not edit caches, remove/reinstall
-the plugin as a guessed update method, or claim that a source fetch updated it.
-If the environment cannot update it, report the exact pending user action.
+The former personal plugin is no longer distributed by this repository. If only
+that legacy installation is found, explain the official skills installation path
+and ask before migrating; do not edit caches, uninstall or claim it was updated.
 
 ## 4. Refresh complementary project files
 
 - If complementary project copies exist, compare them with the same source SHA.
   Refresh protocols, templates and runtime helpers described by the current README.
   Include required companion files such as `workflow_metrics.py`, `workflow_evidence.py`, `worktree_registry.py` (both Python companions required by `workflow-evidence`) and `attempt_log.py` (required by `attempt-log`); retain script
-  executable permissions. Do not copy the source maintenance script `sync-plugin`
+  executable permissions. Do not copy the source maintenance script `sync-skill-references`
   into application runtime helpers.
 - Establish ownership before overwriting. Use the prior source revision or a
   recorded baseline to distinguish unchanged upstream copies from local edits.
@@ -103,7 +102,7 @@ If `main` advanced during the run, report the verified SHA and newer pending SHA
 do not claim to be current against a revision that was not installed.
 
 Return a short table with `Component | Result | Pending`, covering skills,
-project copies and instructions/plugin when applicable. State scope, agents and
+project copies and instructions/legacy installation when applicable. State scope, agents and
 target SHA, newly added skills, preserved customizations and concrete blockers.
 Use `updated`, `already current`, `partial`, `blocked` or `not applicable` based
 on evidence. Never declare full success after a failed component. Mention a new
