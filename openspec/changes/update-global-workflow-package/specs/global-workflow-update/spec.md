@@ -44,7 +44,15 @@ A atualização SHALL validar a propriedade e integridade da versão anterior e 
 - **THEN** a atualização bloqueia antes de alterar a instalação ativa e informa a necessidade de reconciliação
 
 ### Requirement: Preservação e diagnóstico de instalações anteriores
-A atualização SHALL preservar arquivos locais e globais não gerenciados e personalizações. SHALL diagnosticar sombras locais e cópias legadas somente no projeto explicitamente identificado/acessível, distinguir propriedade comprovada de inferida e MUST NOT declarar migrados projetos não inspecionados.
+A atualização SHALL preservar arquivos locais e globais não gerenciados e personalizações. SHALL inventariar skills globais legadas de `skills.sh` no diretório de skills OpenCode do usuário e diagnosticar sombras/cópias locais somente no projeto identificado/acessível, comparando origem, baseline e conteúdo sem presumir propriedade pelo nome. MUST NOT declarar migrados projetos não inspecionados.
+
+#### Scenario: Skill global legada de skills.sh com nome conflitante
+- **WHEN** o diretório global OpenCode contém uma skill homônima instalada por `skills.sh`, com origem/baseline comprováveis ou incertos
+- **THEN** o workflow compara metadados de origem, baseline confiável e conteúdo atual, informa conflito e caminho de migração, sem sobrescrever entrada desconhecida, personalizada ou de outra origem nem declarar atualização completa da integração
+
+#### Scenario: Skill global legada sem colisão
+- **WHEN** uma skill global de `skills.sh` não colide com o pacote oficial
+- **THEN** ela permanece intocada, é distinguida dos vínculos gerenciados e não é declarada migrada sem prova
 
 #### Scenario: Skill local personalizada sombreia a global
 - **WHEN** o projeto identificado contém uma skill homônima local modificada ou de origem desconhecida
@@ -52,7 +60,15 @@ A atualização SHALL preservar arquivos locais e globais não gerenciados e per
 
 #### Scenario: Cópia legada comprovadamente idêntica
 - **WHEN** uma skill ou cópia `.ai-workflow/` no projeto identificado tem baseline confiável e é comprovadamente idêntica ao artefato oficial anterior
-- **THEN** o workflow pode reconciliar apenas os caminhos autorizados dessa instalação, preservando regras e arquivos locais não gerenciados
+- **THEN** o workflow apenas diagnostica por padrão; somente após opt-in adicional explícito para esse projeto e esses caminhos pode reconciliar os artefatos comprovados, preservando regras e arquivos locais não gerenciados
+
+#### Scenario: Pedido natural sem opt-in local
+- **WHEN** a pessoa pede “atualize o my-ai-skills” para o pacote global sem autorizar projeto e caminhos de migração
+- **THEN** o pacote global pode ser atualizado, mas cópias e instruções do repositório atual ficam intocadas, mesmo que coincidam com o baseline, e sua reconciliação é relatada como pendente
+
+#### Scenario: Opt-in local para caminhos delimitados
+- **WHEN** a pessoa autoriza separadamente reconciliar caminhos enumerados em um projeto identificado após inventário e comparação confiáveis
+- **THEN** apenas esses caminhos comprovadamente pertencentes ao workflow podem ser alterados, sem modificar regras não gerenciadas nem outros projetos
 
 #### Scenario: Cópia sem baseline ou projeto fechado
 - **WHEN** uma cópia existente não tem propriedade comprovável ou o projeto consumidor não foi inspecionado
@@ -64,6 +80,10 @@ A operação SHALL informar agente, escopo, SHA anterior e SHA realmente ativo a
 #### Scenario: Atualização bem-sucedida com sombra local
 - **WHEN** o pacote global é atualizado mas uma skill local ainda o sombreia
 - **THEN** o relatório mostra o novo SHA global e o conflito local pendente, sem declarar migração completa
+
+#### Scenario: Colisão com skill global legada
+- **WHEN** uma skill global `skills.sh` ocupa um caminho exigido pelo pacote gerenciado e não há migração segura autorizada
+- **THEN** o relatório distingue revisão global efetivamente ativa, conflito de integração e passos pendentes, sem declarar pacote integralmente utilizável
 
 #### Scenario: Falha antes da ativação
 - **WHEN** a atualização falha antes da troca do pacote ativo

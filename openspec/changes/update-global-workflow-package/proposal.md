@@ -8,7 +8,7 @@ A #50 entrega a instalação global íntegra para OpenCode, mas não oferece um 
 
 - Oferecer uma única invocação explícita para atualizar o pacote global completo, reutilizando `scripts/install-global` e sua cadeia de confiança, com revisão Git completa aprovada, inventário e publicação coerente.
 - Informar SHA anterior e novo efetivamente ativo, agentes, estado (`updated`, `already current`, `partial` ou `blocked`) e pendências; preservar a instalação anterior em falhas e manter a repetição da mesma revisão sem efeitos adicionais.
-- Diagnosticar instalações legadas locais/globais e sombras locais somente no projeto explicitamente identificado, sem reescrever outros repositórios; reconciliar apenas artefatos cuja propriedade seja demonstrável, preservando customizações e mostrando conflitos.
+- Diagnosticar skills globais legadas de `skills.sh` no diretório OpenCode, instalações locais e sombras no projeto identificado, sem varrer outros repositórios. O pedido global não autoriza editar cópias locais: qualquer reconciliação local exige opt-in adicional de projeto e caminhos, além de propriedade demonstrável; conflitos ficam pendentes.
 - Adaptar `update-ai-workflow` e README PT-BR/EN para encaminhar o pedido natural ao mesmo atualizador global, distinguindo instalações legadas/parciais e execução Web; publicar a sintaxe real somente após implementação/verificação.
 - Nenhuma atualização automática, upgrade de agentes/runtimes, atualização do plugin pessoal, bootstrap de OpenSpec em projetos, varredura de todos os repositórios ou reescrita de projeto fechado.
 
