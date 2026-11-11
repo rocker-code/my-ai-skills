@@ -4,6 +4,16 @@
 
 Skills and tools for issue-driven AI development. GitHub records decisions and delivery; OpenSpec structures planning and implementation.
 
+## Workflow
+
+The workflow starts with the Web agent: describe your need, and the skills inspect context and create/refine the GitHub issue. The CLI agent then receives the issue or milestone and handles planning, implementation and review.
+
+The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
+
+![AI Engineering Workflow: from an idea to a Web-authored issue, then CLI planning, implementation, validation and merge.](docs/images/fluxo-my-ai-skills.en.svg)
+
+[See the full workflow in the wiki](https://github.com/rocker-code/my-ai-skills/wiki/Workflow-guide).
+
 ## Install or update (OpenCode)
 
 Linux/macOS prerequisites: Git, Python 3.10+, `curl`, `gh`, `jq`, and OpenCode V2 on `PATH`. OpenSpec is required **to use the workflow**, but it need not be preinstalled: the installer preserves an existing CLI or installs the official standalone distribution for your user when missing. Authenticate GitHub CLI separately with `gh auth login`.
