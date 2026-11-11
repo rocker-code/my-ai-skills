@@ -538,6 +538,45 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotEqual(self.install().returncode, 0)
         directory.chmod(original_mode)
 
+    def test_update_preserves_extras_and_ignores_python_cache(self):
+        self.assertEqual(self.install().returncode, 0)
+        old = (self.data / "active").resolve()
+        cache = old / "scripts/__pycache__"
+        cache.mkdir()
+        (cache / "worktree_registry.cpython-314.pyc").write_bytes(b"cache")
+        self.assertEqual(self.install().returncode, 0)
+        extra = old / "notes.txt"
+        extra.write_text("keep me")
+        (old / "empty-extra").mkdir()
+        revision = self.next_revision()
+        result = self.install(revision=revision)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(extra), result.stdout)
+        self.assertIn("preserved:", result.stdout)
+        self.assertEqual(extra.read_text(), "keep me")
+        self.assertTrue(cache.is_dir())
+        self.assertFalse((self.data / "active/notes.txt").exists())
+        self.assertEqual((self.data / "active").resolve().name, revision)
+
+    def test_update_rejects_missing_or_modified_managed_file_with_path(self):
+        self.assertEqual(self.install().returncode, 0)
+        old = (self.data / "active").resolve()
+        path = old / "scripts/worktree-reservation"
+        original = path.read_bytes()
+        revision = self.next_revision()
+        for content in (None, b"modified"):
+            if content is None:
+                path.unlink()
+            else:
+                path.write_bytes(content)
+                path.chmod(0o755)
+            result = self.install(revision=revision)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(str(path), result.stderr)
+            self.assertEqual((self.data / "active").resolve(), old)
+            path.write_bytes(original)
+            path.chmod(0o755)
+
     def test_removed_skill_reconciliation_and_rollback(self):
         self.assertEqual(self.install().returncode, 0)
         name = "apply-issue"

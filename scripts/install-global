@@ -146,7 +146,7 @@ def manifest_for(root, revision, agents):
                                         "instructions": "AGENTS.md", "ownership": "guidance.json"}}}
 
 
-def validate_manifest(root, manifest, staged=False):
+def validate_manifest(root, manifest, staged=False, allow_extras=False):
     if (not isinstance(manifest, dict) or manifest.get("schema") != 1
             or manifest.get("origin") != ORIGIN
             or not re.fullmatch(r"[0-9a-f]{40}", manifest.get("revision", ""))
@@ -166,15 +166,27 @@ def validate_manifest(root, manifest, staged=False):
                 actual.add(path.relative_to(root).as_posix())
             else:
                 actual_dirs.add(path.relative_to(root).as_posix())
-    if actual != set(manifest["files"]) | {"manifest.json"}:
-        raise InstallError(f"Inventário incompleto ou arquivo extra: {root}")
+    expected = set(manifest["files"]) | {"manifest.json"}
+    missing = expected - actual
+    if missing:
+        raise InstallError("Arquivos gerenciados ausentes: " + ", ".join(str(root / p) for p in sorted(missing)))
     expected_dirs = manifest.get("directories")
     if expected_dirs is None:  # Legacy manifest from the previously published entrypoint.
         expected_dirs = {parent for item in manifest["files"] for parent in (
             Path(item).parents) if str(parent) != "."}
         expected_dirs = {str(parent) for parent in expected_dirs}
-    if actual_dirs != set(expected_dirs):
-        raise InstallError(f"Diretório extra/ausente: {root}")
+    missing_dirs = set(expected_dirs) - actual_dirs
+    if missing_dirs:
+        raise InstallError("Diretórios gerenciados ausentes: " + ", ".join(str(root / p) for p in sorted(missing_dirs)))
+    extras = (actual - expected) | (actual_dirs - set(expected_dirs))
+    # Only untracked cache entries are disposable; managed files always retain
+    # their hash/mode validation, even if their name resembles a cache.
+    def cache(relative):
+        path = Path(relative)
+        return "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}
+    unknown = sorted(p for p in extras if staged or not cache(p))
+    if unknown and not allow_extras:
+        raise InstallError("Entradas extras no pacote: " + ", ".join(str(root / p) for p in unknown))
     if isinstance(expected_dirs, dict):
         for relative, mode in expected_dirs.items():
             if not isinstance(mode, int) or stat.S_IMODE((root / relative).stat().st_mode) != mode:
@@ -190,6 +202,8 @@ def validate_manifest(root, manifest, staged=False):
             raise InstallError(f"Arquivo gerenciado modificado: {path}")
     if not (root / "manifest.json").is_file() or json.loads((root / "manifest.json").read_text()) != manifest:
         raise InstallError(f"Manifesto divergente: {root}")
+
+    return [str(root / p) for p in unknown]
 
 
 def guidance(data):
@@ -395,13 +409,15 @@ def install(args, *, source=ORIGIN):
             old_active = None
             prior = None
             old_manifest = None
+            preserved_extras = []
             if active.is_symlink():
                 old_active = os.readlink(active)
                 resolved = (active.parent / old_active).resolve()
                 if resolved.parent != versions.resolve() or not (resolved / "manifest.json").is_file():
                     raise InstallError("Ponteiro ativo não gerenciado.")
                 old_manifest = json.loads((resolved / "manifest.json").read_text())
-                validate_manifest(resolved, old_manifest)
+                preserved_extras = validate_manifest(
+                    resolved, old_manifest, allow_extras=resolved != target)
                 # A plausible self-declared manifest is not proof of ownership.
                 prior = fetch_snapshot(old_manifest["revision"], source, Path(directory) / "prior")
                 expected_old = manifest_for(prior, old_manifest["revision"], ["opencode"])
@@ -415,7 +431,8 @@ def install(args, *, source=ORIGIN):
             lock_entries = skill_lock(home, env)
             legacy = []
             pending = []
-            preserved = []
+            preserved = [f"entrada extra mantida na versão anterior (não migrada): {path}"
+                         for path in preserved_extras]
             for name in sorted(set(skill_names) | set(lock_entries)):
                 link = skills / name
                 if name not in skill_names:
