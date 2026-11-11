@@ -34,6 +34,8 @@ curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scrip
 
 **Both commands install the latest revision when run.** `update.sh` simply makes the intent to update explicit; it trusts current `main` and invokes the same verified installer. Neither updates in the background. Do not use `npx skills update` or the active installation's installer to update the bundle. [Details, conflicts and migration](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation).
 
+Python caches (`__pycache__`, `.pyc`, `.pyo`) do not block updates. Extra regular files and directories are preserved in the previous version, with a notice, when switching revisions; they are not migrated. Modified or missing managed files and unexpected symlinks still block updates. The target version retains strict validation of unknown extra entries.
+
 ## Configure the Web agent project
 
 To use both skills in project conversations, make a GitHub connector or equivalent authorized integration available with access to `rocker-code/my-ai-skills` and the target repositories. Copy the block below into the **Web agent's project instructions** (ChatGPT, Claude or equivalent). It directs the agent to current GitHub instructions; it does not automatically install skills or change account settings.
