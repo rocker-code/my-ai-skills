@@ -478,16 +478,16 @@ Os auxiliares de contexto normalizam os dados atuais do GitHub para que os agent
 Em Linux/macOS, instale ou atualize sob pedido explícito para seu usuário com **um único comando**. Não é
 necessário clonar a fonte, copiar complementos nem alterar cada repositório.
 Antes de executar, confira a origem deste comando: o SHA completo da revisão
-aprovada (`1e6062f38562fe32784ff8d188313ad4ef0a153a`) e o SHA-256
+aprovada (`57733e891659174b79c772fb4f16d8b47fe6c93c`) e o SHA-256
 **literal, publicado aqui independentemente do download**
-(`7bc36e6956a42c4b634421ee8f63c8bfe60648dcc5684aba9d8a859040e0bf81`).
+(`07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1`).
 Não obtenha o hash novamente do arquivo que acabou de baixar.
 
 ```bash
 ( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
-  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/1e6062f38562fe32784ff8d188313ad4ef0a153a/scripts/install-global' -o "$tmp" &&
-  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '7bc36e6956a42c4b634421ee8f63c8bfe60648dcc5684aba9d8a859040e0bf81' &&
-  python3 "$tmp" --revision 1e6062f38562fe32784ff8d188313ad4ef0a153a --agent opencode )
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/57733e891659174b79c772fb4f16d8b47fe6c93c/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1' &&
+  python3 "$tmp" --revision 57733e891659174b79c772fb4f16d8b47fe6c93c --agent opencode )
 ```
 
 Requisitos externos: Git, Python 3.10+ POSIX, `curl`, `gh`, `jq` e OpenCode V2

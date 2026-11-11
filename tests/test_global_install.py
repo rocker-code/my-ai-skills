@@ -366,8 +366,8 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "1e6062f38562fe32784ff8d188313ad4ef0a153a"
-        published = "7bc36e6956a42c4b634421ee8f63c8bfe60648dcc5684aba9d8a859040e0bf81"
+        revision = "57733e891659174b79c772fb4f16d8b47fe6c93c"
+        published = "07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1"
         self.assertEqual(hashlib.sha256(ENTRY.read_bytes()).hexdigest(), published)
         for readme in ("README.md", "README.en.md"):
             text = (ROOT / readme).read_text()
@@ -386,7 +386,7 @@ class GlobalInstallTests(unittest.TestCase):
         # The immutable Git object exists locally before the feature branch is
         # published. Substitute only the download and remote transports; run
         # the README command itself and its independent digest gate unchanged.
-        revision = "1e6062f38562fe32784ff8d188313ad4ef0a153a"
+        revision = "57733e891659174b79c772fb4f16d8b47fe6c93c"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
                         f"case \"$2\" in *{revision}/scripts/install-global) ;; *) exit 2;; esac\n"
