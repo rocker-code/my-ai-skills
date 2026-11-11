@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+# skills.sh installs only each skill directory, so shared protocol and
+# templates a skill links to must be copied into that skill.
+bundle_reference() {
+  local skill=$1
+  local source=$2
+  local target_dir="$repo_root/skills/$skill/references"
+
+  [[ -f "$repo_root/$source" ]] || {
+    echo "error: reference source not found: $repo_root/$source" >&2
+    exit 1
+  }
+  [[ -d "$repo_root/skills/$skill" ]] || {
+    echo "error: skill directory not found: $repo_root/skills/$skill" >&2
+    exit 1
+  }
+  mkdir -p "$target_dir"
+  install -m 0644 "$repo_root/$source" "$target_dir/$(basename "$source")"
+}
+
+bundle_reference contract-handoff templates/github/integration-contract.md
+bundle_reference issue-explore templates/github/question.md
+bundle_reference milestone-orchestrator protocol/AI_WORKFLOW.md
+bundle_reference milestone-progress protocol/AI_WORKFLOW.md
+for skill in milestone-orchestrator milestone-progress implement-issue apply-issue prepare-pr github-resolution address-pr-review; do
+  bundle_reference "$skill" protocol/WORKTREES.md
+done
+bundle_reference post-pr-audit protocol/REVIEW_POLICY.md
+bundle_reference pr-audit protocol/REVIEW_POLICY.md
+bundle_reference prepare-pr templates/pull-request.md
+bundle_reference resolve-questions templates/github/decision.md
+
+for skill in chatgpt-web-create-issue chatgpt-web-refine-issue; do
+  bundle_reference "$skill" protocol/CHATGPT_WEB_ISSUES.md
+  bundle_reference "$skill" protocol/VISUAL_ARTIFACTS.md
+done
+
+bundle_reference issue-audit protocol/CI_PERFORMANCE.md
+bundle_reference implement-issue protocol/CI_PERFORMANCE.md
+bundle_reference apply-issue protocol/CI_PERFORMANCE.md
+bundle_reference prepare-pr protocol/CI_PERFORMANCE.md
+bundle_reference pr-audit protocol/CI_PERFORMANCE.md
+bundle_reference post-pr-audit protocol/CI_PERFORMANCE.md
+bundle_reference kaizen protocol/CI_PERFORMANCE.md
+bundle_reference milestone-orchestrator protocol/CI_PERFORMANCE.md
+bundle_reference github-resolution protocol/CI_PERFORMANCE.md
+bundle_reference ci-performance-audit protocol/CI_PERFORMANCE.md
+bundle_reference optimize-ci protocol/CI_PERFORMANCE.md
+
+for skill in implement-issue openspec-workflow apply-issue prepare-pr pr-audit post-pr-audit address-pr-review milestone-orchestrator; do
+  bundle_reference "$skill" protocol/TEST_STRATEGY.md
+done
+
+bundle_reference optimize-ci skills/ci-performance-audit/references/magento.md
+
+echo "Synchronized skill references"

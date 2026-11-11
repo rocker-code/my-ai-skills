@@ -7,8 +7,8 @@ context: |
   Project: AI Engineering Workflow (rocker-code/my-ai-skills) — reusable agent
   skills, shared protocol documents and helper scripts.
   Sources of truth: skills/*/SKILL.md, protocol/*.md, scripts/, templates/.
-  plugins/my-ai-skills/ is a generated distribution; regenerate it with
-  scripts/sync-plugin instead of editing it by hand.
+  Shared references under skills/*/references/ are generated from official
+  sources with scripts/sync-skill-references, independently of any plugin.
   Tests: python3 -m unittest discover -s tests (plus targeted helper tests).
   README.md (pt-BR) and README.en.md must stay in parity.
 

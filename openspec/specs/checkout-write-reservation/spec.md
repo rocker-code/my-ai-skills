@@ -209,7 +209,7 @@ Antes de publicar candidatos, o helper MUST revalidar posse/identidade/ausência
 - **THEN** a limpeza aplicada preserva `.venv/` e remove somente o bytecode elegível de `scripts/`
 
 ### Requirement: Helpers não criam bytecode que bloqueie o fluxo
-Os helpers Python distribuídos SHALL executar sem gravar bytecode dos seus módulos, inclusive futuros helpers distribuídos por `scripts/sync-plugin`, e o repositório MUST ignorar `__pycache__/` e `*.py[co]`. Arquivo gerado conhecido MUST NOT exigir decisão de produto para seguir com atualização de `main`.
+Os helpers Python oficiais distribuídos SHALL executar sem gravar bytecode dos seus módulos, inclusive futuros helpers oficiais, e o repositório MUST ignorar `__pycache__/` e `*.py[co]`. Arquivo gerado conhecido MUST NOT exigir decisão de produto para seguir com atualização de `main`.
 
 #### Scenario: Executar helpers e testes
 - **WHEN** os helpers são executados sem `PYTHONDONTWRITEBYTECODE` e a suíte de testes roda
