@@ -197,6 +197,9 @@ class GlobalInstallTests(unittest.TestCase):
                 config.write_text("schema: spec-driven\n# custom configuration\n")
                 before = (spec.read_bytes(), config.read_bytes())
             self.assertEqual(self.install(env=env).returncode, 0)
+            guidance = (self.home / ".config/opencode/AGENTS.md").read_text()
+            self.assertIn("openspec-apply-change/SKILL.md", guidance)
+            self.assertIn("openspec-archive-change/SKILL.md", guidance)
             # Installation never bootstraps a repository implicitly.
             self.assertFalse((repo / ".opencode").exists())
             context = call(str(self.bin / "openspec"), "context", "--json", cwd=repo, env=env)

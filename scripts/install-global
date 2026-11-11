@@ -149,8 +149,11 @@ Estado, reservas, logs e evidências continuam no Git common dir do checkout.
 OpenSpec no primeiro uso: antes de propor/aplicar, confira `openspec context --json`
 e `openspec list --json` no root pretendido e os arquivos REAIS do perfil
 OpenCode: .opencode/commands/opsx-{{explore,propose,apply,archive}}.md e
-.opencode/skills/openspec-{{explore,propose,apply,archive}}/SKILL.md (considere
-também o perfil configurado e todos os comandos/skills que ele exige).
+.opencode/skills/openspec-explore/SKILL.md,
+.opencode/skills/openspec-propose/SKILL.md,
+.opencode/skills/openspec-apply-change/SKILL.md e
+.opencode/skills/openspec-archive-change/SKILL.md (considere também o perfil
+configurado e todos os comandos/skills que ele exige).
 Não execute init/update durante instalação global nem sem autorização.
 Novo projeto: confirme root e inventarie resíduos .opencode/, .agents/,
 .claude/, instruções marcadas e prompts opsx-* no HOME; se houver impacto,
