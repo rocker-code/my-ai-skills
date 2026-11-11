@@ -11,15 +11,15 @@ Linux/macOS prerequisites: Git, Python 3.10+, `curl`, `gh`, `jq`, and OpenCode V
 Run the installer directly from GitHub:
 
 ```bash
-bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh'
+curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh
 ```
 
-The script downloads a pinned installer, checks its SHA-256, and only then executes it. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
+The script downloads a pinned installer, checks its SHA-256, and only then executes it. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
 
 To **update to the latest `main` revision**, run this only when you want an update:
 
 ```bash
-bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/update.sh | sh'
+curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/update.sh | sh
 ```
 
 `update.sh` trusts current `main` and calls the installer with the resolved revision; the installer's entrypoint SHA-256 check remains in place. It does not verify the launcher itself when fetched from `main`. **Re-running `install.sh` does not automatically fetch the latest revision.** Do not use `npx skills update` or the active installation's installer to update the bundle. [Details, conflicts and migration](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation).
