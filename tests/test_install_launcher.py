@@ -83,8 +83,7 @@ class LauncherTests(unittest.TestCase):
                               text=True, capture_output=True, cwd=self.temp.name, env=env or self.env)
 
     def test_default_and_explicit_update(self):
-        for revision in (REVISION, "a" * 40):
-            args = () if revision == REVISION else ("--revision", revision)
+        for revision, args in (("a" * 40, ()), (REVISION, ("--revision", REVISION))):
             result = self.run_launcher(*args)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Post-install verification passed", result.stdout)
@@ -100,6 +99,13 @@ class LauncherTests(unittest.TestCase):
             result = self.run_launcher(env={**self.env, **changes})
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(self.log.exists())
+
+    def test_install_requires_a_valid_latest_main(self):
+        for changes in ({"FAKE_MAIN_REVISION": "not-a-sha"}, {"GIT_FAIL": "1"}):
+            result = self.run_launcher(env={**self.env, **changes})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(self.log.exists())
+            self.assertFalse(Path(self.env["CURL_LOG"]).exists())
 
     def test_invalid_revision_does_not_download(self):
         for args in (("--revision", "main"), ("--revision", "b" * 39),

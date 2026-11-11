@@ -14,7 +14,7 @@ Run the installer directly from GitHub:
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh
 ```
 
-The script downloads a pinned installer, checks its SHA-256, and only then executes it. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
+The script installs the latest `main` revision. It downloads a pinned **installer**, checks its SHA-256, and then uses it to install the current revision. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
 
 To **update to the latest `main` revision**, run this only when you want an update:
 
@@ -22,7 +22,7 @@ To **update to the latest `main` revision**, run this only when you want an upda
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/update.sh | sh
 ```
 
-`update.sh` trusts current `main` and calls the installer with the resolved revision; the installer's entrypoint SHA-256 check remains in place. It does not verify the launcher itself when fetched from `main`. **Re-running `install.sh` does not automatically fetch the latest revision.** Do not use `npx skills update` or the active installation's installer to update the bundle. [Details, conflicts and migration](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation).
+**Both commands install the latest revision when run.** `update.sh` simply makes the intent to update explicit; it trusts current `main` and invokes the same verified installer. Neither updates in the background. Do not use `npx skills update` or the active installation's installer to update the bundle. [Details, conflicts and migration](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation).
 
 ## Use
 

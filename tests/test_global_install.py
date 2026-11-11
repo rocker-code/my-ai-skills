@@ -400,6 +400,10 @@ class GlobalInstallTests(unittest.TestCase):
         curl.chmod(0o755)
         git = self.bin / "git"
         git.write_text("#!/bin/sh\n"
+                       "if [ \"$1\" = ls-remote ] && [ \"$2\" = --exit-code ]; then\n"
+                       f"  printf '%s\\trefs/heads/main\\n' {revision}\n"
+                       "  exit 0\n"
+                       "fi\n"
                        "if [ \"$3\" = remote ] && [ \"$4\" = add ] && [ \"$5\" = origin ]; then\n"
                        f"  exec /usr/bin/git \"$1\" \"$2\" remote add origin {str(ROOT)!r}\n"
                        "fi\nexec /usr/bin/git \"$@\"\n")

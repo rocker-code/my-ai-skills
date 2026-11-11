@@ -5,21 +5,29 @@ set -eu
 
 entry_revision=57733e891659174b79c772fb4f16d8b47fe6c93c
 entry_sha256=07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1
-revision=$entry_revision
 
-if [ "$#" -ne 0 ]; then
+if [ "$#" -eq 0 ]; then
+    ref=refs/heads/main
+    result=$(git ls-remote --exit-code https://github.com/rocker-code/my-ai-skills.git "$ref")
+    set -- $result
+    if [ "$#" -ne 2 ] || [ "$2" != "$ref" ]; then
+        echo 'Could not resolve the current main revision.' >&2
+        exit 1
+    fi
+    revision=$1
+else
     if [ "$#" -ne 2 ] || [ "$1" != --revision ]; then
         echo 'Usage: sh install.sh [--revision FULL_GIT_SHA]' >&2
         exit 2
     fi
     revision=$2
-    case "$revision" in
-        *[!0-9a-f]*) echo 'Revision must be a full lowercase Git SHA.' >&2; exit 2 ;;
-    esac
-    if [ "${#revision}" -ne 40 ]; then
-        echo 'Revision must be a full 40-character Git SHA.' >&2
-        exit 2
-    fi
+fi
+case "$revision" in
+    *[!0-9a-f]*) echo 'Revision must be a full lowercase Git SHA.' >&2; exit 2 ;;
+esac
+if [ "${#revision}" -ne 40 ]; then
+    echo 'Revision must be a full 40-character Git SHA.' >&2
+    exit 2
 fi
 
 tmp=$(mktemp)

@@ -1,6 +1,6 @@
 #!/bin/sh
-# Explicitly update to the current main revision. This trusts the latest
-# repository content, unlike the pinned entrypoint in install.sh.
+# Explicitly update to the current main revision via the same verified
+# installer entrypoint used by install.sh.
 set -eu
 
 origin=https://github.com/rocker-code/my-ai-skills.git
