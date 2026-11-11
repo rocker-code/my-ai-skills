@@ -24,7 +24,7 @@ O GitHub é a fonte de verdade. Decisões relevantes devem ficar em uma issue, P
 - [Scripts auxiliares](#scripts-auxiliares)
 - [Métricas de tempo](#métricas-de-tempo)
 - [Instalação passo a passo](#instalação-passo-a-passo)
-- [Instalar como plugin pessoal](#instalar-como-plugin-pessoal-do-chatgptcodex)
+- [Manter referências das skills](#manter-referências-das-skills)
 - [Cuidar de uma issue](#cuidar-de-uma-issue)
 - [Regras de milestones](#regras-de-milestones)
 - [Fluxo entre repositórios](#fluxo-entre-repositórios)
@@ -590,7 +590,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 Exemplo: `.ai-workflow/scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest discover -s tests` emite um ID antes de executar e armazena o log no diretório Git comum. `verify <id> --format json` confere HEAD, index/diff, configuração e identificadores de ambiente declarados; `export <id> --output bundle.tar.gz` e `import bundle.tar.gz` transportam logs entre clones. Declare `--env-id NAME=ID` não secreto para cada perfil relevante (não use valores de env/credenciais), e `--report`/`--output-dir` para saídas. `publish <id> --issue URL` publica apenas metadados: comentários locais sem pacote não são prova completa. Revise pacotes antes de compartilhá-los; `prune --older-than 30` apenas simula até `--yes`. O gate local final deve ser registrado e verificado no HEAD limpo depois do commit de archive/preparação da PR; seu ID fica fora do commit e qualquer commit seguinte exige novo gate. O helper não substitui a reserva de checkout nem testes obrigatórios.
 Saídas declaradas não podem excluir código rastreado. Um registro local aprovado sem gate tipado (`required_gate: null`) pode ser inspecionado como `verified/passed`, mas sua obrigação é `not_required` e `verify` retorna 3: isso não comprova gate local obrigatório. Só gate local tipado no HEAD final limpo pode satisfazê-lo; confirme antes a exigência independentemente na política do repositório, não no manifesto, seleção ou status declarados pelo produtor importado. O checksum do pacote prova a integridade do transporte, não a confiabilidade das alegações do produtor. Uma projeção pública hospedada confirma apenas a execução: `verify <id> --from-github <URL> --base-branch main --hosted-obligation <ID>` exige vínculo independente à política protegida e ao job/check do run; sem obrigação ou vínculo, o exit code é 3. O vínculo atual suporta branch protection com checks; se a política depender só de rulesets ou a API não confirmar a origem do check, o gate permanece pendente. Importação limita a expansão do pacote (256 MiB no total, 64 MiB por membro, 1024 membros).
 
-`scripts/sync-plugin` mantém o pacote deste repositório. Não o instale como auxiliar de execução da aplicação.
+`scripts/sync-skill-references` mantém as referências das skills neste repositório. Não o instale como auxiliar de execução da aplicação.
 
 As referências embarcadas nas skills já contêm os protocolos e modelos aplicáveis. As cópias no projeto tornam essas regras e ferramentas acessíveis à equipe; copiá-las, por si só, não registra skills no agente.
 
@@ -666,31 +666,15 @@ git -C "$MY_AI_SKILLS_SOURCE" pull --ff-only
 
 Depois repita a etapa 2 para o agente/escopo escolhido e a etapa 5 para os arquivos copiados. Revise as diferenças antes do commit: a cópia sobrescreve os arquivos gerenciados, portanto mantenha acréscimos específicos do projeto em arquivos separados. Revise mudanças de protocolo junto às referências embarcadas. Em um novo terminal, defina `MY_AI_SKILLS_SOURCE` novamente com o caminho do clone existente.
 
-## Instalar como plugin pessoal do ChatGPT/Codex
+## Manter referências das skills
 
-O repositório também contém um plugin independente de skills em `plugins/my-ai-skills` e um catálogo em `.agents/plugins/marketplace.json`.
-
-Adicione o catálogo uma vez:
+Os diretórios `skills/`, `protocol/`, `templates/` e os scripts auxiliares na raiz continuam sendo as fontes oficiais usadas pelo `skills.sh`. Skills que referenciam protocolos ou modelos compartilhados recebem uma cópia gerada em seu próprio diretório `references/`, pois `skills.sh` instala apenas o diretório da skill. Após alterar as fontes oficiais, regenere as referências sem depender de plugin:
 
 ```bash
-codex plugin marketplace add rocker-code/my-ai-skills --ref main
+scripts/sync-skill-references
 ```
 
-Instale o plugin:
-
-```bash
-codex plugin add my-ai-skills@rocker-code-ai
-```
-
-No aplicativo desktop do ChatGPT, reinicie o app, abra o diretório de plugins, selecione o catálogo **Rocker Code AI** e instale **Rocker Code AI Workflow**. Abra uma nova conversa após a instalação para carregar as skills.
-
-O plugin é pessoal e não precisa ser enviado ao diretório público. Publicá-lo em um espaço de trabalho do ChatGPT é uma ação administrativa separada.
-
-Os diretórios `skills/`, `protocol/`, `templates/` e os scripts auxiliares na raiz continuam sendo a fonte oficial usada pelo `skills.sh`. Suas cópias em `plugins/my-ai-skills/` formam o pacote independente do plugin. Skills que referenciam protocolos ou modelos compartilhados recebem uma cópia gerada em seu próprio diretório `references/`, pois `skills.sh` instala apenas o diretório da skill. Após alterar arquivos oficiais, regenere as cópias e sincronize o pacote:
-
-```bash
-scripts/sync-plugin
-```
+A antiga distribuição como plugin pessoal ChatGPT/Codex foi descontinuada neste repositório. Instale as skills oficiais pelo procedimento acima; instalações pessoais antigas não são desinstaladas automaticamente. O suporte às skills Codex e ao fluxo ChatGPT Web permanece disponível.
 
 ## Cuidar de uma issue
 
@@ -736,7 +720,7 @@ Os comandos existentes de fila e milestone encaminham automaticamente o trabalho
 
 Não é necessária invocação manual. Issues de desempenho acionam diagnóstico/planejamento; mudanças relevantes em fluxos, massas de teste, preparação do ambiente ou seleção de testes acionam revisão proporcional; kaizen diagnostica lentidão recorrente comprovada. Adições comuns de testes recebem uma verificação leve, não uma medição hospedada obrigatória. Autoridade de agendamento e merge continua com o orquestrador e as skills de revisão.
 
-Consulte [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md). Compare tempo decorrido, minutos de execução e comprovação de comportamento; uma pipeline verde e mais rápida, sozinha, não comprova melhoria. Orientações específicas de Magento estão embarcadas em ci-performance-audit. Alterações nas fontes são sincronizadas ao plugin por `scripts/sync-plugin`.
+Consulte [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md). Compare tempo decorrido, minutos de execução e comprovação de comportamento; uma pipeline verde e mais rápida, sozinha, não comprova melhoria. Orientações específicas de Magento estão embarcadas em ci-performance-audit. Após alterar fontes compartilhadas, regenere as referências com `scripts/sync-skill-references`.
 
 ## Referências e agradecimentos
 

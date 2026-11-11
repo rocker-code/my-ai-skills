@@ -24,7 +24,7 @@ GitHub is the source of truth. Material decisions must end up in an issue, PR, a
 - [Helper scripts](#helper-scripts)
 - [Timing metrics](#workflow-timing-metrics)
 - [Step-by-step installation](#step-by-step-installation)
-- [Install as a personal plugin](#install-as-a-personal-chatgptcodex-plugin)
+- [Maintain skill references](#maintain-skill-references)
 - [Taking care of one issue](#taking-care-of-one-issue)
 - [Milestone operating rules](#milestone-operating-rules)
 - [Cross-repository flow](#recommended-cross-repository-flow)
@@ -591,7 +591,7 @@ chmod +x .ai-workflow/scripts/issue-context \
 Example: `.ai-workflow/scripts/workflow-evidence record --obligation T1:src/** --selection tests/ -- python3 -m unittest discover -s tests` emits an ID before execution and stores its log in the Git common directory. `verify <id> --format json` checks HEAD, index/diff, configuration and declared environment IDs; `export <id> --output bundle.tar.gz` and `import bundle.tar.gz` move logs between clones. Declare a non-secret `--env-id NAME=ID` for each relevant profile (never use environment values or credentials) and `--report`/`--output-dir` for generated outputs. `publish <id> --issue URL` posts metadata only: a local comment without the package is not complete proof. Review packages before sharing; `prune --older-than 30` only previews until `--yes`. Record and verify the final local gate at the clean HEAD after the archive/PR-preparation commit; its ID stays outside the commit and any subsequent commit requires a fresh gate. This helper does not replace checkout reservations or required tests.
 Declared outputs cannot exclude tracked code. A passing untyped (`required_gate: null`) local record is inspectable as `verified/passed`, but its obligation is `not_required` and `verify` exits 3: it does not establish a required local gate. Only a typed local gate on a clean final HEAD can satisfy that gate; first confirm the requirement independently from repository policy, not from an imported producer's manifest, selection, or status claims. An imported bundle's checksum proves transport integrity, not that its producer's claims are trustworthy. A public hosted projection confirms only the execution: `verify <id> --from-github <URL> --base-branch main --hosted-obligation <ID>` requires independent binding to protected policy and the run's job/check; without an obligation or binding, it exits 3. Binding currently supports branch protection checks; a ruleset-only policy or unconfirmable check source leaves the gate pending. Import limits expanded packages (256 MiB total, 64 MiB per member, 1024 members).
 
-`scripts/sync-plugin` is a package-maintenance tool for this repository. Do not install it as an application runtime helper.
+`scripts/sync-skill-references` maintains skill references in this repository. Do not install it as an application runtime helper.
 
 The bundled skill references already contain the applicable protocols/templates. These project copies make the shared rules and helpers accessible to the team; copying them alone does not register skills with an agent.
 
@@ -667,31 +667,15 @@ git -C "$MY_AI_SKILLS_SOURCE" pull --ff-only
 
 Then repeat step 2 for the chosen agent/scope and step 5 for the copied files. Review the diff before committing updates: copying overwrites those managed copies, so keep project-specific additions in separate files. Review protocol changes and their bundled skill references together. In a new terminal, set `MY_AI_SKILLS_SOURCE` again to your existing clone path.
 
-## Install as a personal ChatGPT/Codex plugin
+## Maintain skill references
 
-The repository also contains a self-contained skills-only plugin at `plugins/my-ai-skills` and a repository marketplace at `.agents/plugins/marketplace.json`.
-
-Add the marketplace once:
+The root `skills/`, `protocol/`, `templates/`, and helper scripts remain the canonical sources used by `skills.sh`. Skills that link to shared protocol or templates carry a generated copy in their own `references/` directory, because `skills.sh` installs only each skill directory. After changing canonical sources, regenerate references without depending on a plugin:
 
 ```bash
-codex plugin marketplace add rocker-code/my-ai-skills --ref main
+scripts/sync-skill-references
 ```
 
-Install the plugin:
-
-```bash
-codex plugin add my-ai-skills@rocker-code-ai
-```
-
-In the ChatGPT desktop app, restart the app, open the Plugins Directory, select the **Rocker Code AI** marketplace, and install **Rocker Code AI Workflow**. Start a new conversation after installation so the skills are loaded.
-
-The plugin is personal and does not need to be submitted to the public directory. Publishing it to a ChatGPT workspace is a separate administrative action.
-
-The root `skills/`, `protocol/`, `templates/`, and helper scripts remain the canonical source used by `skills.sh`. Their copies inside `plugins/my-ai-skills/` form the self-contained plugin package. Skills that link to shared protocol or templates carry a generated copy in their own `references/` directory, because `skills.sh` installs only each skill directory. After changing canonical files, regenerate those copies and synchronize the package with:
-
-```bash
-scripts/sync-plugin
-```
+The former personal ChatGPT/Codex plugin distribution is discontinued in this repository. Install the official skills using the instructions above; existing personal installations are not automatically uninstalled. Codex skills and the ChatGPT Web workflow remain available.
 
 ## Taking care of one issue
 
@@ -737,7 +721,7 @@ The existing queue and milestone commands automatically route relevant work to t
 
 No manual skill invocation is required. Performance issues trigger diagnosis/planning; material workflow, fixture, setup or test-selection changes trigger proportional review; kaizen diagnoses evidenced recurring slowdown. Ordinary test additions receive a lightweight check, not a mandatory hosted benchmark. Scheduling and merge authority remain with the existing orchestrator and review skills.
 
-Read [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md). Compare elapsed time, runner-minutes and behavioral proof; a faster green pipeline alone does not prove improvement. Magento-specific guidance is bundled with ci-performance-audit. Source changes are synchronized to the plugin by `scripts/sync-plugin`.
+Read [CI_PERFORMANCE.md](protocol/CI_PERFORMANCE.md). Compare elapsed time, runner-minutes and behavioral proof; a faster green pipeline alone does not prove improvement. Magento-specific guidance is bundled with ci-performance-audit. After changing shared sources, regenerate references with `scripts/sync-skill-references`.
 
 ## References and acknowledgments
 

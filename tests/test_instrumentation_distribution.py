@@ -1,4 +1,4 @@
-"""The generated plugin mirrors the maintained scripts and references."""
+"""Shared skill references are generated without the personal plugin."""
 import hashlib
 from pathlib import Path
 import shutil
@@ -7,7 +7,27 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN = ROOT / "plugins/my-ai-skills"
+REFERENCES = {
+    "contract-handoff": ("templates/github/integration-contract.md",),
+    "issue-explore": ("templates/github/question.md",),
+    "milestone-orchestrator": ("protocol/AI_WORKFLOW.md", "protocol/WORKTREES.md", "protocol/CI_PERFORMANCE.md", "protocol/TEST_STRATEGY.md"),
+    "milestone-progress": ("protocol/AI_WORKFLOW.md", "protocol/WORKTREES.md"),
+    "implement-issue": ("protocol/WORKTREES.md", "protocol/CI_PERFORMANCE.md", "protocol/TEST_STRATEGY.md"),
+    "apply-issue": ("protocol/WORKTREES.md", "protocol/CI_PERFORMANCE.md", "protocol/TEST_STRATEGY.md"),
+    "prepare-pr": ("protocol/WORKTREES.md", "templates/pull-request.md", "protocol/CI_PERFORMANCE.md", "protocol/TEST_STRATEGY.md"),
+    "github-resolution": ("protocol/WORKTREES.md", "protocol/CI_PERFORMANCE.md"),
+    "address-pr-review": ("protocol/WORKTREES.md", "protocol/TEST_STRATEGY.md"),
+    "post-pr-audit": ("protocol/REVIEW_POLICY.md", "protocol/CI_PERFORMANCE.md", "protocol/TEST_STRATEGY.md"),
+    "pr-audit": ("protocol/REVIEW_POLICY.md", "protocol/CI_PERFORMANCE.md", "protocol/TEST_STRATEGY.md"),
+    "resolve-questions": ("templates/github/decision.md",),
+    "chatgpt-web-create-issue": ("protocol/CHATGPT_WEB_ISSUES.md", "protocol/VISUAL_ARTIFACTS.md"),
+    "chatgpt-web-refine-issue": ("protocol/CHATGPT_WEB_ISSUES.md", "protocol/VISUAL_ARTIFACTS.md"),
+    "issue-audit": ("protocol/CI_PERFORMANCE.md",),
+    "kaizen": ("protocol/CI_PERFORMANCE.md",),
+    "ci-performance-audit": ("protocol/CI_PERFORMANCE.md",),
+    "optimize-ci": ("protocol/CI_PERFORMANCE.md", "skills/ci-performance-audit/references/magento.md"),
+    "openspec-workflow": ("protocol/TEST_STRATEGY.md",),
+}
 
 
 def digest_tree(directory):
@@ -16,35 +36,51 @@ def digest_tree(directory):
 
 
 class DistributionTests(unittest.TestCase):
-    def test_sync_twice_is_idempotent(self):
+    def checkout(self, root):
+        (root / "scripts").mkdir()
+        shutil.copy2(ROOT / "scripts/sync-skill-references", root / "scripts")
+        for name in ("skills", "protocol", "templates"):
+            shutil.copytree(ROOT / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))
+        self.assertFalse((root / "plugins").exists())
+
+    def run_sync(self, root):
+        return subprocess.run(["bash", str(root / "scripts/sync-skill-references")],
+                              capture_output=True, text=True, timeout=30)
+
+    def test_sync_twice_is_idempotent_and_matches_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for name in ("scripts", "skills", "protocol", "templates"):
-                shutil.copytree(ROOT / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))
-            scaffold = root / "plugins/my-ai-skills/.codex-plugin"
-            scaffold.mkdir(parents=True)
-            shutil.copy2(PLUGIN / ".codex-plugin/plugin.json", scaffold)
-            first = None
-            for _ in range(2):
-                subprocess.run(["bash", str(root / "scripts/sync-plugin")], check=True, capture_output=True, timeout=30)
-                current = digest_tree(root / "plugins/my-ai-skills")
-                if first is not None:
-                    self.assertEqual(first, current)
-                first = current
-            self.assertFalse(any("milestone_monitor" in path or "opencode-observer" in path or "aew" in path for path in first))
+            self.checkout(root)
+            for skill, sources in REFERENCES.items():
+                for source in sources:
+                    (root / "skills" / skill / "references" / Path(source).name).unlink(missing_ok=True)
+            result = self.run_sync(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for skill, sources in REFERENCES.items():
+                for source in sources:
+                    with self.subTest(skill=skill, source=source):
+                        self.assertEqual((root / source).read_bytes(),
+                                         (root / "skills" / skill / "references" / Path(source).name).read_bytes())
+            first = digest_tree(root)
+            result = self.run_sync(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(first, digest_tree(root))
+            self.assertFalse((root / "plugins").exists())
 
-    def test_generated_modules_and_references_match(self):
-        for name in ("workflow_events.py",):
-            self.assertEqual((ROOT / "scripts" / name).read_bytes(), (PLUGIN / "scripts" / name).read_bytes())
-        for skill in (ROOT / "skills").iterdir():
-            if (skill / "SKILL.md").exists():
-                self.assertEqual((skill / "SKILL.md").read_bytes(), (PLUGIN / "skills" / skill.name / "SKILL.md").read_bytes())
-        for file in PLUGIN.rglob("*"):
-            self.assertNotIn(file.name, ("node_modules", ".env", "__pycache__"))
+    def test_missing_source_fails_explicitly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.checkout(root)
+            (root / "protocol/CHATGPT_WEB_ISSUES.md").unlink()
+            result = self.run_sync(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("reference source not found:", result.stderr)
+            self.assertIn("protocol/CHATGPT_WEB_ISSUES.md", result.stderr)
+            self.assertNotIn("Synchronized skill references", result.stdout)
 
-    def test_distributed_workflow_commands(self):
+    def test_official_workflow_commands(self):
         with tempfile.TemporaryDirectory() as directory:
             for command in (("workflow-event", "new-run-id"), ("workflow-report", "--help")):
-                result = subprocess.run([str(PLUGIN / "scripts" / command[0]), *command[1:]],
+                result = subprocess.run([str(ROOT / "scripts" / command[0]), *command[1:]],
                                         capture_output=True, text=True, timeout=10, cwd=directory)
                 self.assertEqual(result.returncode, 0, result.stderr)
