@@ -1,5 +1,6 @@
 """Offline distribution tests: every installation uses a disposable HOME."""
 import hashlib
+import errno
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,9 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
+import importlib.machinery
+import types
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRY = ROOT / "scripts/install-global"
@@ -33,7 +37,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_DATA_HOME": str(self.home / ".local/share"),
                      "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
-                     "PYTHONDONTWRITEBYTECODE": "1", "MY_AI_SKILLS_TEST_SOURCE": "1"}
+                     "PYTHONDONTWRITEBYTECODE": "1"}
         self.source = self.root / "source with spaces"
         self.source.mkdir()
         for name in ("skills", "scripts", "protocol", "templates"):
@@ -49,8 +53,15 @@ class GlobalInstallTests(unittest.TestCase):
         return result
 
     def install(self, *extra, revision=None, env=None):
-        return call("python3", str(ENTRY), "--revision", revision or self.revision,
-                    "--agent", "opencode", "--source", str(self.source), *extra,
+        # Test-only import injects a disposable Git transport into the internal
+        # function; the actual public command has no source override.
+        runner = ("import importlib.machinery,sys; "
+                  "m=importlib.machinery.SourceFileLoader('installer',sys.argv[1]).load_module(); "
+                  "source=sys.argv[2]; sys.argv=[sys.argv[1],*sys.argv[3:]]; "
+                  "original=m.install; m.install=lambda args: original(args,source=source); "
+                  "sys.exit(m.main())")
+        return call("python3", "-c", runner, str(ENTRY), str(self.source),
+                    "--revision", revision or self.revision, "--agent", "opencode", *extra,
                     env=env or self.env, timeout=90)
 
     @property
@@ -171,9 +182,128 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual((project / "AGENTS.md").read_text(), "# Local custom rules\n")
         self.assertTrue(list((self.data / "migration-backups").iterdir()))
 
+    def test_local_only_package_collisions_and_custom_precedence(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        for name in ("openspec-apply-change", "completely-unrelated", "apply-issue"):
+            local = project / ".opencode/skills" / name
+            local.mkdir(parents=True)
+            (local / "SKILL.md").write_text("custom\n")
+        result = self.install("--project", str(project))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("state=partial", result.stdout)
+        self.assertIn("precedência local sobre global", result.stdout)
+        self.assertIn("apply-issue", result.stdout)
+        self.assertNotIn("openspec-apply-change", result.stdout)
+        self.assertNotIn("completely-unrelated", result.stdout)
+
+    def test_backup_symlink_and_ancestor_are_rejected_without_moves(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        local = project / ".opencode/skills/apply-issue"
+        local.parent.mkdir(parents=True)
+        shutil.copytree(self.data / "active/skills/apply-issue", local)
+        outside = self.root / "outside"
+        outside.mkdir()
+        backups = self.data / "migration-backups"
+        backups.symlink_to(outside)
+        result = self.install("--project", str(project), "--reconcile-path",
+                              ".opencode/skills/apply-issue")
+        self.assertIn("symlink não confiável", result.stderr)
+        self.assertTrue(local.exists())
+        self.assertEqual(list(outside.iterdir()), [])
+        backups.unlink()
+        # A symlink higher in the selected project path is not authorization.
+        alias = self.root / "alias"
+        alias.symlink_to(project, target_is_directory=True)
+        result = self.install("--project", str(alias), "--reconcile-path",
+                              ".opencode/skills/apply-issue")
+        self.assertIn("symlink", result.stderr)
+        self.assertTrue(local.exists())
+
+    def test_project_symlink_parent_and_modified_root_mode(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        local = project / ".opencode/skills/apply-issue"
+        local.parent.mkdir(parents=True)
+        shutil.copytree(self.data / "active/skills/apply-issue", local)
+        mode = local.stat().st_mode & 0o777
+        local.chmod(0o700 if mode != 0o700 else 0o755)
+        result = self.install("--project", str(project), "--reconcile-path",
+                              ".opencode/skills/apply-issue")
+        self.assertIn("sem baseline", result.stderr)
+        self.assertTrue(local.exists())
+        alias = self.root / "alias"
+        alias.symlink_to(project, target_is_directory=True)
+        child = project / "child"
+        child.mkdir()
+        result = self.install("--project", str(alias / "child"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("symlink não confiável", result.stderr)
+        self.assertTrue(local.exists())
+        ambiguous = self.install("--project", str(alias / "child/../child"))
+        self.assertIn("percurso ambíguo", ambiguous.stderr)
+
+    def test_cross_device_preflight_refuses_all_migrations(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        for name in ("apply-issue", "prepare-pr"):
+            local = project / ".opencode/skills" / name
+            local.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(self.data / "active/skills" / name, local)
+        module = importlib.machinery.SourceFileLoader("installer_cross_device", str(ENTRY)).load_module()
+        real_stat = Path.stat
+        parent = project / ".opencode/skills"
+        def cross_device(path, *args, **kwargs):
+            result = real_stat(path, *args, **kwargs)
+            if path == parent:
+                # Preserve all stat fields except st_dev to simulate a mount.
+                values = list(result)
+                values[2] += 1
+                return os.stat_result(values)
+            return result
+        args = types.SimpleNamespace(agent=["opencode"], revision=self.revision,
+                                     migrate_global_skill=[], project=str(project),
+                                     baseline_revision=None,
+                                     reconcile_path=[".opencode/skills/apply-issue", ".opencode/skills/prepare-pr"])
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(Path, "stat", cross_device):
+            with self.assertRaisesRegex(module.InstallError, "entre filesystems"):
+                module.install(args, source=str(self.source))
+        for name in ("apply-issue", "prepare-pr"):
+            self.assertTrue((parent / name).exists())
+        self.assertEqual(list((self.data / "migration-backups").iterdir()), [])
+
+    def test_rename_exdev_after_first_move_rolls_back(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        parent = project / ".opencode/skills"
+        parent.mkdir(parents=True)
+        for name in ("apply-issue", "prepare-pr"):
+            shutil.copytree(self.data / "active/skills" / name, parent / name)
+        module = importlib.machinery.SourceFileLoader("installer_exdev", str(ENTRY)).load_module()
+        original = Path.rename
+        def rename(path, target):
+            if path == parent / "prepare-pr":
+                raise OSError(errno.EXDEV, "cross-device link")
+            return original(path, target)
+        args = types.SimpleNamespace(agent=["opencode"], revision=self.revision,
+                                     migrate_global_skill=[], project=str(project),
+                                     baseline_revision=None,
+                                     reconcile_path=[".opencode/skills/apply-issue", ".opencode/skills/prepare-pr"])
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(Path, "rename", rename):
+            with self.assertRaisesRegex(module.InstallError, "backups anteriores revertidos"):
+                module.install(args, source=str(self.source))
+        self.assertTrue((parent / "apply-issue").exists())
+        self.assertTrue((parent / "prepare-pr").exists())
+        self.assertEqual(list((self.data / "migration-backups").iterdir()), [])
+
     def test_untrusted_test_source_and_local_without_baseline(self):
-        forbidden = self.install(env={k: v for k, v in self.env.items() if k != "MY_AI_SKILLS_TEST_SOURCE"})
-        self.assertIn("Fonte não confiável", forbidden.stderr)
+        forbidden = call("python3", str(ENTRY), "--revision", self.revision,
+                         "--agent", "opencode", "--source", str(self.source),
+                         env={**self.env, "MY_AI_SKILLS_TEST_SOURCE": "1"})
+        self.assertNotEqual(forbidden.returncode, 0)
+        self.assertIn("unrecognized arguments: --source", forbidden.stderr)
+        self.assertFalse(self.data.exists())
         self.assertEqual(self.install().returncode, 0)
         project = self.root / "project"
         local = project / ".opencode/skills/apply-issue"

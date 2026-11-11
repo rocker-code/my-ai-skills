@@ -5,6 +5,7 @@ The public command MUST verify this entrypoint's independently published SHA-256
 before running it. --revision binds the fetched Git object to that entrypoint.
 """
 import argparse
+import errno
 import fcntl
 import hashlib
 import json
@@ -253,7 +254,8 @@ def tree_matches(actual, baseline):
                                stat.S_IMODE(path.stat().st_mode),
                                digest(path) if path.is_file() else None)
         return result
-    return entries(actual) == entries(baseline)
+    return (stat.S_IMODE(actual.stat().st_mode) == stat.S_IMODE(baseline.stat().st_mode)
+            and entries(actual) == entries(baseline))
 
 
 def legacy_matches(path, baseline, home):
@@ -296,13 +298,22 @@ def inspect_local(project, old_repo, new_repo, authorized):
         if authorized:
             raise InstallError("--reconcile-path exige --project explícito.")
         return [], []
+    if ".." in Path(project).parts:
+        raise InstallError(f"Projeto com percurso ambíguo: {project}")
     project = Path(project).absolute()
+    # Authorization is for this physical root, never a lexical path through
+    # another project's symlink (including the root's parent).
+    safe_parent(project, Path(project.anchor))
+    if project.resolve() != project:
+        raise InstallError(f"Projeto fora da raiz canônica autorizada: {project}")
     if project.is_symlink() or not project.is_dir():
         raise InstallError(f"Projeto inválido: {project}")
     pending, eligible = [], []
     roots = {".opencode/skills": "skills", ".ai-workflow/skills": "skills",
              ".ai-workflow/protocol": "protocol", ".ai-workflow/templates": "templates",
-             ".ai-workflow/scripts": "scripts"}
+              ".ai-workflow/scripts": "scripts"}
+    package_skills = {item.name for item in (new_repo / "skills").iterdir()
+                      if (item / "SKILL.md").is_file()}
     for prefix, component in roots.items():
         root = project / prefix
         safe_parent(root, project)
@@ -311,7 +322,8 @@ def inspect_local(project, old_repo, new_repo, authorized):
             continue
         if not root.is_dir():
             continue
-        names = sorted(root.iterdir()) if component == "skills" else [root]
+        names = (sorted(p for p in root.iterdir() if p.name in package_skills)
+                 if component == "skills" else [root])
         for path in names:
             rel = path.relative_to(project).as_posix()
             baseline = (old_repo / component / path.name if component == "skills"
@@ -322,14 +334,14 @@ def inspect_local(project, old_repo, new_repo, authorized):
                 else:
                     pending.append(f"sombra local idêntica, requer opt-in --project/--reconcile-path {rel}")
             else:
-                pending.append(f"cópia local editada/sem baseline: {rel}")
+                pending.append(f"sombra local editada/sem baseline (precedência local sobre global): {rel}")
     found = {p.relative_to(project).as_posix() for p in eligible}
     if set(authorized) != found:
         raise InstallError("Caminho local autorizado sem baseline idêntico ou fora do inventário: " + ", ".join(sorted(set(authorized) - found)))
     return pending, eligible
 
 
-def install(args):
+def install(args, *, source=ORIGIN):
     home = Path(os.environ["HOME"]).absolute()
     preflight(home, args.agent)
     data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))).absolute() / "my-ai-skills"
@@ -338,8 +350,6 @@ def install(args):
     safe_parent(config, home)
     if data.exists() and ((data / ".git").exists() or (data / ".git").is_file()):
         raise InstallError(f"Instalação antiga/clone no destino {data}; preserve-o e escolha outro XDG_DATA_HOME antes de instalar.")
-    if args.source and os.environ.get("MY_AI_SKILLS_TEST_SOURCE") != "1":
-        raise InstallError("Fonte não confiável: --source é reservado aos testes isolados.")
     data.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     ensure_openspec(data, env)
@@ -348,7 +358,6 @@ def install(args):
     with lock.open("a+b") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         with tempfile.TemporaryDirectory(prefix="workflow-source-") as directory:
-            source = args.source or ORIGIN
             repo = fetch_snapshot(args.revision, source, Path(directory))
             manifest = manifest_for(repo, args.revision, args.agent)
             versions = data / "versions"
@@ -452,6 +461,19 @@ def install(args):
                     continue
                 if (link.exists() or link.is_symlink()) and name not in args.migrate_global_skill:
                     raise InstallError(f"Skill de outra origem/personalizada: {link}")
+            # Refuse a cross-device move before moving *any* source. A rename
+            # cannot atomically preserve and roll back backups across devices.
+            migrations = [path for path, _ in legacy] + local_eligible
+            backups = data / "migration-backups"
+            if migrations:
+                safe_parent(backups, home)
+                if backups.is_symlink() or (backups.exists() and not backups.is_dir()):
+                    raise InstallError(f"Diretório de backups inseguro: {backups}")
+                backups.mkdir(exist_ok=True)
+                safe_parent(backups, home)
+                for path in migrations:
+                    if path.parent.stat().st_dev != backups.stat().st_dev:
+                        raise InstallError(f"Migração entre filesystems não suportada: {path}; nenhuma cópia movida")
             created = []
             removed = []
             published = False
@@ -468,20 +490,30 @@ def install(args):
                         validate_manifest(staging, manifest, staged=True)
                         staging.rename(target)
                         published = True
-                backups = data / "migration-backups"
                 for path, baseline in legacy + [(path, None) for path in local_eligible]:
                     if baseline is not None and not legacy_matches(path, baseline, home):
                         raise InstallError(f"Skill legada mudou durante a preparação: {path}")
                     if baseline is None:
                         # Recheck the exact local bytes after preparation.
-                        check_pending, check_eligible = inspect_local(args.project, local_prior, repo, args.reconcile_path)
+                        remaining = set(args.reconcile_path) - {
+                            moved_path.relative_to(Path(args.project).absolute()).as_posix()
+                            for moved_path, _ in moved if moved_path in local_eligible
+                        }
+                        _, check_eligible = inspect_local(args.project, local_prior, repo, remaining)
                         if path not in check_eligible:
                             raise InstallError(f"Cópia local mudou durante a preparação: {path}")
-                    backups.mkdir(exist_ok=True)
+                    safe_parent(backups, home)
+                    if backups.is_symlink() or not backups.is_dir():
+                        raise InstallError(f"Diretório de backups inseguro: {backups}")
                     backup = backups / (hashlib.sha256(str(path).encode()).hexdigest() + "-" + args.revision)
                     if backup.exists() or backup.is_symlink():
                         raise InstallError(f"Backup de migração já existe: {backup}")
-                    path.rename(backup)
+                    try:
+                        path.rename(backup)
+                    except OSError as error:
+                        if error.errno == errno.EXDEV:
+                            raise InstallError(f"Migração entre filesystems recusada: {path}; backups anteriores revertidos") from error
+                        raise
                     moved.append((path, backup))
                 for name in skill_names:
                     link = skills / name
@@ -555,7 +587,6 @@ def main():
     parser = argparse.ArgumentParser(description="Instalação global do AI Engineering Workflow")
     parser.add_argument("--agent", action="append", required=True, help="opencode")
     parser.add_argument("--revision", required=True, help="SHA completo aprovado")
-    parser.add_argument("--source", help=argparse.SUPPRESS)  # Git object source for isolated tests
     parser.add_argument("--project", help="Raiz única do projeto para diagnóstico somente leitura")
     parser.add_argument("--baseline-revision", help="SHA completo da origem das cópias locais antigas")
     parser.add_argument("--reconcile-path", action="append", default=[], help="Caminho relativo local autorizado separadamente (requer --project)")

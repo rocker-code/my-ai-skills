@@ -33,7 +33,7 @@ def main():
     env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
                XDG_DATA_HOME=str(home / ".local/share"), XDG_CACHE_HOME=str(home / ".cache"),
                XDG_STATE_HOME=str(home / ".local/state"), OPENSPEC_TELEMETRY="0",
-               PYTHONDONTWRITEBYTECODE="1", MY_AI_SKILLS_TEST_SOURCE="1",
+                PYTHONDONTWRITEBYTECODE="1",
                OPENCODE_PASSWORD=secrets.token_hex(24))
     results = {"base": str(base), "installer_revision": ENTRY_REVISION, "locations": {}}
     server = None
@@ -48,8 +48,15 @@ def main():
     try:
         results["opencode"] = run([cli, "--version"]).strip()
         results["openspec"] = run([openspec, "--version"]).strip()
-        run(["python3", str(ROOT / "scripts/install-global"), "--agent", "opencode",
-             "--revision", ENTRY_REVISION, "--source", str(ROOT)])
+        # Isolated smoke injects the local Git transport via the internal API;
+        # the published entrypoint never accepts a source override.
+        runner = ("import importlib.machinery,sys; "
+                  "m=importlib.machinery.SourceFileLoader('installer',sys.argv[1]).load_module(); "
+                  "source=sys.argv[2]; sys.argv=[sys.argv[1],*sys.argv[3:]]; "
+                  "original=m.install; m.install=lambda args: original(args,source=source); "
+                  "sys.exit(m.main())")
+        run(["python3", "-c", runner, str(ROOT / "scripts/install-global"), str(ROOT),
+             "--agent", "opencode", "--revision", ENTRY_REVISION])
         active = home / ".local/share/my-ai-skills/active"
         assert json.loads((active / "manifest.json").read_text())["revision"] == ENTRY_REVISION
 
