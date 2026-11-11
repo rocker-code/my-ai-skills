@@ -186,6 +186,8 @@ def install(args):
     config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))).absolute() / "opencode"
     safe_parent(data, home)
     safe_parent(config, home)
+    if data.exists() and ((data / ".git").exists() or (data / ".git").is_file()):
+        raise InstallError(f"Instalação antiga/clone no destino {data}; preserve-o e escolha outro XDG_DATA_HOME antes de instalar.")
     data.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     ensure_openspec(data, env)

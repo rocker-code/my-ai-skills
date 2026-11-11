@@ -127,6 +127,17 @@ class GlobalInstallTests(unittest.TestCase):
         result = self.install(env={**self.env, "PATH": str(no_gh)})
         self.assertIn("Falta gh", result.stderr)
 
+    def test_legacy_source_clone_at_data_path_is_not_modified(self):
+        self.data.mkdir(parents=True)
+        (self.data / ".git").mkdir()
+        original = (self.data / "personal.txt")
+        original.write_text("custom")
+        result = self.install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Instalação antiga/clone", result.stderr)
+        self.assertEqual(original.read_text(), "custom")
+        self.assertFalse((self.data / "active").exists())
+
     def test_public_download_digest_checked_before_execution(self):
         # Model the published command's download→independent literal digest→execution gate.
         payload = self.root / "entry"
