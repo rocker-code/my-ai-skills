@@ -136,4 +136,6 @@ O instalador e o atualizador conferem ao final o pacote, uma skill e o OpenSpec.
 
 Peça **“Cuide da issue: URL”**, **“Cuide da fila deste projeto”** ou **“Cuide deste milestone: URL”**; acrescente **“sem merge”** se quiser integrar manualmente. O fluxo planeja com OpenSpec, implementa, testa, prepara a PR e revisa; o merge padrão só ocorre após as verificações exigidas. O agente precisa de acesso ao GitHub e de sessões/worktrees isoladas para executar o fluxo completo.
 
+A preparação de PR chama `update-changelog` para registrar mudanças relevantes em **Não lançado**, atualizando o arquivo existente ou criando `CHANGELOG.md`. A skill `release` consolida as entradas da versão antes da validação final. Também é possível pedir “gere o changelog” diretamente.
+
 [Guia do fluxo e demais recursos](https://github.com/rocker-code/my-ai-skills/wiki/Guia-do-fluxo) · [Instalação legada por projeto](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-legada) (não necessária para a instalação global) · [Wiki](https://github.com/rocker-code/my-ai-skills/wiki)

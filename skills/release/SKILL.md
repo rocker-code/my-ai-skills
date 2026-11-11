@@ -38,8 +38,9 @@ outranks this skill. Determine:
   published;
 - whether deployment is part of release, and the repository's documented order.
 
-Do not invent a release branch, a changelog, a semantic-versioning policy, or a
-deployment command when the repository has none.
+Do not invent a release branch, semantic-versioning policy or deployment command.
+For changelogs, invoke `update-changelog`: preserve the existing mechanism or
+create `CHANGELOG.md` when none exists, unless repository policy prohibits it.
 
 ## Choose the version
 
@@ -55,6 +56,12 @@ Compare the result against the user's requested version. A named version that
 does not match the evidence is a stop-and-confirm; never silently raise or lower
 it. State the proposed version and concise rationale before editing release
 metadata when a version was not already confirmed.
+
+After the version is confirmed and the candidate scope is established, invoke
+`update-changelog` in release mode to consolidate only included pending entries
+under that version and release date. Preserve excluded entries as unreleased;
+use the consolidated section for release notes. Complete these metadata edits
+before validating the final release commit. This does not grant publication authority.
 
 ## Release gate
 

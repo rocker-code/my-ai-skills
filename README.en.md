@@ -136,4 +136,6 @@ The installer and updater verify the package, a skill, and OpenSpec at the end. 
 
 Ask **“Take care of this issue: URL”**, **“Take care of this project queue”**, or **“Take care of this milestone: URL”**; add **“no merge”** for manual integration. The workflow plans with OpenSpec, implements, tests, prepares the PR and reviews; default merge happens only after required checks pass. The agent needs GitHub access and isolated sessions/worktrees to run the full flow.
 
+PR preparation invokes `update-changelog` to record meaningful changes under **Unreleased**, updating the existing file or creating `CHANGELOG.md`. The `release` skill consolidates version entries before final validation. You can also ask “generate the changelog” directly.
+
 [Workflow guide and other resources](https://github.com/rocker-code/my-ai-skills/wiki/Workflow-guide) · [Legacy per-project installation](https://github.com/rocker-code/my-ai-skills/wiki/Legacy-installation) (not needed for global installation) · [Wiki](https://github.com/rocker-code/my-ai-skills/wiki)

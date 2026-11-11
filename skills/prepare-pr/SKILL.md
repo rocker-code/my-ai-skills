@@ -35,6 +35,13 @@ Review the complete diff against:
 
 Detect unrelated files, formatting churn, debug output, secrets, generated/local files, weakened tests and behavior outside the validated contract. Fix in-scope defects before PR creation; preserve unrelated user work.
 
+Before staging or committing, invoke `update-changelog` for the verified PR diff.
+Update the canonical unreleased section or create `CHANGELOG.md` when absent,
+following repository policy. Review the resulting entries with the implementation
+and include scoped changelog edits in this PR. Do this before the final clean-HEAD
+validation; reruns must not duplicate entries. Record a justified no-entry outcome
+when the change has no meaningful user or operator impact.
+
 Run permitted validations and report skipped checks with reasons. For integration or API-functional coverage, verify the final required local suites ran on the exact source checkout being committed, distinguish narrow development runs from the final suite, and list unresolved environment/fixture failures. A repository-mandated pre-commit suite that is missing or failing means `NOT READY FOR PR`; do not replace it with a previous CI result. Include a concise requirement → implementation → test matrix in the PR description; mark unverified items explicitly. Hand off the opened PR to an independent pr-audit and architecture-audit where boundaries changed.
 
 Where installed, use `workflow-evidence verify <id> --format json` against the candidate and check manifest/log accessibility, checksum, HEAD/index/diff/config and declared environment IDs. Distinguish `verified/passed` from `metadata_only`, `incomplete`, `ambiguous`, `stale` or `not_applicable`; inspect per-obligation recovery rather than rerunning merely because a previous runtime's path is unavailable. For another clone import an integrity-checked bundle; a public local projection alone cannot pass. Complete archive/sync, generated distribution, self-review and commit **before** the final required local gate; run it via `record` at the final clean HEAD, verify, then push and create/update the PR. Keep its ID outside the commit; any subsequent commit requires a fresh final gate. Hosted gates require exact-SHA API confirmation **and** a trusted base-policy-to-check binding; hosted results never satisfy required local gates. If the helper is unavailable, report helper verification NOT RUN and retain the existing manual proof and gates. Include obligation → code → test → evidence state in Validation.
