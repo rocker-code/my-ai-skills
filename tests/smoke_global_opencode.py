@@ -33,7 +33,8 @@ def main():
     env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
                XDG_DATA_HOME=str(home / ".local/share"), XDG_CACHE_HOME=str(home / ".cache"),
                XDG_STATE_HOME=str(home / ".local/state"), OPENSPEC_TELEMETRY="0",
-               PYTHONDONTWRITEBYTECODE="1", OPENCODE_PASSWORD=secrets.token_hex(24))
+               PYTHONDONTWRITEBYTECODE="1", MY_AI_SKILLS_TEST_SOURCE="1",
+               OPENCODE_PASSWORD=secrets.token_hex(24))
     results = {"base": str(base), "installer_revision": ENTRY_REVISION, "locations": {}}
     server = None
 

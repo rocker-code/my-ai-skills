@@ -237,6 +237,98 @@ def updated_guidance(existing, block):
     return existing + ("\n" if existing and not existing.endswith("\n") else "") + block
 
 
+def tree_matches(actual, baseline):
+    """Compare all bytes, modes and directory entries; never follow symlinks."""
+    if actual.is_symlink() or not actual.is_dir() or not baseline.is_dir():
+        return False
+    def entries(root):
+        result = {}
+        for directory, dirs, files in os.walk(root, followlinks=False):
+            for name in dirs + files:
+                path = Path(directory) / name
+                if path.is_symlink():
+                    return None
+                key = path.relative_to(root).as_posix()
+                result[key] = ("dir" if path.is_dir() else "file",
+                               stat.S_IMODE(path.stat().st_mode),
+                               digest(path) if path.is_file() else None)
+        return result
+    return entries(actual) == entries(baseline)
+
+
+def legacy_matches(path, baseline, home):
+    if path.is_symlink():
+        # skills.sh commonly links an agent directory to its universal copy.
+        canonical = home / ".agents/skills" / path.name
+        if path.resolve() != canonical.absolute() or canonical.is_symlink():
+            return False
+        return tree_matches(canonical, baseline)
+    return tree_matches(path, baseline)
+
+
+def skill_lock(home, env):
+    state = Path(env.get("XDG_STATE_HOME", str(home / ".agents")))
+    path = state / "skills/.skill-lock.json" if "XDG_STATE_HOME" in env else state / ".skill-lock.json"
+    if not path.is_file() or path.is_symlink():
+        return {}
+    try:
+        lock = json.loads(path.read_text())
+        return lock["skills"] if isinstance(lock.get("skills"), dict) else {}
+    except (ValueError, KeyError):
+        return {}
+
+
+def legacy_baseline(name, entry, source, temp):
+    if (not isinstance(entry, dict) or entry.get("source") != "rocker-code/my-ai-skills"
+            or entry.get("sourceType") != "github"
+            or not re.fullmatch(r"[0-9a-f]{40}", entry.get("ref", ""))
+            or entry.get("skillPath") not in (f"skills/{name}", f"skills/{name}/SKILL.md")):
+        return None
+    try:
+        return fetch_snapshot(entry["ref"], source, temp) / "skills" / name
+    except InstallError:
+        return None
+
+
+def inspect_local(project, old_repo, new_repo, authorized):
+    """Only paths under the explicitly identified root; return planned safe removals."""
+    if project is None:
+        if authorized:
+            raise InstallError("--reconcile-path exige --project explícito.")
+        return [], []
+    project = Path(project).absolute()
+    if project.is_symlink() or not project.is_dir():
+        raise InstallError(f"Projeto inválido: {project}")
+    pending, eligible = [], []
+    roots = {".opencode/skills": "skills", ".ai-workflow/skills": "skills",
+             ".ai-workflow/protocol": "protocol", ".ai-workflow/templates": "templates",
+             ".ai-workflow/scripts": "scripts"}
+    for prefix, component in roots.items():
+        root = project / prefix
+        safe_parent(root, project)
+        if root.is_symlink():
+            pending.append(f"sombra local não comprovada: {root}")
+            continue
+        if not root.is_dir():
+            continue
+        names = sorted(root.iterdir()) if component == "skills" else [root]
+        for path in names:
+            rel = path.relative_to(project).as_posix()
+            baseline = (old_repo / component / path.name if component == "skills"
+                        else old_repo / component) if old_repo else None
+            if baseline and tree_matches(path, baseline):
+                if rel in authorized:
+                    eligible.append(path)
+                else:
+                    pending.append(f"sombra local idêntica, requer opt-in --project/--reconcile-path {rel}")
+            else:
+                pending.append(f"cópia local editada/sem baseline: {rel}")
+    found = {p.relative_to(project).as_posix() for p in eligible}
+    if set(authorized) != found:
+        raise InstallError("Caminho local autorizado sem baseline idêntico ou fora do inventário: " + ", ".join(sorted(set(authorized) - found)))
+    return pending, eligible
+
+
 def install(args):
     home = Path(os.environ["HOME"]).absolute()
     preflight(home, args.agent)
@@ -246,6 +338,8 @@ def install(args):
     safe_parent(config, home)
     if data.exists() and ((data / ".git").exists() or (data / ".git").is_file()):
         raise InstallError(f"Instalação antiga/clone no destino {data}; preserve-o e escolha outro XDG_DATA_HOME antes de instalar.")
+    if args.source and os.environ.get("MY_AI_SKILLS_TEST_SOURCE") != "1":
+        raise InstallError("Fonte não confiável: --source é reservado aos testes isolados.")
     data.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     ensure_openspec(data, env)
@@ -290,6 +384,8 @@ def install(args):
             elif target.is_symlink():
                 raise InstallError(f"Versão symlink conflitante: {target}")
             old_active = None
+            prior = None
+            old_manifest = None
             if active.is_symlink():
                 old_active = os.readlink(active)
                 resolved = (active.parent / old_active).resolve()
@@ -298,16 +394,46 @@ def install(args):
                 old_manifest = json.loads((resolved / "manifest.json").read_text())
                 validate_manifest(resolved, old_manifest)
                 # A plausible self-declared manifest is not proof of ownership.
-                with tempfile.TemporaryDirectory(prefix="workflow-prior-") as prior_dir:
-                    prior = fetch_snapshot(old_manifest["revision"], source, Path(prior_dir))
-                    expected_old = manifest_for(prior, old_manifest["revision"], ["opencode"])
-                    if "directories" not in old_manifest:
-                        expected_old.pop("directories")
-                    if old_manifest != expected_old:
-                        raise InstallError("Ponteiro ativo sem origem verificável; preserve e reconcilie manualmente.")
+                prior = fetch_snapshot(old_manifest["revision"], source, Path(directory) / "prior")
+                expected_old = manifest_for(prior, old_manifest["revision"], ["opencode"])
+                if "directories" not in old_manifest:
+                    expected_old.pop("directories")
+                if old_manifest != expected_old:
+                    raise InstallError("Ponteiro ativo sem origem verificável; preserve e reconcilie manualmente.")
             elif active.exists():
                 raise InstallError("Ponteiro ativo de outra origem.")
             skill_names = sorted(p.name for p in (repo / "skills").iterdir() if (p / "SKILL.md").is_file())
+            lock_entries = skill_lock(home, env)
+            legacy = []
+            pending = []
+            for name in sorted(set(skill_names) | set(lock_entries)):
+                link = skills / name
+                if name not in skill_names:
+                    if name in lock_entries and (link.exists() or link.is_symlink()):
+                        pending.append(f"skill skills.sh sem colisão (intocada): {link}")
+                    continue
+                expected = str(data / "active" / "skills" / name)
+                if link.is_symlink() and os.readlink(link) == expected:
+                    continue
+                if not link.exists() and not link.is_symlink():
+                    continue
+                entry = lock_entries.get(name)
+                baseline = legacy_baseline(name, entry, source, Path(directory) / ("legacy-" + name))
+                proven = baseline is not None and legacy_matches(link, baseline, home)
+                if not proven:
+                    raise InstallError(f"blocked: skill global de outra origem, alterada ou sem baseline: {link}; "
+                                       "preserve e compare metadados de ~/.agents/.skill-lock.json manualmente.")
+                if name not in args.migrate_global_skill:
+                    raise InstallError(f"blocked: skill global skills.sh comprovada: {link}; "
+                                       f"para migrar, autorize --migrate-global-skill {name} e preserve o backup.")
+                legacy.append((link, baseline))
+            if set(args.migrate_global_skill) != {path.name for path, _ in legacy}:
+                raise InstallError("Migração global autorizada sem entrada comprovada em conflito.")
+            local_prior = prior
+            if args.baseline_revision:
+                local_prior = fetch_snapshot(args.baseline_revision, source, Path(directory) / "local-prior")
+            local_pending, local_eligible = inspect_local(args.project, local_prior, repo, args.reconcile_path)
+            pending.extend(local_pending)
             obsolete = []
             if old_active:
                 for relative in old_manifest["integrations"]["opencode"]["skills"]:
@@ -324,11 +450,12 @@ def install(args):
                 expected = str(data / "active" / "skills" / name)
                 if link.is_symlink() and os.readlink(link) == expected:
                     continue
-                if link.exists() or link.is_symlink():
+                if (link.exists() or link.is_symlink()) and name not in args.migrate_global_skill:
                     raise InstallError(f"Skill de outra origem/personalizada: {link}")
             created = []
             removed = []
             published = False
+            moved = []
             try:
                 if not target.exists():
                     with tempfile.TemporaryDirectory(prefix=".stage-", dir=versions) as stage:
@@ -341,6 +468,21 @@ def install(args):
                         validate_manifest(staging, manifest, staged=True)
                         staging.rename(target)
                         published = True
+                backups = data / "migration-backups"
+                for path, baseline in legacy + [(path, None) for path in local_eligible]:
+                    if baseline is not None and not legacy_matches(path, baseline, home):
+                        raise InstallError(f"Skill legada mudou durante a preparação: {path}")
+                    if baseline is None:
+                        # Recheck the exact local bytes after preparation.
+                        check_pending, check_eligible = inspect_local(args.project, local_prior, repo, args.reconcile_path)
+                        if path not in check_eligible:
+                            raise InstallError(f"Cópia local mudou durante a preparação: {path}")
+                    backups.mkdir(exist_ok=True)
+                    backup = backups / (hashlib.sha256(str(path).encode()).hexdigest() + "-" + args.revision)
+                    if backup.exists() or backup.is_symlink():
+                        raise InstallError(f"Backup de migração já existe: {backup}")
+                    path.rename(backup)
+                    moved.append((path, backup))
                 for name in skill_names:
                     link = skills / name
                     if not link.is_symlink():
@@ -365,6 +507,8 @@ def install(args):
                     tmp.replace(ownership)
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "guidance":
                     raise InstallError("Falha simulada após orientação")
+                if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "publish":
+                    raise InstallError("Falha simulada antes da publicação")
                 if old_active != str(Path("versions") / args.revision):
                     pointer = data / ".active.install-tmp"
                     if pointer.exists() or pointer.is_symlink():
@@ -387,11 +531,23 @@ def install(args):
                 for link, expected in removed:
                     if not link.exists() and not link.is_symlink():
                         link.symlink_to(expected)
+                for path, backup in reversed(moved):
+                    if not path.exists() and not path.is_symlink() and backup.exists():
+                        backup.rename(path)
                 if published:
                     # Keep immutable staged versions for diagnosis; never remove unknown paths.
                     pass
                 raise
-            print(f"Instalado: {args.revision} ({', '.join(sorted(set(args.agent)))})")
+            final = json.loads((active / "manifest.json").read_text())["revision"]
+            state = ("partial" if pending else "installed" if not old_manifest else "already current" if
+                     old_manifest["revision"] == final and not moved and not created and not removed
+                     and previous == new_text else "updated")
+            print(f"state={state} agent=opencode scope=global previous={old_manifest['revision'] if old_manifest else 'none'} "
+                  f"target={args.revision} active={final}")
+            for item in pending:
+                print(f"pending: {item}")
+            for path, backup in moved:
+                print(f"migrated: {path} backup={backup}")
             print(f"Verifique: {data}/active/manifest.json; OpenSpec: {shutil.which('openspec')}")
 
 
@@ -400,13 +556,26 @@ def main():
     parser.add_argument("--agent", action="append", required=True, help="opencode")
     parser.add_argument("--revision", required=True, help="SHA completo aprovado")
     parser.add_argument("--source", help=argparse.SUPPRESS)  # Git object source for isolated tests
+    parser.add_argument("--project", help="Raiz única do projeto para diagnóstico somente leitura")
+    parser.add_argument("--baseline-revision", help="SHA completo da origem das cópias locais antigas")
+    parser.add_argument("--reconcile-path", action="append", default=[], help="Caminho relativo local autorizado separadamente (requer --project)")
+    parser.add_argument("--migrate-global-skill", action="append", default=[], help="Skill global legada comprovada autorizada para migração com backup")
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
         parser.error("--revision exige SHA Git completo de 40 caracteres")
+    if args.baseline_revision and not re.fullmatch(r"[0-9a-f]{40}", args.baseline_revision):
+        parser.error("--baseline-revision exige SHA Git completo de 40 caracteres")
     try:
         install(args)
     except (InstallError, OSError, ValueError, KeyError) as error:
-        print(f"Instalação incompleta: {error}", file=sys.stderr)
+        home = Path(os.environ["HOME"])
+        active = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "my-ai-skills/active/manifest.json"
+        try:
+            actual = json.loads(active.read_text())["revision"] if active.is_file() else "none"
+        except (ValueError, KeyError, OSError):
+            actual = "unknown"
+        print(f"state=blocked agent={','.join(args.agent)} scope=global previous={actual} "
+              f"target={args.revision} active={actual}; pending: {error}", file=sys.stderr)
         return 1
     return 0
 
