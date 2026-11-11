@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "scripts/install.sh"
 UPDATER = ROOT / "scripts/update.sh"
 ENTRY = ROOT / "scripts/install-global"
-REVISION = "57733e891659174b79c772fb4f16d8b47fe6c93c"
+REVISION = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
 
 
 class LauncherTests(unittest.TestCase):
