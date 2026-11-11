@@ -20,6 +20,8 @@ import tempfile
 import urllib.request
 
 ORIGIN = "https://github.com/rocker-code/my-ai-skills.git"
+OPENSPEC_INSTALL_REVISION = "a959be77cf045ea3156dc5089c9e2f1d6ce9ce70"
+OPENSPEC_INSTALL_SHA256 = "fa5e08b9cec6815e69cd5fc250fc57aa720609927da38587f872e2e74f9ec09b"
 BEGIN = "<!-- my-ai-skills-global:v1 begin -->"
 END = "<!-- my-ai-skills-global:v1 end -->"
 COMPONENTS = ("skills", "protocol", "templates", "scripts")
@@ -63,6 +65,14 @@ def preflight(home, agents):
     for executable in ("git", "gh", "jq", "curl", "opencode"):
         if not shutil.which(executable):
             raise InstallError(f"Falta {executable} no PATH; instale-o antes de continuar.")
+    opencode = shutil.which("opencode")
+    version = run(opencode, "--version")
+    help_text = run(opencode, "--help")
+    if not re.search(r"\bv2\.\d+\.\d+\b", version) or not all(
+        re.search(r"^ *" + token + r"\b", help_text, re.MULTILINE)
+        for token in ("api", "run", "service")
+    ):
+        raise InstallError("OpenCode V2 com API, run e service é necessário; instale/atualize OpenCode V2.")
     if not home.is_dir():
         raise InstallError(f"HOME inválido: {home}")
 
@@ -76,7 +86,9 @@ def ensure_openspec(data, env):
     # SHA256SUMS. It is used only when no existing method owns this tool.
     with tempfile.TemporaryDirectory(prefix="openspec-install-") as temp:
         script = Path(temp) / "install.sh"
-        run("curl", "-fsSL", "https://raw.githubusercontent.com/Fission-AI/OpenSpec/main/scripts/binary/install.sh", "-o", str(script), env=env)
+        run("curl", "-fsSL", f"https://raw.githubusercontent.com/Fission-AI/OpenSpec/{OPENSPEC_INSTALL_REVISION}/scripts/binary/install.sh", "-o", str(script), env=env)
+        if digest(script) != OPENSPEC_INSTALL_SHA256:
+            raise InstallError("Digest do instalador OpenSpec divergente; não executar.")
         target = data / "bin"
         target.mkdir(parents=True, exist_ok=True)
         installer_env = {**env, "OPENSPEC_INSTALL_DIR": str(target)}
@@ -103,7 +115,7 @@ def fetch_snapshot(revision, source, temp):
         raise InstallError("Revisão do checkout divergente.")
     run("git", "-C", str(repo), "fsck", "--no-reflogs", "--connectivity-only")
     for component in COMPONENTS:
-        if not (repo / component).is_dir():
+        if (repo / component).is_symlink() or not (repo / component).is_dir():
             raise InstallError(f"Snapshot incompleto: {component}")
     if not (repo / "scripts" / "sync-skill-references").is_file():
         raise InstallError("Snapshot sem gerador independente de referências.")
@@ -112,28 +124,71 @@ def fetch_snapshot(revision, source, temp):
 
 def manifest_for(root, revision, agents):
     entries = {}
+    directories = {}
     skills = sorted(p.name for p in (root / "skills").iterdir() if (p / "SKILL.md").is_file())
     for component in COMPONENTS:
+        directories[component] = stat.S_IMODE((root / component).stat().st_mode)
         for path in (root / component).rglob("*"):
             if path.is_symlink():
                 raise InstallError(f"Symlink inesperado no snapshot: {path}")
             if path.is_file():
                 relative = path.relative_to(root).as_posix()
                 entries[relative] = {"sha256": digest(path), "mode": stat.S_IMODE(path.stat().st_mode)}
+            elif path.is_dir():
+                directories[path.relative_to(root).as_posix()] = stat.S_IMODE(path.stat().st_mode)
     for name in ("worktree-reservation", "workflow-evidence", "workflow-event"):
         if f"scripts/{name}" not in entries:
             raise InstallError(f"Helper ausente: {name}")
     return {"schema": 1, "origin": ORIGIN, "revision": revision,
-            "agents": sorted(set(agents)), "files": entries,
+            "agents": sorted(set(agents)), "files": entries, "directories": directories,
             "integrations": {"opencode": {"skills": ["skills/" + name for name in skills],
                                         "instructions": "AGENTS.md", "ownership": "guidance.json"}}}
 
 
-def validate_manifest(root, manifest):
+def validate_manifest(root, manifest, staged=False):
+    if (not isinstance(manifest, dict) or manifest.get("schema") != 1
+            or manifest.get("origin") != ORIGIN
+            or not re.fullmatch(r"[0-9a-f]{40}", manifest.get("revision", ""))
+            or (not staged and root.name != manifest["revision"])
+            or manifest.get("agents") != ["opencode"]
+            or not isinstance(manifest.get("files"), dict) or not manifest["files"]
+            or not isinstance(manifest.get("integrations"), dict)):
+        raise InstallError(f"Manifesto sem propriedade comprovada: {root}")
+    actual = set()
+    actual_dirs = set()
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        for name in dirs + files:
+            path = Path(directory) / name
+            if path.is_symlink() or (not path.is_dir() and not path.is_file()):
+                raise InstallError(f"Entrada inesperada no pacote: {path}")
+            if path.is_file():
+                actual.add(path.relative_to(root).as_posix())
+            else:
+                actual_dirs.add(path.relative_to(root).as_posix())
+    if actual != set(manifest["files"]) | {"manifest.json"}:
+        raise InstallError(f"Inventário incompleto ou arquivo extra: {root}")
+    expected_dirs = manifest.get("directories")
+    if expected_dirs is None:  # Legacy manifest from the previously published entrypoint.
+        expected_dirs = {parent for item in manifest["files"] for parent in (
+            Path(item).parents) if str(parent) != "."}
+        expected_dirs = {str(parent) for parent in expected_dirs}
+    if actual_dirs != set(expected_dirs):
+        raise InstallError(f"Diretório extra/ausente: {root}")
+    if isinstance(expected_dirs, dict):
+        for relative, mode in expected_dirs.items():
+            if not isinstance(mode, int) or stat.S_IMODE((root / relative).stat().st_mode) != mode:
+                raise InstallError(f"Diretório gerenciado modificado: {root / relative}")
     for relative, info in manifest["files"].items():
         path = root / relative
-        if not path.is_file() or path.is_symlink() or digest(path) != info["sha256"] or stat.S_IMODE(path.stat().st_mode) != info["mode"]:
+        if (relative.split("/", 1)[0] not in COMPONENTS or Path(relative).is_absolute()
+                or ".." in Path(relative).parts or not isinstance(info, dict)
+                or not re.fullmatch(r"[0-9a-f]{64}", info.get("sha256", ""))
+                or not isinstance(info.get("mode"), int)
+                or not path.is_file() or path.is_symlink() or digest(path) != info["sha256"]
+                or stat.S_IMODE(path.stat().st_mode) != info["mode"]):
             raise InstallError(f"Arquivo gerenciado modificado: {path}")
+    if not (root / "manifest.json").is_file() or json.loads((root / "manifest.json").read_text()) != manifest:
+        raise InstallError(f"Manifesto divergente: {root}")
 
 
 def guidance(data):
@@ -240,10 +295,30 @@ def install(args):
                 resolved = (active.parent / old_active).resolve()
                 if resolved.parent != versions.resolve() or not (resolved / "manifest.json").is_file():
                     raise InstallError("Ponteiro ativo não gerenciado.")
-                validate_manifest(resolved, json.loads((resolved / "manifest.json").read_text()))
+                old_manifest = json.loads((resolved / "manifest.json").read_text())
+                validate_manifest(resolved, old_manifest)
+                # A plausible self-declared manifest is not proof of ownership.
+                with tempfile.TemporaryDirectory(prefix="workflow-prior-") as prior_dir:
+                    prior = fetch_snapshot(old_manifest["revision"], source, Path(prior_dir))
+                    expected_old = manifest_for(prior, old_manifest["revision"], ["opencode"])
+                    if "directories" not in old_manifest:
+                        expected_old.pop("directories")
+                    if old_manifest != expected_old:
+                        raise InstallError("Ponteiro ativo sem origem verificável; preserve e reconcilie manualmente.")
             elif active.exists():
                 raise InstallError("Ponteiro ativo de outra origem.")
             skill_names = sorted(p.name for p in (repo / "skills").iterdir() if (p / "SKILL.md").is_file())
+            obsolete = []
+            if old_active:
+                for relative in old_manifest["integrations"]["opencode"]["skills"]:
+                    name = Path(relative).name
+                    if name not in skill_names:
+                        link = skills / name
+                        expected = str(data / "active" / "skills" / name)
+                        if link.is_symlink() and os.readlink(link) == expected:
+                            obsolete.append((link, expected))
+                        elif link.exists() or link.is_symlink():
+                            raise InstallError(f"Skill obsoleta personalizada: {link}")
             for name in skill_names:
                 link = skills / name
                 expected = str(data / "active" / "skills" / name)
@@ -252,6 +327,7 @@ def install(args):
                 if link.exists() or link.is_symlink():
                     raise InstallError(f"Skill de outra origem/personalizada: {link}")
             created = []
+            removed = []
             published = False
             try:
                 if not target.exists():
@@ -261,7 +337,8 @@ def install(args):
                         for component in COMPONENTS:
                             shutil.copytree(repo / component, staging / component, symlinks=False)
                         (staging / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-                        validate_manifest(staging, manifest)
+                        # The staged directory is not named after the revision yet.
+                        validate_manifest(staging, manifest, staged=True)
                         staging.rename(target)
                         published = True
                 for name in skill_names:
@@ -269,6 +346,9 @@ def install(args):
                     if not link.is_symlink():
                         link.symlink_to(data / "active" / "skills" / name)
                         created.append(link)
+                for link, expected in obsolete:
+                    link.unlink()
+                    removed.append((link, expected))
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "skills":
                     raise InstallError("Falha simulada após registrar skills")
                 if previous != new_text:
@@ -304,6 +384,9 @@ def install(args):
                         agents.unlink()
                 for link in created:
                     link.unlink()
+                for link, expected in removed:
+                    if not link.exists() and not link.is_symlink():
+                        link.symlink_to(expected)
                 if published:
                     # Keep immutable staged versions for diagnosis; never remove unknown paths.
                     pass

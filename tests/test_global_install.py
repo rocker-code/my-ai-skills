@@ -27,7 +27,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.bin.mkdir()
         for executable in ("opencode", "openspec"):
             path = self.bin / executable
-            path.write_text("#!/bin/sh\necho 'test version 1'\n")
+            path.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'opencode v2.2.6'; else printf '  api\\n  run\\n  service\\n'; fi\n" if executable == "opencode" else "#!/bin/sh\necho 'test version 1'\n")
             path.chmod(0o755)
         self.env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_DATA_HOME": str(self.home / ".local/share"),
@@ -126,6 +126,73 @@ class GlobalInstallTests(unittest.TestCase):
             (no_gh / name).symlink_to(shutil.which(name, path=self.env["PATH"]))
         result = self.install(env={**self.env, "PATH": str(no_gh)})
         self.assertIn("Falta gh", result.stderr)
+
+    def test_v1_and_fake_capabilities_rejected_before_writes(self):
+        binary = self.bin / "opencode"
+        for output in ("opencode v1.9.0 api run service", "opencode v2.2.6 without commands"):
+            binary.write_text("#!/bin/sh\necho '" + output + "'\n")
+            result = self.install()
+            self.assertIn("OpenCode V2", result.stderr)
+            self.assertFalse(self.data.exists())
+
+    def test_open_spec_installer_digest_gate(self):
+        # Exercise the actual fallback with an intercepted curl and no executable OpenSpec.
+        (self.bin / "openspec").unlink()
+        marker = self.root / "executed"
+        curl = self.bin / "curl"
+        curl.write_text("#!/bin/sh\nwhile [ \"$1\" != -o ]; do shift; done\nprintf '#!/bin/sh\\ntouch " + str(marker) + "\\n' > \"$2\"\n")
+        curl.chmod(0o755)
+        for executable in ("python3", "git", "gh", "jq", "bash"):
+            (self.bin / executable).symlink_to(shutil.which(executable))
+        result = self.install(env={**self.env, "PATH": str(self.bin)})
+        self.assertIn("Digest do instalador OpenSpec divergente", result.stderr)
+        self.assertFalse(marker.exists())
+
+    def test_fake_active_manifest_and_extra_tree_rejected(self):
+        self.data.mkdir(parents=True)
+        version = self.data / "versions" / ("a" * 40)
+        version.mkdir(parents=True)
+        (version / "manifest.json").write_text(json.dumps({"schema": 1, "origin": "elsewhere", "revision": "a" * 40, "agents": ["opencode"], "files": {}}))
+        (self.data / "active").symlink_to(Path("versions") / version.name)
+        fail = self.install()
+        self.assertNotEqual(fail.returncode, 0)
+        self.assertEqual(os.readlink(self.data / "active"), str(Path("versions") / version.name))
+        (self.data / "active").unlink()
+        shutil.rmtree(version)
+        self.assertEqual(self.install().returncode, 0)
+        active = self.data / "active"
+        (active / "skills/unknown.txt").write_text("unknown")
+        self.assertNotEqual(self.install().returncode, 0)
+        (active / "skills/unknown.txt").unlink()
+        (active / "skills/unknown-link").symlink_to("SKILL.md")
+        self.assertNotEqual(self.install().returncode, 0)
+        self.assertTrue((active / "skills/unknown-link").is_symlink())
+        (active / "skills/unknown-link").unlink()
+        (active / "skills/empty-extra").mkdir()
+        self.assertNotEqual(self.install().returncode, 0)
+        (active / "skills/empty-extra").rmdir()
+        directory = active / "skills"
+        original_mode = directory.stat().st_mode & 0o777
+        directory.chmod(0o700 if original_mode != 0o700 else 0o755)
+        self.assertNotEqual(self.install().returncode, 0)
+        directory.chmod(original_mode)
+
+    def test_removed_skill_reconciliation_and_rollback(self):
+        self.assertEqual(self.install().returncode, 0)
+        name = "apply-issue"
+        link = self.home / ".config/opencode/skills" / name
+        old = os.readlink(self.data / "active")
+        shutil.rmtree(self.source / "skills" / name)
+        self.git("add", "-A")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-qm", "remove skill")
+        revision = self.git("rev-parse", "HEAD").stdout.strip()
+        fail = self.install(revision=revision, env={**self.env, "MY_AI_SKILLS_FAIL_AT": "guidance"})
+        self.assertNotEqual(fail.returncode, 0)
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.readlink(self.data / "active"), old)
+        success = self.install(revision=revision)
+        self.assertEqual(success.returncode, 0, success.stderr)
+        self.assertFalse(link.is_symlink())
 
     def test_legacy_source_clone_at_data_path_is_not_modified(self):
         self.data.mkdir(parents=True)
