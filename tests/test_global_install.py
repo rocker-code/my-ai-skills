@@ -369,39 +369,50 @@ class GlobalInstallTests(unittest.TestCase):
         revision = "57733e891659174b79c772fb4f16d8b47fe6c93c"
         published = "07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1"
         self.assertEqual(hashlib.sha256(ENTRY.read_bytes()).hexdigest(), published)
+        launcher = (ROOT / "scripts/install.sh").read_text()
+        self.assertIn(f"entry_revision={revision}", launcher)
+        self.assertIn(f"entry_sha256={published}", launcher)
+        self.assertIn('python3 "$tmp" --revision "$revision" --agent opencode', launcher)
+        updater = (ROOT / "scripts/update.sh").read_text()
+        self.assertIn('git ls-remote --exit-code "$origin" "$ref"', updater)
+        self.assertIn('sh "$tmp" --revision "$revision"', updater)
         for readme in ("README.md", "README.en.md"):
             text = (ROOT / readme).read_text()
-            self.assertIn(f"/{revision}/scripts/install-global", text)
-            self.assertIn(f"--revision {revision} --agent opencode", text)
-            self.assertEqual(text.count(published), 2)
-            self.assertIn("--baseline-revision", text)
-            self.assertIn("--migrate-global-skill", text)
-            self.assertIn("--reconcile-path", text)
+            self.assertIn("/main/scripts/install.sh | sh", text)
+            self.assertIn("/main/scripts/update.sh | sh", text)
+            self.assertIn("https://github.com/rocker-code/my-ai-skills/wiki/", text)
             self.assertNotIn("8ddd9e60fbe773ca363293b8f0ff3a7b452eed37", text)
-            self.assertRegex(text, r"state=installed\|updated\|already current\|partial\|blocked")
         self.assertEqual(revision, re.search(r'ENTRY_REVISION = "([0-9a-f]{40})"',
                                              (ROOT / "tests/smoke_global_opencode.py").read_text()).group(1))
 
     def test_published_recipe_in_disposable_home(self):
         # The immutable Git object exists locally before the feature branch is
         # published. Substitute only the download and remote transports; run
-        # the README command itself and its independent digest gate unchanged.
+        # the README command and its launcher's independent digest gate unchanged.
         revision = "57733e891659174b79c772fb4f16d8b47fe6c93c"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
-                        f"case \"$2\" in *{revision}/scripts/install-global) ;; *) exit 2;; esac\n"
-                        f"/usr/bin/git -C {str(ROOT)!r} show {revision}:scripts/install-global > \"$4\"\n")
+                        "case \"$2\" in\n"
+                        f"  */main/scripts/install.sh) cat {str(ROOT / 'scripts/install.sh')!r} ;;\n"
+                        f"  *{revision}/scripts/install-global) /usr/bin/git -C {str(ROOT)!r} show {revision}:scripts/install-global > \"$4\" ;;\n"
+                        "  *) exit 2 ;;\n"
+                        "esac\n")
         curl.chmod(0o755)
         git = self.bin / "git"
         git.write_text("#!/bin/sh\n"
+                       "if [ \"$1\" = ls-remote ] && [ \"$2\" = --exit-code ]; then\n"
+                       f"  printf '%s\\trefs/heads/main\\n' {revision}\n"
+                       "  exit 0\n"
+                       "fi\n"
                        "if [ \"$3\" = remote ] && [ \"$4\" = add ] && [ \"$5\" = origin ]; then\n"
                        f"  exec /usr/bin/git \"$1\" \"$2\" remote add origin {str(ROOT)!r}\n"
                        "fi\nexec /usr/bin/git \"$@\"\n")
         git.chmod(0o755)
         readme = (ROOT / "README.md").read_text()
-        snippet = readme.split("## Instalação global (OpenCode)", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
-        result = call("bash", "-c", snippet, env={k: v for k, v in self.env.items()
-                                                 if k != "MY_AI_SKILLS_TEST_SOURCE"}, timeout=90)
+        snippet = readme.split("## Instalar ou atualizar\n", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
+        result = call("bash", "-c", snippet, cwd=self.root,
+                      env={k: v for k, v in self.env.items()
+                           if k != "MY_AI_SKILLS_TEST_SOURCE"}, timeout=90)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"active={revision}", result.stdout)
         self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"], revision)
