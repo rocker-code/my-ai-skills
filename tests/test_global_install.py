@@ -1,12 +1,17 @@
 """Offline distribution tests: every installation uses a disposable HOME."""
 import hashlib
+import errno
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
+import importlib.machinery
+import types
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRY = ROOT / "scripts/install-global"
@@ -31,8 +36,8 @@ class GlobalInstallTests(unittest.TestCase):
             path.chmod(0o755)
         self.env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_DATA_HOME": str(self.home / ".local/share"),
-                    "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
-                    "PYTHONDONTWRITEBYTECODE": "1"}
+                     "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
+                     "PYTHONDONTWRITEBYTECODE": "1"}
         self.source = self.root / "source with spaces"
         self.source.mkdir()
         for name in ("skills", "scripts", "protocol", "templates"):
@@ -48,13 +53,358 @@ class GlobalInstallTests(unittest.TestCase):
         return result
 
     def install(self, *extra, revision=None, env=None):
-        return call("python3", str(ENTRY), "--revision", revision or self.revision,
-                    "--agent", "opencode", "--source", str(self.source), *extra,
+        # Test-only import injects a disposable Git transport into the internal
+        # function; the actual public command has no source override.
+        runner = ("import importlib.machinery,sys; "
+                  "m=importlib.machinery.SourceFileLoader('installer',sys.argv[1]).load_module(); "
+                  "source=sys.argv[2]; sys.argv=[sys.argv[1],*sys.argv[3:]]; "
+                  "original=m.install; m.install=lambda args: original(args,source=source); "
+                  "sys.exit(m.main())")
+        return call("python3", "-c", runner, str(ENTRY), str(self.source),
+                    "--revision", revision or self.revision, "--agent", "opencode", *extra,
                     env=env or self.env, timeout=90)
 
     @property
     def data(self):
         return self.home / ".local/share/my-ai-skills"
+
+    def next_revision(self):
+        (self.source / "skills/new-feature").mkdir()
+        (self.source / "skills/new-feature/SKILL.md").write_text("---\nname: new-feature\n---\n")
+        (self.source / "skills/apply-issue/references/TEST_STRATEGY.md").write_text("updated reference\n")
+        (self.source / "scripts/workflow-event").write_text("#!/usr/bin/env python3\nprint('updated helper')\n")
+        self.git("add", "-A")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-qm", "next")
+        return self.git("rev-parse", "HEAD").stdout.strip()
+
+    def test_update_two_consumers_and_failure_states(self):
+        first = self.install()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertIn("state=installed", first.stdout)
+        revision = self.next_revision()
+        before = (self.home / ".config/opencode/AGENTS.md").read_bytes()
+        for phase in ("skills", "guidance", "publish"):
+            failed = self.install(revision=revision, env={**self.env, "MY_AI_SKILLS_FAIL_AT": phase})
+            self.assertEqual(failed.returncode, 1)
+            self.assertIn(f"active={self.revision}", failed.stderr)
+            self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), before)
+            self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"], self.revision)
+            self.assertFalse((self.home / ".config/opencode/skills/new-feature").is_symlink())
+        updated = self.install(revision=revision)
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertIn("state=updated", updated.stdout)
+        self.assertIn(f"previous={self.revision} target={revision} active={revision}", updated.stdout)
+        for repo_name in ("consumer-a", "consumer-b"):
+            consumer = self.root / repo_name
+            consumer.mkdir()
+            self.assertEqual((self.home / ".config/opencode/skills/new-feature/SKILL.md").read_bytes(),
+                             (self.source / "skills/new-feature/SKILL.md").read_bytes())
+            self.assertEqual((self.data / "active/skills/apply-issue/references/TEST_STRATEGY.md").read_text(), "updated reference\n")
+            self.assertEqual((self.data / "active/scripts/workflow-event").read_bytes(),
+                             (self.source / "scripts/workflow-event").read_bytes())
+            self.assertFalse((consumer / ".ai-workflow").exists())
+        repeated = self.install(revision=revision)
+        self.assertIn("state=already current", repeated.stdout)
+        self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), before)
+
+    def test_legacy_global_lock_collision_and_authorized_migration(self):
+        self.assertEqual(self.install().returncode, 0)
+        config = self.home / ".config/opencode"
+        link = config / "skills/apply-issue"
+        link.unlink()
+        legacy = self.home / ".agents/skills/apply-issue"
+        legacy.parent.mkdir(parents=True)
+        shutil.copytree(self.data / "active/skills/apply-issue", legacy)
+        link.symlink_to(legacy)
+        lock = self.home / ".agents/.skill-lock.json"
+        lock.write_text(json.dumps({"version": 3, "skills": {
+            "apply-issue": {"source": "rocker-code/my-ai-skills", "sourceType": "github",
+                            "ref": self.revision, "skillPath": "skills/apply-issue/SKILL.md"},
+            "unrelated": {"source": "elsewhere/tools", "sourceType": "github"}}}))
+        other = config / "skills/unrelated"
+        other.mkdir()
+        (other / "SKILL.md").write_text("unrelated")
+        revision = self.next_revision()
+        original_lock = lock.read_bytes()
+        for origin in ("elsewhere/tools", None):
+            record = json.loads(original_lock)
+            if origin is None:
+                record["skills"].pop("apply-issue")
+            else:
+                record["skills"]["apply-issue"]["source"] = origin
+            lock.write_text(json.dumps(record))
+            blocked = self.install("--migrate-global-skill", "apply-issue", revision=revision)
+            self.assertIn("outra origem, alterada ou sem baseline", blocked.stderr)
+            self.assertTrue(link.is_symlink())
+        lock.write_bytes(original_lock)
+        for changed in (False, True):
+            if changed:
+                (legacy / "SKILL.md").write_text("personalized")
+            blocked = self.install(revision=revision)
+            self.assertIn("state=blocked", blocked.stderr)
+            self.assertIn("--migrate-global-skill" if not changed else "sem baseline", blocked.stderr)
+            self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"], self.revision)
+            self.assertTrue(link.is_symlink())
+        shutil.rmtree(legacy)
+        # The verified active A snapshot, not the B working checkout.
+        shutil.copytree(self.data / "versions" / self.revision / "skills/apply-issue", legacy)
+        migrated = self.install("--migrate-global-skill", "apply-issue", revision=revision)
+        self.assertEqual(migrated.returncode, 0, migrated.stderr)
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.readlink(link), str(self.data / "active/skills/apply-issue"))
+        self.assertTrue(legacy.is_dir())
+        self.assertEqual((other / "SKILL.md").read_text(), "unrelated")
+        self.assertIn("migrated:", migrated.stdout)
+
+    def test_only_noncolliding_skills_sh_skill_is_preserved_without_partial_state(self):
+        config = self.home / ".config/opencode/skills"
+        config.mkdir(parents=True)
+        other = config / "unrelated"
+        other.mkdir()
+        (other / "SKILL.md").write_text("third-party skill\n")
+        lock = self.home / ".agents/.skill-lock.json"
+        lock.parent.mkdir(parents=True)
+        lock.write_text(json.dumps({"version": 3, "skills": {
+            "unrelated": {"source": "elsewhere/tools", "sourceType": "github"}}}))
+        before = (other / "SKILL.md").read_bytes()
+        first = self.install()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertIn("state=installed", first.stdout)
+        revision = self.next_revision()
+        updated = self.install(revision=revision)
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertIn("state=updated", updated.stdout)
+        repeated = self.install(revision=revision)
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertIn("state=already current", repeated.stdout)
+        for result in (first, updated, repeated):
+            self.assertIn(f"preserved: skill skills.sh sem colisão (intocada): {other}", result.stdout)
+            self.assertNotIn("state=partial", result.stdout)
+            self.assertNotIn("pending:", result.stdout)
+        self.assertFalse(other.is_symlink())
+        self.assertEqual((other / "SKILL.md").read_bytes(), before)
+
+    def test_local_diagnostic_requires_scoped_opt_in(self):
+        self.assertEqual(self.install().returncode, 0)
+        revision = self.next_revision()
+        project = self.root / "project"
+        other = self.root / "other-project"
+        for repo in (project, other):
+            local = repo / ".opencode/skills/apply-issue"
+            local.parent.mkdir(parents=True)
+            shutil.copytree(self.data / "versions" / self.revision / "skills/apply-issue", local)
+            rules = repo / "AGENTS.md"
+            rules.write_text("# Local custom rules\n")
+        result = self.install("--project", str(project), revision=revision)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("state=partial", result.stdout)
+        self.assertIn("sombra local idêntica", result.stdout)
+        self.assertTrue((project / ".opencode/skills/apply-issue").exists())
+        self.assertTrue((other / ".opencode/skills/apply-issue").exists())
+        authorized = self.install("--project", str(project), "--reconcile-path",
+                                  ".opencode/skills/apply-issue", "--baseline-revision", self.revision,
+                                  revision=revision)
+        self.assertEqual(authorized.returncode, 0, authorized.stderr)
+        self.assertFalse((project / ".opencode/skills/apply-issue").exists())
+        self.assertTrue((other / ".opencode/skills/apply-issue").exists())
+        self.assertEqual((project / "AGENTS.md").read_text(), "# Local custom rules\n")
+        self.assertTrue(list((self.data / "migration-backups").iterdir()))
+
+    def test_local_only_package_collisions_and_custom_precedence(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        for name in ("openspec-apply-change", "completely-unrelated", "apply-issue"):
+            local = project / ".opencode/skills" / name
+            local.mkdir(parents=True)
+            (local / "SKILL.md").write_text("custom\n")
+        result = self.install("--project", str(project))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("state=partial", result.stdout)
+        self.assertIn("precedência local sobre global", result.stdout)
+        self.assertIn("apply-issue", result.stdout)
+        self.assertNotIn("openspec-apply-change", result.stdout)
+        self.assertNotIn("completely-unrelated", result.stdout)
+
+    def test_backup_symlink_and_ancestor_are_rejected_without_moves(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        local = project / ".opencode/skills/apply-issue"
+        local.parent.mkdir(parents=True)
+        shutil.copytree(self.data / "active/skills/apply-issue", local)
+        outside = self.root / "outside"
+        outside.mkdir()
+        backups = self.data / "migration-backups"
+        backups.symlink_to(outside)
+        result = self.install("--project", str(project), "--reconcile-path",
+                              ".opencode/skills/apply-issue")
+        self.assertIn("symlink não confiável", result.stderr)
+        self.assertTrue(local.exists())
+        self.assertEqual(list(outside.iterdir()), [])
+        backups.unlink()
+        # A symlink higher in the selected project path is not authorization.
+        alias = self.root / "alias"
+        alias.symlink_to(project, target_is_directory=True)
+        result = self.install("--project", str(alias), "--reconcile-path",
+                              ".opencode/skills/apply-issue")
+        self.assertIn("symlink", result.stderr)
+        self.assertTrue(local.exists())
+
+    def test_project_symlink_parent_and_modified_root_mode(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        local = project / ".opencode/skills/apply-issue"
+        local.parent.mkdir(parents=True)
+        shutil.copytree(self.data / "active/skills/apply-issue", local)
+        mode = local.stat().st_mode & 0o777
+        local.chmod(0o700 if mode != 0o700 else 0o755)
+        result = self.install("--project", str(project), "--reconcile-path",
+                              ".opencode/skills/apply-issue")
+        self.assertIn("sem baseline", result.stderr)
+        self.assertTrue(local.exists())
+        alias = self.root / "alias"
+        alias.symlink_to(project, target_is_directory=True)
+        child = project / "child"
+        child.mkdir()
+        result = self.install("--project", str(alias / "child"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("symlink não confiável", result.stderr)
+        self.assertTrue(local.exists())
+        ambiguous = self.install("--project", str(alias / "child/../child"))
+        self.assertIn("percurso ambíguo", ambiguous.stderr)
+
+    def test_cross_device_preflight_refuses_all_migrations(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        for name in ("apply-issue", "prepare-pr"):
+            local = project / ".opencode/skills" / name
+            local.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(self.data / "active/skills" / name, local)
+        module = importlib.machinery.SourceFileLoader("installer_cross_device", str(ENTRY)).load_module()
+        real_stat = Path.stat
+        parent = project / ".opencode/skills"
+        def cross_device(path, *args, **kwargs):
+            result = real_stat(path, *args, **kwargs)
+            if path == parent:
+                # Preserve all stat fields except st_dev to simulate a mount.
+                values = list(result)
+                values[2] += 1
+                return os.stat_result(values)
+            return result
+        args = types.SimpleNamespace(agent=["opencode"], revision=self.revision,
+                                     migrate_global_skill=[], project=str(project),
+                                     baseline_revision=None,
+                                     reconcile_path=[".opencode/skills/apply-issue", ".opencode/skills/prepare-pr"])
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(Path, "stat", cross_device):
+            with self.assertRaisesRegex(module.InstallError, "entre filesystems"):
+                module.install(args, source=str(self.source))
+        for name in ("apply-issue", "prepare-pr"):
+            self.assertTrue((parent / name).exists())
+        self.assertEqual(list((self.data / "migration-backups").iterdir()), [])
+
+    def test_rename_exdev_after_first_move_rolls_back(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        parent = project / ".opencode/skills"
+        parent.mkdir(parents=True)
+        for name in ("apply-issue", "prepare-pr"):
+            shutil.copytree(self.data / "active/skills" / name, parent / name)
+        module = importlib.machinery.SourceFileLoader("installer_exdev", str(ENTRY)).load_module()
+        original = Path.rename
+        def rename(path, target):
+            if path == parent / "prepare-pr":
+                raise OSError(errno.EXDEV, "cross-device link")
+            return original(path, target)
+        args = types.SimpleNamespace(agent=["opencode"], revision=self.revision,
+                                     migrate_global_skill=[], project=str(project),
+                                     baseline_revision=None,
+                                     reconcile_path=[".opencode/skills/apply-issue", ".opencode/skills/prepare-pr"])
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(Path, "rename", rename):
+            with self.assertRaisesRegex(module.InstallError, "backups anteriores revertidos"):
+                module.install(args, source=str(self.source))
+        self.assertTrue((parent / "apply-issue").exists())
+        self.assertTrue((parent / "prepare-pr").exists())
+        self.assertEqual(list((self.data / "migration-backups").iterdir()), [])
+
+    def test_untrusted_test_source_and_local_without_baseline(self):
+        forbidden = call("python3", str(ENTRY), "--revision", self.revision,
+                         "--agent", "opencode", "--source", str(self.source),
+                         env={**self.env, "MY_AI_SKILLS_TEST_SOURCE": "1"})
+        self.assertNotEqual(forbidden.returncode, 0)
+        self.assertIn("unrecognized arguments: --source", forbidden.stderr)
+        self.assertFalse(self.data.exists())
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        local = project / ".opencode/skills/apply-issue"
+        local.mkdir(parents=True)
+        (local / "SKILL.md").write_text("custom")
+        result = self.install("--project", str(project), "--reconcile-path", ".opencode/skills/apply-issue")
+        self.assertIn("sem baseline", result.stderr)
+        self.assertEqual((local / "SKILL.md").read_text(), "custom")
+
+    def test_ai_workflow_copy_and_routing_are_explicit_only(self):
+        self.assertEqual(self.install().returncode, 0)
+        project = self.root / "project"
+        shutil.copytree(self.source / "protocol", project / ".ai-workflow/protocol")
+        (project / "CLAUDE.md").write_text("keep project rules")
+        before = (project / ".ai-workflow/protocol").stat().st_mtime_ns
+        diagnostic = self.install("--project", str(project))
+        self.assertEqual(diagnostic.returncode, 0, diagnostic.stderr)
+        self.assertIn("state=partial", diagnostic.stdout)
+        self.assertEqual((project / ".ai-workflow/protocol").stat().st_mtime_ns, before)
+        denied = self.install("--project", str(project), "--reconcile-path", ".ai-workflow/scripts")
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertTrue((project / ".ai-workflow/protocol").exists())
+        allowed = self.install("--project", str(project), "--baseline-revision", self.revision,
+                               "--reconcile-path", ".ai-workflow/protocol")
+        self.assertEqual(allowed.returncode, 0, allowed.stderr)
+        self.assertFalse((project / ".ai-workflow/protocol").exists())
+        self.assertEqual((project / "CLAUDE.md").read_text(), "keep project rules")
+        routing = (ROOT / "skills/update-ai-workflow/SKILL.md").read_text()
+        self.assertIn("ordinary development", routing)
+        self.assertIn("Web-only", routing)
+        self.assertIn("A separate\n   explicit request", routing)
+        self.assertNotIn("npx skills add", routing)
+
+    def test_published_recipe_matches_verified_entry_and_parity(self):
+        revision = "57733e891659174b79c772fb4f16d8b47fe6c93c"
+        published = "07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1"
+        self.assertEqual(hashlib.sha256(ENTRY.read_bytes()).hexdigest(), published)
+        for readme in ("README.md", "README.en.md"):
+            text = (ROOT / readme).read_text()
+            self.assertIn(f"/{revision}/scripts/install-global", text)
+            self.assertIn(f"--revision {revision} --agent opencode", text)
+            self.assertEqual(text.count(published), 2)
+            self.assertIn("--baseline-revision", text)
+            self.assertIn("--migrate-global-skill", text)
+            self.assertIn("--reconcile-path", text)
+            self.assertNotIn("8ddd9e60fbe773ca363293b8f0ff3a7b452eed37", text)
+            self.assertRegex(text, r"state=installed\|updated\|already current\|partial\|blocked")
+        self.assertEqual(revision, re.search(r'ENTRY_REVISION = "([0-9a-f]{40})"',
+                                             (ROOT / "tests/smoke_global_opencode.py").read_text()).group(1))
+
+    def test_published_recipe_in_disposable_home(self):
+        # The immutable Git object exists locally before the feature branch is
+        # published. Substitute only the download and remote transports; run
+        # the README command itself and its independent digest gate unchanged.
+        revision = "57733e891659174b79c772fb4f16d8b47fe6c93c"
+        curl = self.bin / "curl"
+        curl.write_text("#!/bin/sh\n"
+                        f"case \"$2\" in *{revision}/scripts/install-global) ;; *) exit 2;; esac\n"
+                        f"/usr/bin/git -C {str(ROOT)!r} show {revision}:scripts/install-global > \"$4\"\n")
+        curl.chmod(0o755)
+        git = self.bin / "git"
+        git.write_text("#!/bin/sh\n"
+                       "if [ \"$3\" = remote ] && [ \"$4\" = add ] && [ \"$5\" = origin ]; then\n"
+                       f"  exec /usr/bin/git \"$1\" \"$2\" remote add origin {str(ROOT)!r}\n"
+                       "fi\nexec /usr/bin/git \"$@\"\n")
+        git.chmod(0o755)
+        readme = (ROOT / "README.md").read_text()
+        snippet = readme.split("## Instalação global (OpenCode)", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
+        result = call("bash", "-c", snippet, env={k: v for k, v in self.env.items()
+                                                 if k != "MY_AI_SKILLS_TEST_SOURCE"}, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"active={revision}", result.stdout)
+        self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"], revision)
 
     def test_install_complete_idempotent_and_preserves_instructions(self):
         config = self.home / ".config/opencode"

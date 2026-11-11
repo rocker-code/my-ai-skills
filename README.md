@@ -475,19 +475,19 @@ Os auxiliares de contexto normalizam os dados atuais do GitHub para que os agent
 
 ## Instalação global (OpenCode)
 
-Em Linux/macOS, instale para seu usuário com **um único comando**. Não é
+Em Linux/macOS, instale ou atualize sob pedido explícito para seu usuário com **um único comando**. Não é
 necessário clonar a fonte, copiar complementos nem alterar cada repositório.
 Antes de executar, confira a origem deste comando: o SHA completo da revisão
-aprovada (`8ddd9e60fbe773ca363293b8f0ff3a7b452eed37`) e o SHA-256
+aprovada (`57733e891659174b79c772fb4f16d8b47fe6c93c`) e o SHA-256
 **literal, publicado aqui independentemente do download**
-(`26771ab2d4302b48973e46b71ea0fb83a2163e50bfc79e36e664c5af68fe0721`).
+(`07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1`).
 Não obtenha o hash novamente do arquivo que acabou de baixar.
 
 ```bash
 ( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
-  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/8ddd9e60fbe773ca363293b8f0ff3a7b452eed37/scripts/install-global' -o "$tmp" &&
-  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '26771ab2d4302b48973e46b71ea0fb83a2163e50bfc79e36e664c5af68fe0721' &&
-  python3 "$tmp" --revision 8ddd9e60fbe773ca363293b8f0ff3a7b452eed37 --agent opencode )
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/57733e891659174b79c772fb4f16d8b47fe6c93c/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1' &&
+  python3 "$tmp" --revision 57733e891659174b79c772fb4f16d8b47fe6c93c --agent opencode )
 ```
 
 Requisitos externos: Git, Python 3.10+ POSIX, `curl`, `gh`, `jq` e OpenCode V2
@@ -508,6 +508,38 @@ idempotente; conflitos ou falhas não substituem arquivos personalizados nem
 o ponteiro para a instalação anterior. Versões antigas permanecem disponíveis.
 Arquivos `.ai-workflow/` e skills locais já existentes são preservados; no
 OpenCode, a skill local homônima tem precedência sobre a global.
+
+Para atualizar, aprove uma revisão Git completa da fonte, revise a entrada e
+o digest literal acima, e substitua **somente** o SHA de `--revision` pela
+revisão aprovada (a entrada fica fixada no commit da URL). Não execute
+`active/scripts/install-global` nem `npx skills update`: o ativo local não é
+raiz de confiança, e o gerenciador de skills não atualiza o pacote inteiro.
+A saída informa `state=installed|updated|already current|partial|blocked`,
+`previous`, `target`, `active`, agente e pendências. `partial` indica pacote
+global coerente com migração local pendente; `blocked` não declara sucesso.
+Confira o `active` real após falha. O comando não troca binários de agentes,
+credenciais, regras locais nem dependências da aplicação.
+
+Skill global legada de `skills.sh` com o mesmo nome bloqueia a ativação: o
+instalador confere `~/.agents/.skill-lock.json` (ou
+`$XDG_STATE_HOME/skills/.skill-lock.json`), origem, `ref` completo, baseline
+Git, bytes/modos e destino do link. Entradas editadas, de outra origem ou sem
+baseline ficam intactas. Somente após inventário e autorização **separada**
+por nome use `--migrate-global-skill <nome>`; o original fica em
+`migration-backups/`, sem remover a instalação universal de outros agentes.
+Skills sem colisão permanecem intactas. Backups em symlink ou migração entre
+filesystems são recusados antes de mover qualquer cópia; mantenha os originais
+e escolha uma localização segura no mesmo filesystem para nova tentativa.
+
+Para diagnosticar sombras **somente** no projeto identificado, acrescente
+`--project /caminho/absoluto/projeto`: é leitura local, mesmo se a cópia for
+idêntica ao baseline. Uma autorização distinta de projeto e caminhos pode
+usar `--project /caminho/absoluto/projeto --baseline-revision <SHA-antigo>
+--reconcile-path .opencode/skills/<nome>` (repita a opção por caminho enumerado).
+Só cópias byte-idênticas da revisão verificada são movidas para backup, nunca
+regras locais. Cópias `.ai-workflow/` sem baseline, clones legados e projetos
+fechados não são migrados automaticamente; nenhum outro repositório é varrido.
+Faça nova sessão OpenCode para recarregar a descoberta.
 
 Verifique após a instalação (sem entrar neste repositório):
 
@@ -539,7 +571,7 @@ listagem da API V2 é assíncrona e depende da localização: a primeira respost
 vazia não prova ausência. O smoke não usa credenciais/modelo e não comprova
 uma resposta de IA aos comandos.
 
-Atualizações automáticas não fazem parte desta entrega (#51). Reinvocar este
+Não há atualizações automáticas. Reinvocar este
 comando aplica apenas esta revisão aprovada; não substitua os literais por
 `main` ou por um hash calculado do próprio download.
 

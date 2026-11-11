@@ -1,114 +1,48 @@
 ---
 name: update-ai-workflow
-description: Update the installed my-ai-skills / AI Engineering Workflow skills, bundled references and project workflow copies to the latest main revision, only when the user explicitly asks to update that installation (for example, "atualize o my-ai-skills" or "atualize o workflow de IA deste projeto"). Preserve the installed agents, scope and local customizations. Do not trigger for ordinary development, status queries, updating an issue, or requests to develop improvements to the source repository.
+description: Update the installed my-ai-skills global workflow package ONLY on an explicit request (e.g. "atualize o my-ai-skills"). Route to the verified install-global entrypoint; diagnose local/legacy copies without writing unless separately authorized for a project and exact paths. Never trigger on ordinary tasks, status, issue work or startup.
 ---
 
 # Update AI Engineering Workflow
 
-Execute one requested update of `rocker-code/my-ai-skills`. Do not schedule checks,
-create background jobs, or attach updates to startup, issue, milestone or merge flows.
-Treat the request as authorization for routine installation updates in the identified
-scope; do not ask again for each safe step. Ask only when the target is ambiguous
-or a local customization cannot be reconciled safely.
+This is an on-demand router, not an updater or scheduler. Do not update on
+ordinary development, status, issue, milestone, startup or merge. A request to
+develop this repository is not a request to install it.
 
-## 1. Inventory the actual installation
-
-- Identify the target application repository and its instructions. Distinguish it
-  from the source checkout of `rocker-code/my-ai-skills`.
-- Inspect project and global skill lists, installer lockfiles, symlinks and agent
-  configuration. Use `npx skills list` and `npx skills list -g` when available;
-  inspect `npx skills --help` / subcommand help before relying on version-specific
-  flags. Identify which entries actually belong to `rocker-code/my-ai-skills`.
-- Record agents, project/global scope, full versus partial installation, paths,
-  current source revision and local modifications. Do not infer an agent from an
-  installed binary alone. Preserve a deliberately partial skill selection.
-- Detect `.ai-workflow/` copies, alternate documented paths, `AGENTS.md`,
-  `CLAUDE.md` and any legacy personal plugin installation. Update only identified
-  official installations in the requested scope; do not create duplicate installations.
-- Default a project request to that project's existing installation. If only a
-  global installation exists, identify its cross-project effect before updating.
-  If multiple possible targets remain, ask one focused question. If none exists,
-  report that fact and ask for the initial agent/scope instead of inventing them.
-
-## 2. Resolve and inspect the current source
-
-- Read the source repository's current default-branch README and installation
-  guidance. Use the newest merged `main`, never an unmerged PR or feature branch.
-  Record the exact target SHA and inspect changes since the installed revision
-  when that revision is available. Otherwise label the previous version unknown.
-- Reuse the documented complementary source clone when its remote matches the
-  expected repository and its state is safe. Fetch and fast-forward only. Preserve
-  dirty/diverged clones, branches and worktrees; use a separate clean source copy
-  at the verified SHA when needed. Do not reset, clean, stash or force-push.
-- Read current installation/migration instructions and required runtime versions.
-  Check prerequisites before writes. Do not upgrade Node, agents, OpenSpec,
-  ai-memory or application dependencies as part of this request. Report a required
-  prerequisite as blocked and continue independent safe parts.
-
-## 3. Update skills through their existing manager
-
-For a skills.sh installation, reinstall from the verified source revision using
-`skills add`, selecting only the detected agents and scope. Confirm the installed
-CLI's source/ref syntax first; a verified local source checkout can pin the SHA.
-For a full installation, include newly added upstream skills with `--skill '*'`;
-for a partial installation, select its existing skills and explicitly required
-dependencies. Report removed/renamed skills and handle documented migrations
-without deleting unidentified local directories.
-
-Typical upstream-source command for a full project installation:
-
-```bash
-npx skills add rocker-code/my-ai-skills --skill '*' -a opencode -y
-```
-
-Substitute the detected agent(s); add `-g` only for an identified global target.
-Prefer the pinned local source when supported, then verify the resulting files
-against it. Do not use `--all`, which selects all agents. Do not run an unscoped
-`npx skills update`: it can update unrelated sources and does not ensure newly
-added skills are installed. Preserve locally edited skill files before replacement;
-reconcile them or leave affected entries blocked rather than overwriting them.
-
-The former personal plugin is no longer distributed by this repository. If only
-that legacy installation is found, explain the official skills installation path
-and ask before migrating; do not edit caches, uninstall or claim it was updated.
-
-## 4. Refresh complementary project files
-
-- If complementary project copies exist, compare them with the same source SHA.
-  Refresh protocols, templates and runtime helpers described by the current README.
-  Include required companion files such as `workflow_metrics.py`, `workflow_evidence.py`, `worktree_registry.py` (both Python companions required by `workflow-evidence`) and `attempt_log.py` (required by `attempt-log`); retain script
-  executable permissions. Do not copy the source maintenance script `sync-skill-references`
-  into application runtime helpers.
-- Establish ownership before overwriting. Use the prior source revision or a
-  recorded baseline to distinguish unchanged upstream copies from local edits.
-  Apply clean three-way updates when a base exists; preserve local additions and
-  surface conflicts. Without a reliable baseline, keep differing existing files
-  untouched and report them as requiring reconciliation. Never bulk-copy over
-  custom files, delete unknown paths or use `rsync --delete`.
-- Update existing workflow sections/links in project instructions when the new
-  protocol requires it, preserving unrelated rules and avoiding duplicate blocks.
-  Inspect relevant protocols together with bundled skill references for coherence.
-- Do not initialize OpenSpec, start application development, commit unrelated
-  changes, merge, release or deploy. Leave project changes reviewable; commit or
-  open a PR only when requested or required by applicable project instructions.
-
-## 5. Verify and report
-
-Re-list installed skills for each updated scope. Compare names, files and bundled
-references with the selected source revision; verify manager metadata, symlink
-targets and executable helpers where applicable. Inspect the final project diff.
-Do not execute helpers that publish GitHub comments merely to verify an update.
-If `main` advanced during the run, report the verified SHA and newer pending SHA;
-do not claim to be current against a revision that was not installed.
-
-Return a short table with `Component | Result | Pending`, covering skills,
-project copies and instructions/legacy installation when applicable. State scope, agents and
-target SHA, newly added skills, preserved customizations and concrete blockers.
-Use `updated`, `already current`, `partial`, `blocked` or `not applicable` based
-on evidence. Never declare full success after a failed component. Mention a new
-session only if the actual manager requires it to load updated skills.
-
-In a Web-only environment, inspect the source and accessible project files but
-do not claim to have updated the user's computer. If a repository target is
-explicitly identified, prepare reviewable project-file changes within that scope;
-otherwise provide the short CLI handoff and state the local execution limitation.
+1. Inventory the selected installation: global package at
+   `${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active`, supported agent,
+   `active/manifest.json`, global OpenCode skills, `~/.agents/.skill-lock.json`
+   (or `$XDG_STATE_HOME/skills/.skill-lock.json`), and only the explicitly
+   identified project's `.opencode/skills/` and `.ai-workflow/`. Distinguish a
+   full global install from a partial `skills.sh` install or legacy source
+   clone. Preserve other agents, sources, credentials and project rules. If
+   target/scope is ambiguous, ask. Do not silently change partial selection.
+2. For an explicitly requested **global** update, resolve an approved full
+   Git commit from the trusted upstream `main` (not a PR, mutable `latest`, or
+   an unreviewed ref). The user must explicitly request the update/revision;
+   confirm the chosen SHA and review trust before executing. Read the current
+   README bootstrap recipe for its independent literal entrypoint digest and
+   immutable entrypoint commit. Download that exact entry, verify its SHA-256
+   against the independently published literal **before** running Python, then
+   invoke the same `scripts/install-global --revision <approved-full-SHA>
+   --agent opencode` command. Never execute `active/scripts/install-global`
+   as a trust root; never use `npx skills update` or a parallel installer.
+   Inspect changed syntax against the entrypoint version before execution.
+3. The global request authorizes **read-only diagnosis** of one identified
+   project's shadows, even when files match the official baseline. Do not
+   edit `.opencode/skills/`, `.ai-workflow/`, `AGENTS.md`, `CLAUDE.md`, or other
+   project files merely because the global update was requested. A separate
+   explicit request must name the project root, each exact path, and the
+   verified old baseline SHA before passing `--project <root>
+   --baseline-revision <old-SHA> --reconcile-path <relative-path>`; inspect
+   the dry inventory first. A global `skills.sh` collision needs separate
+   explicit authorization per verified skill (`--migrate-global-skill <name>`).
+   Backups remain under `migration-backups/`; unknown origins/edits block and
+   remain untouched. Never assume name alone proves ownership or sweep HOME.
+4. Report the actual `state`, previous/target/active SHA, agent, scope, backups,
+   pending shadows, and any blocked/partial migration. A current global package
+   does **not** mean closed projects or partial installations were migrated.
+   A new OpenCode session may be needed to reload skills. Do not update agent
+   binaries, OpenSpec, other sources, dependencies or application files.
+5. In a Web-only environment without access to the installed machine, provide
+   the verified CLI recipe and limitation; do not claim to have updated it.
