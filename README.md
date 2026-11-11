@@ -8,16 +8,21 @@ Skills e ferramentas para desenvolvimento com IA orientado por issues. O GitHub 
 
 Linux/macOS: requer Git, Python 3.10+, `curl`, `gh`, `jq` e OpenCode V2 no `PATH`. Para usar o workflow, o OpenSpec é necessário, mas **não precisa estar instalado antes**: o instalador preserva o CLI existente ou instala a distribuição standalone oficial para seu usuário se estiver ausente. Autentique o GitHub CLI separadamente com `gh auth login`.
 
-O comando fixa a entrada em `57733e891659174b79c772fb4f16d8b47fe6c93c` e confere seu SHA-256 literal `07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1` antes da execução:
+Execute o instalador diretamente do GitHub:
 
 ```bash
-( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
-  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/57733e891659174b79c772fb4f16d8b47fe6c93c/scripts/install-global' -o "$tmp" &&
-  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1' &&
-  python3 "$tmp" --revision 57733e891659174b79c772fb4f16d8b47fe6c93c --agent opencode )
+bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh'
 ```
 
-Para **atualizar**, aprove uma revisão Git completa e substitua **somente** o SHA de `--revision` no comando acima; a URL do instalador e o digest permanecem fixos. Repetir o comando com a mesma revisão não atualiza para `main`. Não use `npx skills update` nem execute o instalador da instalação ativa para atualizar o pacote. [Detalhes, conflitos e migração](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global).
+O script baixa uma versão fixa do instalador, confere seu SHA-256 e só então o executa. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use o [comando com entrada verificada](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global) para maior garantia.
+
+Para **atualizar para a versão mais recente da `main`**, execute (somente quando quiser atualizar):
+
+```bash
+bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/update.sh | sh'
+```
+
+`update.sh` confia na `main` atual e chama o instalador com a revisão encontrada; a verificação SHA-256 da entrada do instalador continua ativa. Não verifica a integridade do próprio script obtido de `main`. **Instalar novamente com `install.sh` não busca automaticamente a versão mais recente.** Não use `npx skills update` nem execute o instalador da instalação ativa para atualizar o pacote. [Detalhes, conflitos e migração](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global).
 
 ## Verificar e usar
 

@@ -8,16 +8,21 @@ Skills and tools for issue-driven AI development. GitHub records decisions and d
 
 Linux/macOS prerequisites: Git, Python 3.10+, `curl`, `gh`, `jq`, and OpenCode V2 on `PATH`. OpenSpec is required **to use the workflow**, but it need not be preinstalled: the installer preserves an existing CLI or installs the official standalone distribution for your user when missing. Authenticate GitHub CLI separately with `gh auth login`.
 
-The command pins the entrypoint to `57733e891659174b79c772fb4f16d8b47fe6c93c` and checks its literal SHA-256 `07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1` before execution:
+Run the installer directly from GitHub:
 
 ```bash
-( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
-  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/57733e891659174b79c772fb4f16d8b47fe6c93c/scripts/install-global' -o "$tmp" &&
-  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '07caf29cb6a331fbb00310a3e3df836834b8f55aa89059f28032f6f8a8215fa1' &&
-  python3 "$tmp" --revision 57733e891659174b79c772fb4f16d8b47fe6c93c --agent opencode )
+bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh'
 ```
 
-To **update**, approve a full Git source revision and replace **only** the `--revision` SHA above; the installer URL and digest remain pinned. Re-running the same command does not fetch `main`. Do not use `npx skills update` or the active installation's installer to update the bundle. [Details, conflicts and migration](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation).
+The script downloads a pinned installer, checks its SHA-256, and only then executes it. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
+
+To **update to the latest `main` revision**, run this only when you want an update:
+
+```bash
+bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/update.sh | sh'
+```
+
+`update.sh` trusts current `main` and calls the installer with the resolved revision; the installer's entrypoint SHA-256 check remains in place. It does not verify the launcher itself when fetched from `main`. **Re-running `install.sh` does not automatically fetch the latest revision.** Do not use `npx skills update` or the active installation's installer to update the bundle. [Details, conflicts and migration](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation).
 
 ## Verify and use
 
