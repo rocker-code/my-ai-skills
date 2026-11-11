@@ -415,11 +415,12 @@ def install(args, *, source=ORIGIN):
             lock_entries = skill_lock(home, env)
             legacy = []
             pending = []
+            preserved = []
             for name in sorted(set(skill_names) | set(lock_entries)):
                 link = skills / name
                 if name not in skill_names:
                     if name in lock_entries and (link.exists() or link.is_symlink()):
-                        pending.append(f"skill skills.sh sem colisão (intocada): {link}")
+                        preserved.append(f"skill skills.sh sem colisão (intocada): {link}")
                     continue
                 expected = str(data / "active" / "skills" / name)
                 if link.is_symlink() and os.readlink(link) == expected:
@@ -578,6 +579,8 @@ def install(args, *, source=ORIGIN):
                   f"target={args.revision} active={final}")
             for item in pending:
                 print(f"pending: {item}")
+            for item in preserved:
+                print(f"preserved: {item}")
             for path, backup in moved:
                 print(f"migrated: {path} backup={backup}")
             print(f"Verifique: {data}/active/manifest.json; OpenSpec: {shutil.which('openspec')}")

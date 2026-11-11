@@ -156,6 +156,34 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual((other / "SKILL.md").read_text(), "unrelated")
         self.assertIn("migrated:", migrated.stdout)
 
+    def test_only_noncolliding_skills_sh_skill_is_preserved_without_partial_state(self):
+        config = self.home / ".config/opencode/skills"
+        config.mkdir(parents=True)
+        other = config / "unrelated"
+        other.mkdir()
+        (other / "SKILL.md").write_text("third-party skill\n")
+        lock = self.home / ".agents/.skill-lock.json"
+        lock.parent.mkdir(parents=True)
+        lock.write_text(json.dumps({"version": 3, "skills": {
+            "unrelated": {"source": "elsewhere/tools", "sourceType": "github"}}}))
+        before = (other / "SKILL.md").read_bytes()
+        first = self.install()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertIn("state=installed", first.stdout)
+        revision = self.next_revision()
+        updated = self.install(revision=revision)
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertIn("state=updated", updated.stdout)
+        repeated = self.install(revision=revision)
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertIn("state=already current", repeated.stdout)
+        for result in (first, updated, repeated):
+            self.assertIn(f"preserved: skill skills.sh sem colisão (intocada): {other}", result.stdout)
+            self.assertNotIn("state=partial", result.stdout)
+            self.assertNotIn("pending:", result.stdout)
+        self.assertFalse(other.is_symlink())
+        self.assertEqual((other / "SKILL.md").read_bytes(), before)
+
     def test_local_diagnostic_requires_scoped_opt_in(self):
         self.assertEqual(self.install().returncode, 0)
         revision = self.next_revision()
