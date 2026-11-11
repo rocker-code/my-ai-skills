@@ -2,7 +2,7 @@
 
 ## 1. Entrada pública, pré-flight e pacote
 
-- [ ] 1.1 Criar entrada `scripts/install-global` e comando público único por SHA completo que baixa para arquivo temporário, verifica SHA-256 de referência independente ANTES de executar, e passa o SHA esperado ao instalador; provar script adulterado, hash obtido do mesmo download e URL/revisão divergentes em `tests/test_global_install.py` sem execução do artefato divergente.
+- [x] 1.1 Criar entrada `scripts/install-global` e comando público único por SHA completo que baixa para arquivo temporário, verifica SHA-256 de referência independente ANTES de executar, e passa o SHA esperado ao instalador; provar script adulterado, hash obtido do mesmo download e URL/revisão divergentes em `tests/test_global_install.py` sem execução do artefato divergente.
 - [x] 1.2 Implementar seleção `--agent` explícita, pré-flight de plataforma/ferramentas e instalação suportada de OpenSpec standalone ausente (ou gerenciador compatível verificado), sem trocar método nem atualizar runtime preexistente; provar seleção válida/inválida, falta de dependência externa, PATH e não atualização de runtime em testes focados.
 - [x] 1.3 Obter snapshot em revisão Git exata igual à da entrada verificada, validar árvore/commit e recusar origem ou SHA divergente, montar skills/references/protocol/templates/scripts e módulos acompanhantes e manifesto com origem, SHA, agentes, modos e hashes; testar ausência de dependência de plugin/`.ai-workflow/` e inventário íntegro.
 - [x] 1.4 Adicionar lock e publicação reversível do pacote/ponteiro ativo, preservação de arquivos desconhecidos e detecção de alterações locais; provar idempotência e injeção de falha antes/durante publicação com HOME/XDG temporário e instalação anterior funcional.
@@ -17,8 +17,8 @@
 ## 3. Distribuição, documentação e integração coordenada
 
 - [x] 3.1 Após sincronizar com #52, adotar ferramenta independente de geração de referências sem alterar o plugin removido ou reintroduzir dependência de `scripts/sync-plugin`; validar referências embarcadas idempotentes e reconciliar os testes de `tests/test_instrumentation_distribution.py` com a versão integrada.
-- [ ] 3.2 Atualizar `README.md` e `README.en.md` e orientações afetadas com o comando público real, agentes/plataformas comprovados, requisitos, verificação e legado, sem prometer ChatGPT Web automático; testar os comandos publicados em HOME isolado e comparar paridade PT-BR/EN. Esta tarefa fica somente para Apply, não para esta sessão de planejamento.
-- [ ] 3.3 Rodar smoke real em HOME/XDG descartável com dois repositórios e worktree, teste focado `python3 -m unittest tests/test_global_install.py tests/test_instrumentation_distribution.py` (ajustar descoberta conforme arquivos efetivos), depois `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests`; registrar agente, revisão e resultados por cenário antes de declarar implementação pronta.
+- [x] 3.2 Atualizar `README.md` e `README.en.md` e orientações afetadas com o comando público real, agentes/plataformas comprovados, requisitos, verificação e legado, sem prometer ChatGPT Web automático; testar os comandos publicados em HOME isolado e comparar paridade PT-BR/EN. Esta tarefa fica somente para Apply, não para esta sessão de planejamento.
+- [x] 3.3 Rodar smoke real em HOME/XDG descartável com dois repositórios e worktree, teste focado `python3 -m unittest tests/test_global_install.py tests/test_instrumentation_distribution.py` (ajustar descoberta conforme arquivos efetivos), depois `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests`; registrar agente, revisão e resultados por cenário antes de declarar implementação pronta.
 
 ## Matriz de cenários e comprovação (planejamento; evidência ainda pendente)
 
