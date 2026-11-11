@@ -8,6 +8,10 @@ metadata:
 
 # Prepare Pull Request
 
+For global installations, resolve `scripts/<helper>` against
+`"${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active/scripts/<helper>"`.
+Run from the actual checkout and quote paths; local instructions still apply.
+
 Turn completed implementation into a reviewable PR with evidence and no hidden uncertainty.
 
 ## Establish context

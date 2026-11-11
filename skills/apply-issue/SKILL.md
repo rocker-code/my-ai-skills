@@ -5,6 +5,11 @@ description: Apply a pinned, validated OpenSpec change for a GitHub issue in a f
 
 # Apply Issue
 
+For global installations, resolve `scripts/<helper>` against
+`"${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active/scripts/<helper>"`.
+Run from the actual checkout, quote paths, and pass `--path`/`--repository`
+where applicable. Do not require a per-project `.ai-workflow/` copy.
+
 Start in a genuinely new agent session from the planning session. Rehydrate from the issue and `[DECISION]` comments, pinned OpenSpec change and commit, repository instructions and concise handoff. ai-memory may supplement this context; it is never the sole source of validation evidence or source of truth.
 
 ## Entry gate

@@ -1,0 +1,327 @@
+#!/usr/bin/env python3
+"""Install a Git-verified workflow snapshot for explicitly selected agents.
+
+The public command MUST verify this entrypoint's independently published SHA-256
+before running it. --revision binds the fetched Git object to that entrypoint.
+"""
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import urllib.request
+
+ORIGIN = "https://github.com/rocker-code/my-ai-skills.git"
+BEGIN = "<!-- my-ai-skills-global:v1 begin -->"
+END = "<!-- my-ai-skills-global:v1 end -->"
+COMPONENTS = ("skills", "protocol", "templates", "scripts")
+
+
+class InstallError(Exception):
+    pass
+
+
+def run(*argv, cwd=None, env=None):
+    result = subprocess.run(argv, cwd=cwd, env=env, text=True, capture_output=True)
+    if result.returncode:
+        raise InstallError(f"{' '.join(map(str, argv))}: {result.stderr.strip() or result.stdout.strip()}")
+    return result.stdout.strip()
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def absent_or_regular(path):
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise InstallError(f"Caminho inseguro ou de outra origem: {path}")
+
+
+def safe_parent(path, stop):
+    for ancestor in (path, *path.parents):
+        if ancestor == stop.parent:
+            break
+        if ancestor.is_symlink():
+            raise InstallError(f"Diretório symlink não confiável: {ancestor}")
+
+
+def preflight(home, agents):
+    if not agents or set(agents) != {"opencode"}:
+        raise InstallError("Selecione --agent opencode (único agente suportado).")
+    if os.name != "posix" or platform.system() not in ("Linux", "Darwin"):
+        raise InstallError("Plataforma não suportada: use Linux ou macOS POSIX.")
+    if sys.version_info < (3, 10):
+        raise InstallError("Python 3.10+ necessário; instale-o antes de continuar.")
+    for executable in ("git", "gh", "jq", "curl", "opencode"):
+        if not shutil.which(executable):
+            raise InstallError(f"Falta {executable} no PATH; instale-o antes de continuar.")
+    if not home.is_dir():
+        raise InstallError(f"HOME inválido: {home}")
+
+
+def ensure_openspec(data, env):
+    existing = shutil.which("openspec", path=env.get("PATH"))
+    if existing:
+        run(existing, "--version", env=env)
+        return existing
+    # The upstream standalone installer checks the released binary against
+    # SHA256SUMS. It is used only when no existing method owns this tool.
+    with tempfile.TemporaryDirectory(prefix="openspec-install-") as temp:
+        script = Path(temp) / "install.sh"
+        run("curl", "-fsSL", "https://raw.githubusercontent.com/Fission-AI/OpenSpec/main/scripts/binary/install.sh", "-o", str(script), env=env)
+        target = data / "bin"
+        target.mkdir(parents=True, exist_ok=True)
+        installer_env = {**env, "OPENSPEC_INSTALL_DIR": str(target)}
+        run("bash", str(script), env=installer_env)
+        binary = target / "openspec"
+        if not binary.is_file():
+            raise InstallError("OpenSpec standalone não foi instalado; consulte https://github.com/Fission-AI/OpenSpec/blob/main/docs/installation.md")
+        run(str(binary), "--version", env=env)
+        if shutil.which("openspec", path=env.get("PATH")) != str(binary):
+            raise InstallError(f"OpenSpec instalado em {binary}, mas fora do PATH. Adicione {target} ao PATH e repita.")
+        return str(binary)
+
+
+def fetch_snapshot(revision, source, temp):
+    repo = temp / "source"
+    run("git", "init", "-q", str(repo))
+    run("git", "-C", str(repo), "remote", "add", "origin", source)
+    run("git", "-C", str(repo), "fetch", "-q", "--depth", "1", "origin", revision)
+    fetched = run("git", "-C", str(repo), "rev-parse", "FETCH_HEAD^{commit}")
+    if fetched != revision:
+        raise InstallError("Snapshot não corresponde ao SHA aprovado.")
+    run("git", "-C", str(repo), "checkout", "-q", "--detach", revision)
+    if run("git", "-C", str(repo), "rev-parse", "HEAD") != revision:
+        raise InstallError("Revisão do checkout divergente.")
+    run("git", "-C", str(repo), "fsck", "--no-reflogs", "--connectivity-only")
+    for component in COMPONENTS:
+        if not (repo / component).is_dir():
+            raise InstallError(f"Snapshot incompleto: {component}")
+    if not (repo / "scripts" / "sync-skill-references").is_file():
+        raise InstallError("Snapshot sem gerador independente de referências.")
+    return repo
+
+
+def manifest_for(root, revision, agents):
+    entries = {}
+    skills = sorted(p.name for p in (root / "skills").iterdir() if (p / "SKILL.md").is_file())
+    for component in COMPONENTS:
+        for path in (root / component).rglob("*"):
+            if path.is_symlink():
+                raise InstallError(f"Symlink inesperado no snapshot: {path}")
+            if path.is_file():
+                relative = path.relative_to(root).as_posix()
+                entries[relative] = {"sha256": digest(path), "mode": stat.S_IMODE(path.stat().st_mode)}
+    for name in ("worktree-reservation", "workflow-evidence", "workflow-event"):
+        if f"scripts/{name}" not in entries:
+            raise InstallError(f"Helper ausente: {name}")
+    return {"schema": 1, "origin": ORIGIN, "revision": revision,
+            "agents": sorted(set(agents)), "files": entries,
+            "integrations": {"opencode": {"skills": ["skills/" + name for name in skills],
+                                        "instructions": "AGENTS.md", "ownership": "guidance.json"}}}
+
+
+def validate_manifest(root, manifest):
+    for relative, info in manifest["files"].items():
+        path = root / relative
+        if not path.is_file() or path.is_symlink() or digest(path) != info["sha256"] or stat.S_IMODE(path.stat().st_mode) != info["mode"]:
+            raise InstallError(f"Arquivo gerenciado modificado: {path}")
+
+
+def guidance(data):
+    return f"""{BEGIN}
+AI Engineering Workflow global: pacote em {data}/active (skills/, protocol/,
+templates/, scripts/). Use helpers por caminho absoluto, por exemplo
+{data}/active/scripts/worktree-reservation; cite argumentos e caminhos com espaços.
+Referências nas skills são relativas ao pacote global, nunca ao projeto atual.
+Regras locais AGENTS.md e instruções do usuário, especialmente restrições mais
+fortes, prevalecem; nenhuma permissão ou execução é concedida por este bloco.
+Estado, reservas, logs e evidências continuam no Git common dir do checkout.
+
+OpenSpec no primeiro uso: antes de propor/aplicar, confira `openspec context --json`
+e `openspec list --json` no root pretendido e os arquivos REAIS do perfil
+OpenCode: .opencode/commands/opsx-{{explore,propose,apply,archive}}.md e
+.opencode/skills/openspec-{{explore,propose,apply,archive}}/SKILL.md (considere
+também o perfil configurado e todos os comandos/skills que ele exige).
+Não execute init/update durante instalação global nem sem autorização.
+Novo projeto: confirme root e inventarie resíduos .opencode/, .agents/,
+.claude/, instruções marcadas e prompts opsx-* no HOME; se houver impacto,
+peça aprovação explícita antes de `openspec init --tools opencode`.
+Projeto existente completo: use como está. Incompleto: inspecione
+`openspec update --dry-run --json`, ferramentas configuradas, diferenças,
+arquivos customizados e efeitos globais antes de pedir autorização para update.
+Se OpenCode não estiver configurado, só proponha `openspec init --tools`
+com união explícita de ferramentas existentes + opencode após aprovar qualquer
+limpeza; sem preservação garantida, bloqueie sem escrever. Nunca use --force.
+Compare config/specs/changes antes e depois. Abra sessão OpenCode NOVA e
+comprove descoberta/invocação dos quatro comandos /opsx-* e skills oficiais;
+sem essa prova reporte bloqueio, não declare bootstrap concluído.
+{END}
+"""
+
+
+def updated_guidance(existing, block):
+    if BEGIN in existing or END in existing:
+        if existing.count(BEGIN) != 1 or existing.count(END) != 1 or existing.index(BEGIN) > existing.index(END):
+            raise InstallError("Bloco AGENTS.md alterado/inconsistente; não substituir.")
+        start = existing.index(BEGIN)
+        finish = existing.index(END) + len(END)
+        # Preserve all content outside the managed block byte-for-byte.
+        return existing[:start] + block.rstrip("\n") + existing[finish:]
+    return existing + ("\n" if existing and not existing.endswith("\n") else "") + block
+
+
+def install(args):
+    home = Path(os.environ["HOME"]).absolute()
+    preflight(home, args.agent)
+    data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))).absolute() / "my-ai-skills"
+    config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))).absolute() / "opencode"
+    safe_parent(data, home)
+    safe_parent(config, home)
+    data.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    ensure_openspec(data, env)
+    lock = data / ".install.lock"
+    absent_or_regular(lock)
+    with lock.open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        with tempfile.TemporaryDirectory(prefix="workflow-source-") as directory:
+            source = args.source or ORIGIN
+            repo = fetch_snapshot(args.revision, source, Path(directory))
+            manifest = manifest_for(repo, args.revision, args.agent)
+            versions = data / "versions"
+            target = versions / args.revision
+            active = data / "active"
+            skills = config / "skills"
+            agents = config / "AGENTS.md"
+            ownership = data / "guidance.json"
+            for parent in (versions, config, skills):
+                safe_parent(parent, home)
+                parent.mkdir(parents=True, exist_ok=True)
+            absent_or_regular(agents)
+            absent_or_regular(ownership)
+            previous = agents.read_text() if agents.exists() else ""
+            ownership_before = ownership.read_text() if ownership.exists() else None
+            if BEGIN in previous or END in previous:
+                if not ownership_before:
+                    raise InstallError("Bloco global sem registro de propriedade; preserve e reconcilie manualmente.")
+                record = json.loads(ownership_before)
+                if record.get("sha256") != hashlib.sha256(previous[previous.index(BEGIN):previous.index(END) + len(END)].encode()).hexdigest():
+                    raise InstallError("Orientação global personalizada; não sobrescrever.")
+            elif ownership_before:
+                raise InstallError("Registro global existe, mas orientação foi removida.")
+            new_text = updated_guidance(previous, guidance(data))
+            new_record = json.dumps({"schema": 1, "sha256": hashlib.sha256(guidance(data).rstrip("\n").encode()).hexdigest()}) + "\n"
+            if target.exists():
+                if target.is_symlink() or not target.is_dir():
+                    raise InstallError(f"Versão conflitante: {target}")
+                old = json.loads((target / "manifest.json").read_text())
+                if old != manifest:
+                    raise InstallError(f"Manifesto conflitante: {target}")
+                validate_manifest(target, old)
+            elif target.is_symlink():
+                raise InstallError(f"Versão symlink conflitante: {target}")
+            old_active = None
+            if active.is_symlink():
+                old_active = os.readlink(active)
+                resolved = (active.parent / old_active).resolve()
+                if resolved.parent != versions.resolve() or not (resolved / "manifest.json").is_file():
+                    raise InstallError("Ponteiro ativo não gerenciado.")
+                validate_manifest(resolved, json.loads((resolved / "manifest.json").read_text()))
+            elif active.exists():
+                raise InstallError("Ponteiro ativo de outra origem.")
+            skill_names = sorted(p.name for p in (repo / "skills").iterdir() if (p / "SKILL.md").is_file())
+            for name in skill_names:
+                link = skills / name
+                expected = str(data / "active" / "skills" / name)
+                if link.is_symlink() and os.readlink(link) == expected:
+                    continue
+                if link.exists() or link.is_symlink():
+                    raise InstallError(f"Skill de outra origem/personalizada: {link}")
+            created = []
+            published = False
+            try:
+                if not target.exists():
+                    with tempfile.TemporaryDirectory(prefix=".stage-", dir=versions) as stage:
+                        staging = Path(stage) / "package"
+                        staging.mkdir()
+                        for component in COMPONENTS:
+                            shutil.copytree(repo / component, staging / component, symlinks=False)
+                        (staging / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+                        validate_manifest(staging, manifest)
+                        staging.rename(target)
+                        published = True
+                for name in skill_names:
+                    link = skills / name
+                    if not link.is_symlink():
+                        link.symlink_to(data / "active" / "skills" / name)
+                        created.append(link)
+                if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "skills":
+                    raise InstallError("Falha simulada após registrar skills")
+                if previous != new_text:
+                    tmp = agents.with_name(".AGENTS.md.install-tmp")
+                    if tmp.exists() or tmp.is_symlink():
+                        raise InstallError(f"Arquivo temporário conflitante: {tmp}")
+                    tmp.write_text(new_text)
+                    tmp.replace(agents)
+                if ownership_before != new_record:
+                    tmp = ownership.with_name(".guidance.json.install-tmp")
+                    if tmp.exists() or tmp.is_symlink():
+                        raise InstallError(f"Arquivo temporário conflitante: {tmp}")
+                    tmp.write_text(new_record)
+                    tmp.replace(ownership)
+                if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "guidance":
+                    raise InstallError("Falha simulada após orientação")
+                if old_active != str(Path("versions") / args.revision):
+                    pointer = data / ".active.install-tmp"
+                    if pointer.exists() or pointer.is_symlink():
+                        raise InstallError(f"Ponteiro temporário conflitante: {pointer}")
+                    pointer.symlink_to(Path("versions") / args.revision)
+                    pointer.replace(active)
+            except Exception:
+                if ownership.exists() and ownership.read_text() == new_record and new_record != ownership_before:
+                    if ownership_before is None:
+                        ownership.unlink()
+                    else:
+                        ownership.write_text(ownership_before)
+                if agents.exists() and agents.read_text() == new_text and new_text != previous:
+                    if previous:
+                        agents.write_text(previous)
+                    else:
+                        agents.unlink()
+                for link in created:
+                    link.unlink()
+                if published:
+                    # Keep immutable staged versions for diagnosis; never remove unknown paths.
+                    pass
+                raise
+            print(f"Instalado: {args.revision} ({', '.join(sorted(set(args.agent)))})")
+            print(f"Verifique: {data}/active/manifest.json; OpenSpec: {shutil.which('openspec')}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Instalação global do AI Engineering Workflow")
+    parser.add_argument("--agent", action="append", required=True, help="opencode")
+    parser.add_argument("--revision", required=True, help="SHA completo aprovado")
+    parser.add_argument("--source", help=argparse.SUPPRESS)  # Git object source for isolated tests
+    args = parser.parse_args()
+    if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
+        parser.error("--revision exige SHA Git completo de 40 caracteres")
+    try:
+        install(args)
+    except (InstallError, OSError, ValueError, KeyError) as error:
+        print(f"Instalação incompleta: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

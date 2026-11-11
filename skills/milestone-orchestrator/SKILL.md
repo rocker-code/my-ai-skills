@@ -5,6 +5,11 @@ description: Run one GitHub issue, a repository work queue or a specific milesto
 
 # Issue, Work Queue and Milestone Orchestrator
 
+For global installations, resolve `scripts/<helper>` against
+`"${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active/scripts/<helper>"`.
+Run from the actual checkout and quote paths; execution data stays in the
+checkout's Git common directory, not in the global package.
+
 Run the entire selected scope: one issue, a project queue or a milestone. Read repository instructions and [the AI workflow protocol](references/AI_WORKFLOW.md). Coordinate issue-audit, implement-issue, apply-issue, prepare-pr, pr-audit, architecture-audit when relevant, github-resolution and kaizen. Delegate per-PR correction, final independent audit and merge to github-resolution; this skill owns the milestone dependency scheduler. Each worker must follow its skill gates. Proposal review and approval are owned by the agent: never interrupt the owner for routine proposal approval. Apply the shared evidence checklist, record the exact revision and rationale, then schedule a validated proposal automatically. Escalate only an unresolved material decision or a defined high-impact boundary.
 
 ## Invocation and operating modes
