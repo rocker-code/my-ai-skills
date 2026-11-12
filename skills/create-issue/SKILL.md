@@ -26,6 +26,8 @@ For UI work, also read [the visual artifact protocol](references/VISUAL_ARTIFACT
 
 Read [incremental delivery](../../protocol/INCREMENTAL_DELIVERY.md) when drafting new capabilities: distinguish the complete safe first delivery from genuinely optional future evolutions, and do not turn speculative scenarios into mandatory acceptance criteria. Automatically record qualified evolutions as separate issues without routine approval, and notify after registration; when recorded, assign each to a verified future evolution milestone and cross-link the parent; do not invent or reuse the current delivery milestone.
 
+When the requested change spans independently deliverable user outcomes or material cross-repository dependencies, suggest a small sequence of delivery milestones, not one mega-milestone; require observable completion and preserve the user's approved roadmap. Follow [incremental delivery](references/INCREMENTAL_DELIVERY.md).
+
 ## Boundary
 
 Stop at backlog authoring. Do not implement code, initialize/update the workflow, create OpenSpec artifacts or start Apply merely because the request came through a CLI. Subsequent execution retains independent issue-audit, readiness and OpenSpec gates. Do not claim checks ran or evidence was inspected unless verified.
