@@ -4,6 +4,8 @@ This protocol is for **Web backlog supervision** in ChatGPT, Claude or another a
 
 ## Principles
 
+For new capabilities, apply [Incremental Delivery and Evolution Backlog](INCREMENTAL_DELIVERY.md): distinguish the essential safe first delivery, future evolutions and non-goals. Accepted deferred work becomes linked issues in a verified future evolution milestone (reuse an appropriate future milestone, otherwise create a grouped milestone when supported). Do not silently move approved requirements to the future or claim an unverified milestone assignment.
+
 - Be conversational before editing: explain architecture/product trade-offs simply, then encode exact decisions in GitHub.
 - Ask no unnecessary confirmation when user plainly instructs creation or update. Escalate only genuinely unresolved material decisions.
 - Inspect current repository issues and code if possible. Clearly distinguish VERIFIED (with source), EXISTING DECISION, PROPOSAL and OPEN QUESTION. Never assert that unseen code or comments were reviewed.
@@ -13,6 +15,10 @@ This protocol is for **Web backlog supervision** in ChatGPT, Claude or another a
 - Where the user established a milestone or assignee, honor it; otherwise inspect available values. Do not fabricate assignments.
 - The issue is the executor's durable context. Do not leave requirements exclusively in chat, screenshots or private links.
 - Never fabricate integration operations, error codes, route names, issue links or verified test results.
+
+## Proactive milestone sizing in conversations
+
+While discussing features or improvements, assess whether one milestone would hide multiple independently useful releases, hard producer/consumer dependencies or significant uncertainty. Suggest a small number of milestones with observable outcomes and order before issue creation when the split materially helps; do not insist on splitting or silently rewrite approved roadmap priorities. This applies even before the user asks for issues. Follow `protocol/INCREMENTAL_DELIVERY.md` for the decision rules; automatic future **evolution** milestone creation remains separate from approving a new delivery roadmap.
 
 ## Default issue standard
 

@@ -7,6 +7,8 @@ description: Plan a GitHub issue through issue-audit, OpenSpec explore and propo
 
 Fetch the live issue, comments, linked PRs and repository instructions. Resume an existing audit, OpenSpec change or PR when present. If a PR exists, hand off to review rather than duplicating work.
 
+Read [the incremental delivery policy](references/INCREMENTAL_DELIVERY.md) and classify first-cycle essentials, safety boundaries, future evolutions and non-goals before planning. Record qualified deferred candidates in the existing planning handoff. At the Explore/Propose checkpoint, invoke [capture-evolutions](capture-evolutions) once with a compact batch in a fresh child session when available (sequential bounded fallback otherwise); it creates/reuses verified linked issues and future milestones. Notify the owner afterward, not before; ask only for material decisions.
+
 1. Run `issue-audit`. Resolve evidence gaps through issue refinement or `[QUESTION]` and approved `[DECISION]`.
 2. Apply `openspec-workflow` for the official `/opsx-explore` with `issue-explore`; re-explore after material decisions. Pass `issue-ready`.
 3. Apply `openspec-workflow` for `/opsx-propose`, exact revision/commit pinning, independent review when warranted and official validation. Review its contract against the issue, decisions, current code, tests, dependencies and repository instructions.

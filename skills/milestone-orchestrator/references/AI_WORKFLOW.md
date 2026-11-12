@@ -2,6 +2,8 @@
 
 ## Source of truth
 
+For new capabilities, follow [Incremental Delivery and Evolution Backlog](INCREMENTAL_DELIVERY.md). Use the checkpoint-only `capture-evolutions` worker with a compact handoff; prefer a fresh child session and fall back to sequential checkpoint processing when unavailable, never inline with active coding. Deliver a complete safe first vertical slice, then persist accepted deferred improvements as linked GitHub issues in a **future evolution milestone** before marking their backlog handoff complete. Keep approved criteria and contract revision gates intact.
+
 GitHub is the shared memory for people and agents. OpenSpec is the validated behavioral and architectural contract for this workflow. The repository is current implementation reality; tests are executable evidence.
 
 The latest explicit approved decision supersedes older conflicting discussion. Do not silently infer a material product or architectural decision.

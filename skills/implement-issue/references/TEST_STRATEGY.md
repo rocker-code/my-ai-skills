@@ -2,6 +2,8 @@
 
 Apply this policy automatically during planning, implementation and review. Use the smallest suite that proves the acceptance criteria and concrete risks of the change. Do not enumerate every imaginable combination, require a fixed test count or chase a coverage percentage. Preserve repository-required checks and explicit validated obligations.
 
+Apply [incremental delivery](INCREMENTAL_DELIVERY.md) to new features: prove the complete safe first user flow and affected concrete risk boundaries. Tests for optional unimplemented evolutions belong with their later issue, not the first delivery. Never use deferral to evade explicit acceptance, security/integrity boundaries or required repository gates.
+
 ## Plan sufficient coverage
 
 Inspect existing tests and fixtures before adding new ones. Extend the existing OpenSpec evidence matrix instead of creating another artifact or approval step:

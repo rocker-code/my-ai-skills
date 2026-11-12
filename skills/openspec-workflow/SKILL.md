@@ -13,6 +13,8 @@ Command names follow OpenSpec's per-agent convention: `/opsx-explore`, `/opsx-pr
 
 Read the live issue, approved `[DECISION]` comments and repository instructions. Find an existing OpenSpec change by issue, branch and capability before creating one; do not duplicate it. Run the installed official `/opsx-explore` with `issue-explore` before proposal, and again after material decisions. Require `issue-ready` before the official `/opsx-propose`.
 
+Apply [incremental delivery](references/INCREMENTAL_DELIVERY.md): prioritize a complete safe happy path, keep required risk boundaries, and explicitly distinguish deferred evolutions from validated current scope. A material change to approved behavior requires the normal issue/decision/revalidation gates; do not silently narrow commitments.
+
 Build proposal, specifications/scenarios, design and tasks against the actual repository: behavior and errors, public contracts, authorization, state, data/migrations, concurrency, compatibility, tests, cleanup and boundaries. Validate the proposal with the installed official OpenSpec command. Pin its exact revision/commit and record a requirement/scenario → implementation plan → proving test matrix, plus a review of architecture, data, contracts and risk. Request an independent reviewer for material boundary changes when available; otherwise record the inline review. If validation and review pass with no unresolved material decision, hand off automatically to a fresh Apply session. Do not treat an older revision's review as evidence for a materially changed proposal.
 
 ## Apply and close out
