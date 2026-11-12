@@ -17,6 +17,14 @@ For each scenario, classify it as:
 
 Do not defer a scenario merely because it is difficult, costly to test or technically inconvenient. Do not turn every possible case into an evolution. Prefer a simpler safe solution over unsafe deferral. Keep mandatory repository tests and explicit validated proof obligations. A scenario needed to fulfill a public contract or approved design stays in the current delivery unless that contract/decision is legitimately revised.
 
+## Critical milestone sizing during conversations and backlog planning
+
+When discussing **new functionality, improvements or roadmap organization**, proactively evaluate whether a proposed delivery is too broad for one independently verifiable cycle. This applies to ChatGPT/Claude Web conversations as well as CLI issue creation/refinement; it does **not** require that an issue already exist. Provide a concise recommendation when a split materially improves delivery: proposed milestone names, one demonstrable outcome per milestone, essential dependencies, the first safe vertical slice, and deferred evolutions. Separate an **approved decision** from a **suggested split**; do not create milestones merely because the feature sounds large.
+
+Recommend splitting when one milestone contains distinct user journeys or independently shippable capabilities, heavy cross-repository handoffs, unresolved material decisions, substantial operational risk, or complexity that would delay usable first value. Prefer a small number of meaningful milestones; do not split by technical layer, individual test, small edge case or arbitrary issue count. Each milestone must have observable completion and maintain safety/integrity. Do not schedule future milestones automatically ahead of an approved roadmap.
+
+During discussion, **suggest** the split with rationale and trade-offs before changing an established roadmap, milestone assignment or approved scope. Once the user authorizes planning/issue creation, apply the existing permission and GitHub verification rules. This critical recommendation is distinct from the already-approved automatic creation of **future evolution backlog milestones**; the latter may be created without a routine approval when an independently valuable deferred scenario qualifies.
+
 ## During planning
 
 1. Identify the concrete first user/business journey, its completion condition and essential failure/authorization boundaries. Review related issues, PRs, code and decisions; avoid duplicate implementation.
