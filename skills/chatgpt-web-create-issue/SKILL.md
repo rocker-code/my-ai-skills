@@ -28,6 +28,8 @@ User asks to create, register, break down or plan a feature/bug/UI improvement a
 5. Prefer existing repository labels/milestone; do not invent a label or milestone assignment. Preserve user's standing convention for issue assignee only after checking it is valid for the target repository. Create issue(s) when requested using the connected GitHub action, without an extra approval round when intent is clear.
 6. Fetch/verify created issue(s) or creation result, then give exact URLs, succinct scope and any remaining blockers. Never claim an issue exists without tool confirmation.
 
+For new capabilities, read [incremental delivery](../../protocol/INCREMENTAL_DELIVERY.md): separate a complete safe first iteration from optional future evolution, preserving approved behavior and essential risks. When evolution issues are authorized and created, cross-link them and assign them to a verified future evolution milestone; reuse an appropriate future milestone or create one if authorized and available. Report unavailable milestone tooling rather than leaving a created evolution issue silently in the current milestone.
+
 ## Quality bar
 
 For user-facing text changes, apply the protocol's **i18n and translation** standard: inspect the existing localization mechanism, record app/API text ownership and require translated states/errors/accessibility, safe unknown-code fallbacks and local formatting/plurals. Include corresponding acceptance criteria and representative scenarios; do not assume backend descriptions are already localized or translate domain names.
