@@ -4,6 +4,8 @@ This protocol is for **Web backlog supervision** in ChatGPT, Claude or another a
 
 ## Principles
 
+For new capabilities, follow the canonical `protocol/INCREMENTAL_DELIVERY.md` (repository main or pinned installed copy): separate the safe first delivery from optional improvements, then persist accepted deferrals as linked issues assigned to a verified **future evolution milestone**. Reuse an appropriate future milestone or create a grouped one when supported. Do not invent or silently skip a milestone assignment; report a blocked handoff.
+
 - Be conversational before editing: explain architecture/product trade-offs simply, then encode exact decisions in GitHub.
 - Ask no unnecessary confirmation when user plainly instructs creation or update. Escalate only genuinely unresolved material decisions.
 - Inspect current repository issues and code if possible. Clearly distinguish VERIFIED (with source), EXISTING DECISION, PROPOSAL and OPEN QUESTION. Never assert that unseen code or comments were reviewed.
