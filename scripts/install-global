@@ -216,6 +216,14 @@ Regras locais AGENTS.md e instruções do usuário, especialmente restrições m
 fortes, prevalecem; nenhuma permissão ou execução é concedida por este bloco.
 Estado, reservas, logs e evidências continuam no Git common dir do checkout.
 
+Retomada após crash/reboot ou nova sessão: para "continue de onde parou",
+"retome o desenvolvimento" ou pedido equivalente, leia primeiro a skill global
+resume-workflow; identifique por evidência o checkout/issue/milestone correto
+antes de escrever e depois use o milestone-orchestrator existente.
+Não confie somente na conversa anterior, em timestamp/PID ausente ou na
+última branch. Se houver escopo/posse ambíguos, preserve o trabalho e
+peça apenas a identificação necessária; nunca faça takeover inseguro.
+
 OpenSpec no primeiro uso: antes de propor/aplicar, confira `openspec context --json`
 e `openspec list --json` no root pretendido e os arquivos REAIS do perfil
 OpenCode: .opencode/commands/opsx-{{explore,propose,apply,archive}}.md e

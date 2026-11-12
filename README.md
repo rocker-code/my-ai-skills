@@ -10,6 +10,10 @@ O fluxo começa no agente Web: você descreve a necessidade, as skills consultam
 
 O ciclo passa por descoberta, prontidão, implementação, revisão e conclusão. OpenSpec é obrigatório; `openspec-workflow` rege exploração, propostas, validação da revisão exata, verificação da implementação e arquivamento.
 
+### Retomar após interrupção
+
+Em uma **nova sessão do OpenCode**, no checkout correspondente, peça **“continue de onde parou”** ou informe a URL da issue/milestone a retomar. A skill global `resume-workflow` reconcilia Git/GitHub, OpenSpec, evidências e a posse da worktree antes de delegar ao `milestone-orchestrator`. Quando o escopo ou a posse não forem verificáveis, preserva o trabalho e solicita somente a informação necessária, sem sobrescrever arquivos. Um teste/comando interrompido não é considerado aprovado sem evidência final. Alterações que nunca saíram de um disco perdido não podem ser restauradas automaticamente.
+
 ![Fluxo do AI Engineering Workflow: da ideia à issue com agente Web, seguida de planejamento, implementação, validação e merge no CLI.](docs/images/fluxo-my-ai-skills.svg)
 
 [Veja o fluxo completo na wiki](https://github.com/rocker-code/my-ai-skills/wiki/Guia-do-fluxo).
