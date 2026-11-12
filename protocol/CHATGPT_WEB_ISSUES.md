@@ -16,6 +16,10 @@ For new capabilities, apply [Incremental Delivery and Evolution Backlog](INCREME
 - The issue is the executor's durable context. Do not leave requirements exclusively in chat, screenshots or private links.
 - Never fabricate integration operations, error codes, route names, issue links or verified test results.
 
+## Proactive milestone sizing in conversations
+
+While discussing features or improvements, assess whether one milestone would hide multiple independently useful releases, hard producer/consumer dependencies or significant uncertainty. Suggest a small number of milestones with observable outcomes and order before issue creation when the split materially helps; do not insist on splitting or silently rewrite approved roadmap priorities. This applies even before the user asks for issues. Follow `protocol/INCREMENTAL_DELIVERY.md` for the decision rules; automatic future **evolution** milestone creation remains separate from approving a new delivery roadmap.
+
 ## Default issue standard
 
 Apply this standard to new issues and authorized refinements. Scale detail to the change; include conditional sections only when relevant, without empty boilerplate.
