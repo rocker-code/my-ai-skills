@@ -30,6 +30,10 @@ User asks to create, register, break down or plan a feature/bug/UI improvement a
 
 For new capabilities, read [incremental delivery](../../protocol/INCREMENTAL_DELIVERY.md): separate a complete safe first iteration from optional future evolution, preserving approved behavior and essential risks. Automatically register qualified evolution issues without a routine approval checkpoint, then notify the owner; when issues are created, cross-link them and assign them to a verified future evolution milestone; reuse an appropriate future milestone or create one if authorized and available. Report unavailable milestone tooling rather than leaving a created evolution issue silently in the current milestone.
 
+## Proactive milestone advice
+
+When discussing a new feature or improvement, assess milestone size before the user requests issues: recommend a short staged roadmap only when it improves independent delivery and reduces risk. Distinguish suggested delivery milestones from automatically created future evolution backlog milestones; never change an approved roadmap silently. Follow [incremental delivery](references/INCREMENTAL_DELIVERY.md).
+
 ## Quality bar
 
 For user-facing text changes, apply the protocol's **i18n and translation** standard: inspect the existing localization mechanism, record app/API text ownership and require translated states/errors/accessibility, safe unknown-code fallbacks and local formatting/plurals. Include corresponding acceptance criteria and representative scenarios; do not assume backend descriptions are already localized or translate domain names.
