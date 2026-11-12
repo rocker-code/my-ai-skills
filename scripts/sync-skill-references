@@ -55,6 +55,12 @@ for skill in implement-issue openspec-workflow apply-issue prepare-pr pr-audit p
   bundle_reference "$skill" protocol/TEST_STRATEGY.md
 done
 
+# Distribute the incremental-delivery contract with independently installed skills.
+# The installed skill directories cannot rely on ../../protocol paths.
+for skill in capture-evolutions chatgpt-web-create-issue chatgpt-web-refine-issue create-issue refine-issue issue-audit issue-explore implement-issue openspec-workflow apply-issue prepare-pr milestone-orchestrator; do
+  bundle_reference "$skill" protocol/INCREMENTAL_DELIVERY.md
+done
+
 bundle_reference optimize-ci skills/ci-performance-audit/references/magento.md
 
 echo "Synchronized skill references"
