@@ -77,6 +77,21 @@ class GlobalInstallTests(unittest.TestCase):
         self.git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-qm", "next")
         return self.git("rev-parse", "HEAD").stdout.strip()
 
+    def test_recovery_skill_is_discoverable_and_guidance_routes_new_sessions(self):
+        installed = self.install()
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        recovery = self.home / ".config/opencode/skills/resume-workflow/SKILL.md"
+        self.assertTrue(recovery.is_file())
+        self.assertEqual(recovery.read_text(),
+                         (self.source / "skills/resume-workflow/SKILL.md").read_text())
+        guidance = (self.home / ".config/opencode/AGENTS.md").read_text()
+        self.assertIn("continue de onde parou", guidance)
+        self.assertIn("resume-workflow", guidance)
+        self.assertIn("milestone-orchestrator", guidance)
+        self.assertIn("takeover inseguro", guidance)
+        self.assertIn("RECOVERY_REQUIRED", recovery.read_text())
+        self.assertIn("unknown", recovery.read_text())
+
     def test_update_two_consumers_and_failure_states(self):
         first = self.install()
         self.assertEqual(first.returncode, 0, first.stderr)
