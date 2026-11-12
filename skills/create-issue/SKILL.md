@@ -24,6 +24,8 @@ For UI work, also read [the visual artifact protocol](references/VISUAL_ARTIFACT
 4. Resolve routine details from evidence; ask only about material unresolved decisions. Preserve explicit non-goals. Create linked producer/consumer issues only when independently deliverable boundaries require them, and record ordering and contract handoff.
 5. When creation is requested, publish through the authorized GitHub integration without another confirmation. Use verified repository metadata. Read back the issue and verify its body and assignments before returning links, scope and blockers. If writing is unavailable, provide a copy-ready title/body and state that nothing was published.
 
+Read [incremental delivery](../../protocol/INCREMENTAL_DELIVERY.md) when drafting new capabilities: distinguish the complete safe first delivery from genuinely optional future evolutions, and do not turn speculative scenarios into mandatory acceptance criteria. When accepted evolutions are recorded as separate issues, assign each to a verified future evolution milestone and cross-link the parent; do not invent or reuse the current delivery milestone.
+
 ## Boundary
 
 Stop at backlog authoring. Do not implement code, initialize/update the workflow, create OpenSpec artifacts or start Apply merely because the request came through a CLI. Subsequent execution retains independent issue-audit, readiness and OpenSpec gates. Do not claim checks ran or evidence was inspected unless verified.
