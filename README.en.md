@@ -10,6 +10,10 @@ The workflow starts with the Web agent: describe your need, and the skills inspe
 
 The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
 
+### Resume after an interruption
+
+In a **new OpenCode session**, from the relevant checkout, say **“continue where you left off”** or supply an explicit issue/milestone URL. The global `resume-workflow` skill reconciles Git/GitHub, OpenSpec, evidence and worktree ownership before handing off to the existing `milestone-orchestrator`. Ambiguous scope or ownership blocks writes rather than risking local changes; interrupted tests never count as passed without conclusive evidence. Local-only changes lost with a missing disk cannot be recovered automatically.
+
 ![AI Engineering Workflow: from an idea to a Web-authored issue, then CLI planning, implementation, validation and merge.](docs/images/fluxo-my-ai-skills.en.svg)
 
 [See the full workflow in the wiki](https://github.com/rocker-code/my-ai-skills/wiki/Workflow-guide).
