@@ -55,6 +55,8 @@ Group related questions, include evidence and trade-offs, and stop. Recommendati
 
 Implementation details that follow established project conventions are not automatically blocking questions.
 
+For new capabilities, record candidates for an independently useful future evolution in the existing planning handoff (not in implementation or a speculative API contract). The supervising `implement-issue` invokes `capture-evolutions` at the planning checkpoint; do not create extra issues during active exploration.
+
 ## Output
 
 Report:
