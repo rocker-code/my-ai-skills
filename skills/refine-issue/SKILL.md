@@ -18,6 +18,8 @@ For CLI UI work also read [the visual artifact protocol](references/VISUAL_ARTIF
 
 New CLI issues use `create-issue`. Implementation requests retain their existing execution/OpenSpec routing. Web refinement keeps its existing entry and behavior; these additional routing instructions apply only to CLI authoring.
 
+For new capabilities, apply [incremental delivery](../../protocol/INCREMENTAL_DELIVERY.md): audit the first safe end-to-end delivery separately from optional evolutions and non-goals. Preserve existing approved criteria, and link accepted deferred work to distinct issues in a verified future evolution milestone; never silently demote an approved obligation.
+
 ## Refinement
 
 Read the existing issue/comments and inspect relevant repository/code/docs when access exists. Preserve valid existing content and later decisions.
