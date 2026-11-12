@@ -112,11 +112,13 @@ def main():
                 command_names = {item["name"] for item in commands["data"]}
                 skill_map = {item["id"]: item for item in skills["data"]}
                 if all(f"opsx-{action}" in command_names and skill in skill_map
-                       for action, skill in ACTIONS.items()) and "apply-issue" in skill_map:
+                       for action, skill in ACTIONS.items()) and "apply-issue" in skill_map and "resume-workflow" in skill_map:
                     break
                 if time.monotonic() > deadline:
                     raise RuntimeError(f"Discovery timeout in {location}: {command_names}, {set(skill_map)}")
                 time.sleep(0.5)
+            assert Path(skill_map["resume-workflow"]["path"]).resolve() == (
+                active / "skills/resume-workflow/SKILL.md").resolve()
             assert Path(skill_map["apply-issue"]["path"]).resolve() == (
                 active / "skills/apply-issue/SKILL.md").resolve()
             record = {"directory": str(location), "commands": sorted(command_names),
