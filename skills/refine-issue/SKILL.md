@@ -20,6 +20,8 @@ New CLI issues use `create-issue`. Implementation requests retain their existing
 
 For new capabilities, apply [incremental delivery](../../protocol/INCREMENTAL_DELIVERY.md): audit the first safe end-to-end delivery separately from optional evolutions and non-goals. Preserve existing approved criteria, and automatically register qualified deferred work as distinct issues linked to the original issue and assigned to a verified future evolution milestone, then notify the owner; never silently demote an approved obligation.
 
+Assess milestone sizing when discussing new functionality or refinements: recommend a small number of independently valuable, dependent deliverables where appropriate, without silently changing approved milestone order or scope. Follow [incremental delivery](references/INCREMENTAL_DELIVERY.md).
+
 ## Refinement
 
 Read the existing issue/comments and inspect relevant repository/code/docs when access exists. Preserve valid existing content and later decisions.
