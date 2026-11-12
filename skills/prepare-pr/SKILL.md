@@ -54,6 +54,10 @@ Before writing, verify the current branch is not the default branch, confirm the
 
 This authorization does not include merging, releasing, deploying, force-pushing, or changing unrelated files. The audited resolution workflow owns the final merge gate and uses the owner's standing auto-if-green preference unless the direct request opts out. If the user explicitly asks for a prepare-only or review-only run, do not commit, push, or open a PR; return `READY FOR PR` with the prepared title, body, checks, and scope.
 
+## Evolution handoff
+
+Apply [the incremental delivery policy](../../protocol/INCREMENTAL_DELIVERY.md). Reconcile planned and Apply-discovered evolutions against existing issues; consolidate and persist accepted future work as linked GitHub issues **assigned to a new or reused future evolution milestone** in the owning repository. Verify the milestone assignment and parent links. Do not automatically move work to the current milestone, create a milestone per minor item or claim completion when the integration cannot write/verify. Add a compact `Evolutions identified` section to the PR with links and milestone names, or a precise `EVOLUTION BACKLOG BLOCKED` status. This is not a reason to expand or delay the safe main behavior during Apply.
+
 ## PR body
 
 Follow the repository template, otherwise use [the pull request template](references/pull-request.md). Include issue linkage (`Closes #...` when correct), OpenSpec change, what changed, contract changes, material decisions, tests actually run, risk/migration/compatibility and non-goals.
