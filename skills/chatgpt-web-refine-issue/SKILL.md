@@ -30,6 +30,10 @@ User asks to inspect an issue, clarify an agent's question, check whether it is 
 
 Apply [incremental delivery](../../protocol/INCREMENTAL_DELIVERY.md) to new-capability refinements: classify safe first-cycle scope versus future evolutions without undoing approved criteria. Automatically register qualified deferred issues, notify the owner afterward, and link them to the source and to a verified future evolution milestone, creating an appropriate grouped milestone when needed and authorized.
 
+## Proactive milestone advice
+
+During feature/improvement discussion, critically recommend splitting broad milestones into a few independently verifiable deliveries with dependencies and first safe value when warranted. Suggest, do not silently reprioritize or rewrite existing milestones. Follow [incremental delivery](references/INCREMENTAL_DELIVERY.md).
+
 ## Guardrails
 
 For affected user-facing content, reconcile the issue's **i18n and translation** section, acceptance and scenarios with inspected locale catalogs/helpers and API text ownership. Cover state/error/accessibility labels, safe unknown-code fallbacks and local formatting/plurals; preserve domain data. Apply this to full refinements or the affected part of a narrow correction without expanding into unrelated translation cleanup.
