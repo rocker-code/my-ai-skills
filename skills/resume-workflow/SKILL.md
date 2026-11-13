@@ -10,6 +10,30 @@ metadata:
 
 Use this skill when the user asks to continue interrupted work or a new session has no reliable conversation context. **This is a recovery entrypoint, not another scheduler or persistence store.** Invoke the existing `milestone-orchestrator` for an identified issue/milestone and reuse its required gates, workers and merge mode. Do not implement here in the recovery/inventory phase.
 
+## Worker-level recovery and bounded runtime observations
+
+Recovery must distinguish **run**, **issue**, **stage**, **worker**, and **typed execution ID**. The orchestrator is the only writer of each issue/run's `workflow-event` record; child sessions return observations with source, observed time and evidence references. Resume must not infer a worker's completion from a stale PID, transcript, elapsed time, last log line, dispatch acknowledgement or missing callback. Query supported runtime status and accessible evidence; otherwise retain `unknown`.
+
+When resuming, build a compact per-worker inventory from existing GitHub, OpenSpec, workflow-event/report, workflow-evidence and worktree-reservation sources (no new ledger):
+
+| Field | Required recovery meaning |
+| --- | --- |
+| Identity | Exact repository, selected issue/milestone, run ID, worker ID, stage, execution kind/ID and original merge mode if verifiable |
+| Inputs | Base/head/proposal SHA, dependencies and decisions the worker was actually dispatched against |
+| Last observed state | Source and timestamp of a runtime callback/query, with `completed`, `blocked`, `failed` or `unknown`; dispatch alone is not completion |
+| Evidence | Durable GitHub/OpenSpec refs, verified test bundles when supported, exact-head CI and worktree inventory/ownership |
+| Continuation | Last verified gate, invalidated or incomplete obligations, next eligible worker and specific blocker if any |
+
+**Resumption rules:**
+
+1. A child worker that disappeared without confirmed terminal observation remains **UNKNOWN**; reconcile its git writes and proof before dispatching a replacement. Never run two writers on the same reserved worktree.
+2. Transfer writer ownership only when stopped-writer evidence, inventory consistency and the existing `worktree-reservation` procedure permit it. If not, block the affected issue while safe independent work continues.
+3. A matching validated OpenSpec SHA and reachable review evidence may be reused; an interrupted command, partial test log, stale plan/head or inaccessible proof must not be upgraded to PASS. Re-execute only the obligation invalidated or left incomplete.
+4. Preserve hard dependencies and runtime capacity. Queue when capacity is exhausted; do not retry with unbounded agents or silently run dependent work before prerequisite merge.
+5. Keep retry attempts finite and record every new typed execution ID. Do not change scope, branch, approved contract or merge mode as a side effect of recovery. Failed attempts and waits belong in the existing workflow-event/report model.
+6. Record actual stage/window observations and waits through the existing timing helpers. Report calendar time and registered stage work separately; overlapping worker durations must not be misreported as elapsed time. Report token/model/cost values **only if a trusted provider/runtime source exposes them**, otherwise mark unavailable rather than estimate.
+7. Send the parent only the structured recovery summary and authoritative refs. Large worker logs and previous chats are never the sole continuation contract. The parent decides safe scheduling, not the recovering worker.
+
 ## Resolve scope without guessing
 
 1. Read local `AGENTS.md` and applicable project instructions. Establish the actual checkout via `git rev-parse --show-toplevel`, `git remote -v`, `git rev-parse --path-format=absolute --git-common-dir` and `git worktree list --porcelain`. A worktree can belong to a different project than the terminal's previous session.
