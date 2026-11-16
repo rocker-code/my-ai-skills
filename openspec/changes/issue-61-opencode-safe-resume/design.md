@@ -32,9 +32,11 @@ Natural-language routing is guidance to the agent, not a native OpenCode crash h
 - Existing `tests/test_worktree_reservation.py` and `tests/test_workflow_execution_state.py` remain the primary automated contract for ownership/checkpoints.
 - Real OpenCode follow-up smoke required to exercise T1/T5/T7 (resume a single issue, milestone, ambiguous candidates) and verify observed behavior. Do not mark these executed without runtime evidence.
 
+A PR #62 está incorporada e não é o candidato ao gate final da continuação. A branch `issue-61-resume-closeout` deve produzir uma PR de acompanhamento vinculada à #61 aberta; os checks finais devem corresponder ao HEAD limpo e exato dessa nova PR após archive/sync. Isso entrega somente a prova e o fechamento restantes, sem repetir a implementação inicial.
+
 ## Matriz de prova pendente para a retomada real
 
-O `tests/smoke_global_opencode.py` verifica descoberta e expansão dos comandos, mas instala a revisão publicada `c48ac58beadc0a9712f59f60458a5c3df3ed5bfb`, não a versão atual da skill; portanto não prova T1/T5/T7. Na sessão Apply, preservar esse teste da distribuição pública e criar uma prova separada da revisão candidata em HOME e repositórios descartáveis, com OpenCode/OpenSpec reais, sem escrever no HOME do usuário nem substituir o pacote global. Registrar a revisão da skill efetivamente carregada, os IDs de sessão, os prompts, as respostas e o estado Git/OpenSpec antes/depois. Se for necessário um modelo para exercer a decisão do agente, não considerar como prova um smoke sem credenciais que somente verifica descoberta.
+O `tests/smoke_global_opencode.py` verifica descoberta e expansão dos comandos, mas instala a revisão publicada `c48ac58beadc0a9712f59f60458a5c3df3ed5bfb`, não a versão atual da skill; portanto não prova T1/T5/T7. Na sessão Apply, preservar esse teste da distribuição pública e **construir e executar** uma prova separada da revisão candidata em HOME e repositórios descartáveis, com OpenCode/OpenSpec reais e modelo habilitado, sem escrever no HOME do usuário nem substituir o pacote global. Registrar a revisão da skill efetivamente carregada, os IDs de sessão, os prompts, as respostas e o estado Git/OpenSpec/PR antes/depois. Sem modelo efetivo, descoberta ou expansão de comando não satisfazem T1/T5/T7: registrar o gate como bloqueado, nunca como aprovado.
 
 | Cenário | Arranjo e resultado a comprovar | Prova existente / pendente |
 | --- | --- | --- |

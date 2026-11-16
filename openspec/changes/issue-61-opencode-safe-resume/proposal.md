@@ -24,3 +24,7 @@ The established orchestrator and worktree helpers already prescribe resuming aft
 ## Impact
 
 `skills/resume-workflow/SKILL.md`, `scripts/install-global`, `tests/test_global_install.py`, `README.md`, `README.en.md`, changelog. Reuse the existing worktree and workflow protocols. No new runtime service, persisted database, UI or public API.
+
+## Continuação da issue aberta
+
+A PR #62 já foi incorporada: sua implementação inicial permanece válida, mas não comprova os cenários T1/T5/T7 nem arquiva/sincroniza este change. A continuação da #61 na branch/worktree `issue-61-resume-closeout` SHALL preservar o trabalho entregue, construir e executar uma prova isolada em sessões novas reais do OpenCode com modelo e com a **revisão candidata** da skill instalada, e registrar respostas e estado antes/depois. Uma PR de acompanhamento desta mesma issue SHALL conter apenas o escopo residual verificado, incluindo o OpenSpec arquivado/sincronizado; o gate final SHALL incidir sobre o HEAD limpo e exato dessa PR de acompanhamento, não sobre o HEAD histórico da #62. Não recriar a implementação inicial nem duplicar a PR incorporada.
