@@ -18,6 +18,10 @@ The workflow SHALL recognize a natural request to continue interrupted developme
 - **WHEN** multiple issues or milestones could match “continue de onde parou”
 - **THEN** the agent displays the candidates and pauses before a modifying action, without selecting one from recency alone
 
+#### Scenario: Explicit choice after ambiguous pause in the same session
+- **WHEN** the agent has paused on two equally plausible issue/run candidates and the user explicitly chooses one issue/run in that same OpenCode session
+- **THEN** the agent re-inventories the checkout, both reservations and ledgers, checks stopped-writer evidence before any ownership transition, and may inspect the applicable native OpenSpec skill read-only without dispatch or writes; the initial ambiguous pause does not require native invocation
+
 ### Requirement: Preserve work and verify ownership
 
 The workflow SHALL reuse verified existing branches/worktrees/OpenSpec/PRs. It MUST inspect staged, unstaged, untracked and relevant ignored data and MUST NOT perform writer takeover without grounded stopped-writer evidence and helper reconciliation.
@@ -29,6 +33,10 @@ The workflow SHALL reuse verified existing branches/worktrees/OpenSpec/PRs. It M
 #### Scenario: Active or uncertain owner
 - **WHEN** the previous writer remains active or ownership evidence is inconclusive
 - **THEN** writing is blocked for that checkout; no automatic takeover is attempted
+
+#### Scenario: Null PID without terminal runtime proof
+- **WHEN** a reservation has no PID or a fixture merely describes the writer as stopped without independent terminal runtime evidence for its execution
+- **THEN** the agent does not claim the writer has stopped and blocks ownership transition and Apply pending authoritative evidence
 
 ### Requirement: Continue only from verified gates
 
