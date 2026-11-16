@@ -1,0 +1,30 @@
+# Design
+
+## Context
+
+Ver `proposal.md`. `scripts/worktree-reservation` chama `worktree_registry.identity()` sobre o caminho recebido e opera sob lock no Git common dir; parser hoje exige `--path` para todo subcomando salvo `list`, e imprime JSON indentado por padrão. `scripts/install-global` publica snapshots imutáveis em `versions/<SHA>` e alterna `active`, além de gerenciar links de skills. Testes offline existem em `tests/test_worktree_reservation.py` e `tests/test_global_install.py`; `scripts/workflow-status` já agrega GitHub e não deve ser refeito.
+
+## Goals / Non-Goals
+
+**Goals:** interface curta para trabalho no checkout corrente, launcher global com origem e rollback verificáveis, saída resumida que não masque o código do helper; invariantes existentes de owner, lock, drift, fingerprint e JSON intactos.
+
+**Non-Goals:** sessão inferida, alteração de schema do registry ou semântica de `status`, dashboard Git/OpenSpec, instalação real nesta sessão, nova dependência, remoção de checks; consumidores externos aguardam entrega.
+
+## Decisions
+
+1. **Resolver checkout antes de `identity`/lock**: se `--path` estiver ausente num comando que aceita checkout existente, usar `git --no-optional-locks rev-parse --show-toplevel` com `GIT_OPTIONAL_LOCKS=0` no cwd; canonizar caminho e executar a validação de identidade/anchor existente, sem consultar registry para escolher caminho. `reserve --planned`, `cancel-planned`, `mark-removed` continuam exigindo `--path` e `--repository` conforme operação; `list` mantém `--repository`. Se não houver worktree, falhar antes de abrir registry, com caminho para corrigir. Alternativa descartada: `Path.cwd()` (seleciona subdiretório) ou primeira reserva ativa (confunde repos e impersona owner). Para `reserve` de checkout existente, exigir as opções originais de issue/branch/owner e manter recusa de primary.
+2. **Separar transporte e apresentação**: centralizar renderização de respostas sem alterar `response()`/`execute()` nem códigos de `ReservationError`. Saída padrão em texto sem cor, com owner completo, estado, HEAD/digest completos, drift e caminhos/conflictos pertinentes; falha inclui ação segura específica por código e condição. `--json` imprime um único objeto na stdout; stderr não recebe diagnóstico adicional. Aridade/validação de argumentos devem conservar código 2; quando `--json` foi solicitado, planejar o mesmo envelope JSON para erros de uso, sem traceback, mantendo chaves/tipos dos erros operacionais existentes. Não reduzir identificadores para prefixos; formatador nunca converte erro em sucesso.
+3. **Launcher gerenciado estável, executa script ativo no diretório correto**: instalador usa diretório de executáveis do usuário (por padrão `~/.local/bin`), confirma descobrimento no PATH efetivo e ausência de comando homônimo de outra origem na resolução. Instala launcher próprio com `exec` para `<data>/active/scripts/worktree-reservation` e encaminha argumentos com aspas (`"$@"`), em vez de symlink isolado do arquivo Python, para que `worktree_registry.py` esteja importável. Antes de publicar, verificar bytes/modo/propriedade do launcher existente via registro gerenciado, sem presumir posse pelo nome; colisões bloqueiam. Integrar criação/rollback à mesma seção protegida por lock do instalador e só publicar depois de validar snapshot; rollback não destrói arquivos preexistentes nem troca active antes de prontidão. Repetição e atualização validam o launcher e preservam mesmo comando apontado a active. Se PATH não incluir o destino, falha explícita ou estado não instalado (não declarar sucesso com comando invisível). Alternativa descartada: modificar shell profile, sobrescrever PATH/colisões, symlink para script Python, executar `install-global` nesta issue.
+4. **Uma fonte de exemplos**: atualizar `protocol/WORKTREES.md`, regenerar as cópias oficiais de referências com `scripts/sync-skill-references`, orientação gerada por `guidance()` e exemplos de skills/READMEs relevantes, distinguindo uso global e fallback por caminho absoluto para ambientes ainda não atualizados. Não substituir pipelines de status GitHub/OpenSpec por `verify`; evitar pipe que esconda o exit code do produtor.
+
+## Risks / Trade-offs
+
+- **PATH colide, não inclui diretório ou tem override anterior** → checar resolução efetiva e propriedade antes de qualquer publicação, explicar como reconciliar sem sobrescrever; testes com HOME/PATH descartáveis, inclusive instalação anterior.
+- **Falha parcial entre criar launcher e alterar active** → registrar quais arquivos próprios foram criados, rollback simétrico; fault injection já disponível (`MY_AI_SKILLS_FAIL_AT`), adicionar estágio específico e validar old active funcional.
+- **`--json` em erro de parse** → erro de uso ocorre antes do `try` atual; isolar serialização sem alterar validação/exit code; garantir stdout somente JSON nos erros declarados e códigos 2/3/4/5/6/7.
+- **Git dentro de subdiretório ou repo nested** → `--show-toplevel` retorna a worktree que realmente contém cwd; `--path` explícito prevalece, identity revalida common dir/remote. Não autorizar caminhos de destino ausente por fallback.
+- **Diferença entre pacote active instalado e checkout da issue** → não executar instalação real; validação de instalador em HOME temporário, preservar estado global real.
+
+## Migration Plan
+
+Após implementação e testes, instalação/atualização global explicitamente solicitada entrega o launcher na mesma transação da revisão ativa. Antes disso documentação pode usar fallback absoluto; consumidores M2T/Rancho só mudam após contrato entregue. Em falha de atualização, manter instalação e launcher anteriores sem migração implícita de personalizações. Na etapa Apply, arquivar/sincronizar os três deltas após testes e validação estrita conforme workflow.

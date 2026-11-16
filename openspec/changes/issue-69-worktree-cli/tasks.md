@@ -1,0 +1,26 @@
+# Tasks
+
+## 1. Seleção segura do checkout
+
+- [ ] 1.1 Adaptar parser/resolução de `scripts/worktree-reservation` para `--path` opcional apenas em checkout existente, com `--show-toplevel` read-only, precedência de caminho explícito e recusa de destino planejado/ausente sem path; provar com testes de raiz/subdiretório de dois linked worktrees, path com espaços e diretório externo em `tests/test_worktree_reservation.py`.
+- [ ] 1.2 Manter sessão explícita e invariantes de owner/lock/registry/drift/handoff/takeover após resolução; provar reutilizando regressões da reserva e novos casos de sessão omitida/alheia e no-optional-locks no teste focado de reserva.
+
+## 2. Saídas públicas
+
+- [ ] 2.1 Adicionar renderização legível por padrão em `scripts/worktree-reservation` de sucesso, conflitos e próximo passo seguro, sem alterar `response()`/exit codes; provar conteúdo, HEAD/digest completos e erro de drift/lock/registry em `tests/test_worktree_reservation.py`.
+- [ ] 2.2 Garantir `--json` íntegro na stdout para sucesso/erro, inclusive erro de uso quando selecionado, mantendo shape e códigos 0/2/3/4/5/6/7; provar com parsing e comparação de fixture de resposta em teste focado.
+- [ ] 2.3 Documentar em `protocol/WORKTREES.md` o comando curto, sessão explícita, `--json` para automação, fallback absoluto e parâmetros ainda explícitos; regenerar referências com `scripts/sync-skill-references` e verificar ausência de divergência das cópias oficiais.
+
+## 3. Instalação e atualização globais
+
+- [ ] 3.1 Integrar launcher de `worktree-reservation` em `scripts/install-global`, detectando PATH/colisões/propriedade, imports na versão active, idempotência e rollback; provar com `tests/test_global_install.py` em HOME/PATH descartáveis para instalação, atualização e falha injetada, sem executar instalação global real.
+- [ ] 3.2 Atualizar orientação gerada, skills e exemplos relevantes para comando público sem pipes que mascarem exit status; manter README.md/README.en.md em paridade quando tocados e provar com testes de distribuição/inspeção dos exemplos em ambiente descartável.
+
+## 4. Verificação integrada de entrega
+
+- [ ] 4.1 Executar `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_worktree_reservation tests.test_global_install` (ou discover com os filtros suportados) e `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests`; registrar resultados e revalidar os contratos afetados sem executar instalação real.
+- [ ] 4.2 Rodar `openspec validate issue-69-worktree-cli --strict` e verificar matrix dos cenários contra testes, JSON público, segurança da instalação e comandos documentados antes da etapa de arquivo.
+
+## Workflow follow-up
+
+- Após implementação, testes e revisão, arquivar/sincronizar os três deltas na branch conforme o protocolo OpenSpec, inspecionar especificações principais e então preparar PR sem instalar o pacote global nesta tarefa.
