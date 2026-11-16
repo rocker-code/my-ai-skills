@@ -75,10 +75,10 @@ def process_start(pid):
     return int(Path(f"/proc/{pid}/stat").read_text().rsplit(") ", 1)[1].split()[19])
 
 
-def terminal_receipt(reservation, repo, path, issue, run_id, case_env, root):
+def terminal_receipt(reservation, repo, path, issue, run_id, case, case_env, root):
     """Observe a real cooperative fixture writer's exit via Popen.wait()."""
-    owner = f"seed-{path.parent.name}-{issue}"
-    execution_id = f"writer-{path.parent.name}-{issue}"
+    owner = f"seed-{case}"
+    execution_id = f"writer-{case}-{issue.split('/')[-1]}"
     child = '''import json, os, subprocess, sys
 reservation, path, issue, branch, owner, run_id = sys.argv[1:]
 start = int(open(f"/proc/{os.getpid()}/stat").read().rsplit(") ",1)[1].split()[19])
@@ -98,13 +98,15 @@ sys.stdin.read()
         stderr=subprocess.PIPE, text=True)
     ready = process.stdout.readline()
     if not ready:
-        raise RuntimeError(f"fixture writer did not reserve: {process.stderr.read()[:500]}")
+        raise RuntimeError(f"fixture writer did not reserve: {process.stderr.read()[:2000]}")
     identity = json.loads(ready)
     assert process.pid == identity["pid"] and process_start(process.pid) == identity["start"]
     observed_at = datetime.now(timezone.utc).isoformat()
     process.stdin.close()
     code = process.wait(timeout=20)
     assert code == 0, process.stderr.read()[:500]
+    proc_path = Path(f"/proc/{identity['pid']}/stat")
+    assert not proc_path.exists() or process_start(identity["pid"]) != identity["start"]
     receipt = {"execution_id": execution_id, "owner": owner, "run": run_id,
                "pid": identity["pid"], "process_start": identity["start"],
                "exit_code": code, "observed_at": datetime.now(timezone.utc).isoformat(),
@@ -374,7 +376,7 @@ def main():
             git(repo, env, "worktree", "add", "-qb", branch, str(path), "HEAD")
             worktrees.append(path)
             receipt = terminal_receipt(reservation, repo, path, issue_url, run_id,
-                                       case_env, runtime_root)
+                                       case, case_env, runtime_root)
             receipts[issue] = receipt
             (runtime_root / "receipts.json").write_text(json.dumps(list(receipts.values())))
             seed_env = {**case_env, "RESUME_GH_SEED": "1"}
