@@ -22,6 +22,7 @@ MODEL = os.environ.get("RESUME_SMOKE_MODEL", "opencode/glm-5.3-flash-free")
 PROMPTS = {
     "T1": (
         "Continue de onde parou nesta issue. Consulte evidências duráveis locais e "
+        "o ledger da issue via gh api (fixture somente leitura), "
         "OpenSpec; descubra as skills nativas em .agents/skills e invoque a "
         "skill OpenSpec aplicável para conferir o próximo gate. Diga o último "
         "gate comprovado e a próxima ação. Esta prova é "
@@ -29,14 +30,16 @@ PROMPTS = {
     ),
     "T5": (
         "Retome este milestone após interrupção. Reconstitua PR, dependência e "
-        "merge mode da evidência persistida; descubra as skills OpenSpec nativas "
+        "merge mode da evidência persistida, incluindo ledger via gh api e PR "
+        "via gh pr view (fixture somente leitura); descubra as skills OpenSpec nativas "
         "em .agents/skills e consulte a aplicável sem executar mudanças. "
         "Indique a próxima ação sem agendar "
         "o consumidor. Prova somente leitura, sem operações GitHub de escrita."
     ),
     "T7": (
         "Continue de onde parou. Há duas execuções candidatas neste checkout. "
-        "Use evidências duráveis; descubra e consulte as skills OpenSpec nativas "
+        "Use evidências duráveis, incluindo ledgers via gh api (fixture somente "
+        "leitura); descubra e consulte as skills OpenSpec nativas "
         "em .agents/skills apenas se isso não ultrapassar o gate de "
         "desambiguação. Se ambíguo, faça só a pergunta necessária. "
         "Prova somente leitura, sem escolher pela recência."
@@ -320,7 +323,7 @@ def main():
                              item["part"]["state"].get("input", {}).get("id") == "resume-workflow"]
         response = "\n".join(texts)
         if case == "T1":
-            expected = (str(fixture["issue"]), fixture["run"], proposal_sha[:8], "Apply")
+            expected = (str(fixture["issue"]), fixture["run"], proposal_sha[:7], "Apply")
         elif case == "T5":
             expected = ("12", fixture["pr_head"], "manual", "13")
         else:
@@ -339,7 +342,9 @@ def main():
         results["scenarios"][case] = record
         (base / "results.json").write_text(json.dumps(results, indent=2) + "\n")
         if (execution.returncode or not texts or len(sessions) != 1 or before != after
-                or not calls_safe or not resume_invocation or not native_discovery
+                or not calls_safe or not new_calls or
+                not any(args[:1] == ["api"] for args in new_calls) or
+                not resume_invocation or not native_discovery
                 or not native_invocation or not outcome or
                 not any(d["event_index"] < i["event_index"] for d in native_discovery
                         for i in native_invocation)):
