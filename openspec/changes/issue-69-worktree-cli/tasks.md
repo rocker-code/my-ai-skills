@@ -18,7 +18,7 @@
 
 ## 4. Verificação integrada de entrega
 
-- [ ] 4.1 Após integração protegida, revisão independente e readiness do novo handoff (5.1–5.2), abrir novo registro auditado para candidato materialmente novo conforme decisão expressa, vinculando o histórico INVALID `E_RETRY_LIMIT`; só então executar G1 focado com `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_worktree_reservation tests.test_global_install` (ou discover com os filtros suportados) e a suíte final `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests` no HEAD limpo. Registrar tentativas, observações e diagnóstico entre segunda e terceira falhas equivalentes; preservar códigos de falha, contratos e evidências sem instalação real. Se a fronteira não for materialmente nova, parar: a decisão não libera retry do candidato antigo.
+- [ ] 4.1 Após integração protegida, revisão independente e readiness do novo handoff (5.1–5.2), abrir novo registro auditado para candidato materialmente novo conforme decisão expressa, vinculando o histórico INVALID `E_RETRY_LIMIT`; só então executar G1 focado com `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_worktree_reservation tests.test_global_install` (ou discover com os filtros suportados) e a suíte **preliminar** `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests` antes do arquivo. Registrar tentativas, observações e diagnóstico entre segunda e terceira falhas equivalentes; preservar códigos de falha, contratos e evidências sem instalação real. Se a fronteira não for materialmente nova, parar: a decisão não libera retry do candidato antigo. Após arquivo/sync, distribuição, autorrevisão e commit, executar **novamente** a suíte FINAL exigida no HEAD final limpo e verificar sua evidência ligada ao SHA exato conforme `protocol/TEST_STRATEGY.md`; qualquer commit posterior exige novo gate final.
 - [ ] 4.2 Rodar `openspec validate issue-69-worktree-cli --strict` e verificar matrix dos cenários contra testes, JSON público, segurança da instalação e comandos documentados antes da etapa de arquivo.
 
 ## 5. Gate de compatibilidade externo (sem ampliar o Apply da #69)
@@ -28,4 +28,4 @@
 
 ## Workflow follow-up
 
-- Após implementação, testes e revisão, arquivar/sincronizar os três deltas na branch conforme o protocolo OpenSpec, inspecionar especificações principais e então preparar PR sem instalar o pacote global nesta tarefa.
+- Após implementação, G1 focado, suíte preliminar, validação estrita e revisão, arquivar/sincronizar os três deltas na branch conforme o protocolo OpenSpec e inspecionar especificações principais. Concluir distribuição e autorrevisão, fazer commit e, no HEAD final limpo, executar e verificar a suíte FINAL requerida (`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests`); qualquer commit subsequente exige reexecutar e reverificar o gate final antes de preparar PR. Não instalar o pacote global nesta tarefa.
