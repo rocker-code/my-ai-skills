@@ -10,7 +10,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -227,6 +229,85 @@ def tool_events(events, session, *, tool=None, contains=None):
                       "output": state.get("output", ""), "tool": part.get("tool"),
                       "id": part.get("id")})
     return found
+
+
+def t7_reinventory(events, session, first_native, repo, worktrees, reader, receipts):
+    """Require successful phase-2 observations of this fixture before native use."""
+    chosen = receipts[21]
+    def parse_json_output(output):
+        try:
+            return json.loads(output.strip())
+        except (ValueError, TypeError):
+            return None
+
+    calls = [e for e in tool_events(events, session, tool="shell")
+             if e["index"] < first_native and
+             isinstance(e["input"].get("command"), str) and
+             isinstance(e["output"], str) and
+             not re.search(r"[;&|`]|\n", e["input"]["command"]) and
+             not re.search(r"(?:^|\n)Exit code: [1-9]\d*\s*$", e["output"])]
+
+    def commands(argv, *, cwd=repo):
+        for event in calls:
+            if event["input"].get("workdir", str(repo)) != str(cwd):
+                continue
+            try:
+                tokens = shlex.split(event["input"]["command"])
+            except ValueError:
+                continue
+            # A compound command can mask a failed earlier command with the
+            # exit status of its last command; only standalone probes count.
+            if tokens and Path(tokens[0]).name == argv[0] and tokens[1:] == argv[1:]:
+                yield event["output"].strip()
+
+    def json_outputs(argv):
+        for output in commands(argv):
+            yield parse_json_output(output)
+
+    root = str(repo)
+    roots_ok = any(out == root for out in commands(["git", "rev-parse", "--show-toplevel"]))
+    roots_ok &= all(any(out == str(path) for out in commands(
+        ["git", "-C", str(path), "rev-parse", "--show-toplevel"]))
+                    for path in worktrees)
+    openspec_ok = all(any(
+        isinstance(data, dict) and data.get("root", {}).get("path") == root
+        for data in json_outputs(["openspec", subcommand, "--json"]))
+        for subcommand in ("context", "list"))
+    expected_runs = {str(path): receipts[issue]["run"]
+                     for path, issue in zip(worktrees, (21, 22))}
+    reservation_ok = any(
+        isinstance(data, dict) and
+        all(any(isinstance(row, dict) and row.get("path") == str(path) and
+                row.get("state") == "ACTIVE" and row.get("ok") is True
+                and (str(path) not in expected_runs or
+                     row.get("owner", {}).get("run") == expected_runs[str(path)])
+                for row in data.get("entries", [])) for path in worktrees)
+        for data in json_outputs(["worktree-reservation", "list", "--repository", root]))
+    # Resolve the terminal receipt to the explicitly chosen run, not merely
+    # to a command that mentions the receipt reader.
+    receipt_ok = any(
+        isinstance(data, dict) and data.get("terminal") is True and
+        all(data.get(key) == chosen[key] for key in
+            ("execution_id", "owner", "run", "exit_code"))
+        for event in calls
+        if (tokens := shlex.split(event["input"]["command"])) and
+        tokens[-5:] == ["python3", str(reader), chosen["execution_id"],
+                        chosen["owner"], chosen["run"]] and
+        len(tokens) in (5, 6) and
+        (len(tokens) == 5 or tokens[0].startswith("RESUME_RUNTIME_ROOT="))
+        for data in [parse_json_output(event["output"])])
+    ledger_ok = all(any(
+        isinstance(data, list) and any(
+            isinstance(comment, dict) and
+            isinstance(comment.get("body"), str) and
+            receipts[issue]["run"] in comment["body"]
+            for comment in data)
+        for argv in (["gh", "api", "--paginate",
+                      f"repos/disposable/recovery/issues/{issue}/comments"],
+                     ["gh", "api",
+                      f"repos/disposable/recovery/issues/{issue}/comments"])
+        for data in json_outputs(argv)) for issue in (21, 22))
+    return bool(roots_ok and openspec_ok and reservation_ok and receipt_ok and ledger_ok)
 
 
 def execute_model(cli, repo, env, base, case, prompt, session=None):
@@ -524,14 +605,9 @@ def main():
                                     chosen["owner"] in json.dumps(e["input"])
                                     for e in receipt_reads)
                     if case == "T7":
-                        calls = tool_events(events, session)
                         first_native = min(i["event_index"] for i in native_invocation)
-                        required &= all(any(
-                            e["index"] < first_native and marker in
-                            json.dumps(e["input"]) for e in calls)
-                            for marker in ("worktree-reservation list", "gh api",
-                                           "git rev-parse", "openspec context",
-                                           "openspec list", str(reader)))
+                        required &= t7_reinventory(events, session, first_native,
+                                                   repo, worktrees, reader, receipts)
                 if phase == 1:
                     required &= bool(resume_invocation)
             if not required:
