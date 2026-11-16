@@ -125,7 +125,10 @@ def native_calls(events, session, native):
                                "path": inp["path"], "event_index": index})
         if tool in ("glob", "shell") and ".agents" in json.dumps(inp) and name in output:
             discovery.append({"tool": tool, "id": part.get("id"), "event_index": index})
-        if tool == "shell" and "openspec instructions " in inp.get("command", "") and output:
+        if tool == "shell" and (
+            "openspec instructions " in inp.get("command", "") or
+            "openspec validate " in inp.get("command", "")
+        ) and output:
             instructions.append({"tool": tool, "id": part.get("id"), "event_index": index})
     return discovery, invocation, instructions
 
