@@ -81,7 +81,13 @@ def preflight(home, agents):
 def ensure_openspec(data, env):
     existing = shutil.which("openspec", path=env.get("PATH"))
     if existing:
-        run(existing, "--version", env=env)
+        version = run(existing, "--version", env=env)
+        if not re.fullmatch(r"(?:openspec(?: cli)?\s+)?v?2\.\d+\.\d+(?:[-+][0-9a-z.-]+)?",
+                            version, re.IGNORECASE):
+            raise InstallError(
+                f"OpenSpec 2.x necessário para as skills nativas; CLI existente em {existing} "
+                f"reporta {version!r}. Atualize o CLI pela instalação de sua origem e repita; "
+                "o instalador não substituirá o CLI existente.")
         return existing
     # The upstream standalone installer checks the released binary against
     # SHA256SUMS. It is used only when no existing method owns this tool.
@@ -97,7 +103,10 @@ def ensure_openspec(data, env):
         binary = target / "openspec"
         if not binary.is_file():
             raise InstallError("OpenSpec standalone não foi instalado; consulte https://github.com/Fission-AI/OpenSpec/blob/main/docs/installation.md")
-        run(str(binary), "--version", env=env)
+        version = run(str(binary), "--version", env=env)
+        if not re.fullmatch(r"(?:openspec(?: cli)?\s+)?v?2\.\d+\.\d+(?:[-+][0-9a-z.-]+)?",
+                            version, re.IGNORECASE):
+            raise InstallError(f"Distribuição OpenSpec incompatível ({version!r}); exige 2.x.")
         if shutil.which("openspec", path=env.get("PATH")) != str(binary):
             raise InstallError(f"OpenSpec instalado em {binary}, mas fora do PATH. Adicione {target} ao PATH e repita.")
         return str(binary)
@@ -227,26 +236,28 @@ Não confie somente na conversa anterior, em timestamp/PID ausente ou na
 última branch. Se houver escopo/posse ambíguos, preserve o trabalho e
 peça apenas a identificação necessária; nunca faça takeover inseguro.
 
-OpenSpec no primeiro uso: antes de propor/aplicar, confira `openspec context --json`
-e `openspec list --json` no root pretendido e os arquivos REAIS do perfil
-OpenCode: .opencode/commands/opsx-{{explore,propose,apply,archive}}.md e
-.opencode/skills/openspec-explore/SKILL.md,
-.opencode/skills/openspec-propose/SKILL.md,
-.opencode/skills/openspec-apply-change/SKILL.md e
-.opencode/skills/openspec-archive-change/SKILL.md (considere também o perfil
-configurado e todos os comandos/skills que ele exige).
+OpenSpec no primeiro uso: confira `openspec context --json` e
+`openspec list --json` no root pretendido; inspecione o perfil real do CLI
+2.0 e as skills oficiais Explore, Propose, Apply e Archive em
+.agents/skills/openspec-{{explore,propose,apply-change,archive-change}}/SKILL.md
+(ou paths efetivamente gerados pelo perfil), além de outras skills exigidas.
+Não exija comandos /opsx-* ausentes no perfil 2.0. Diferencie essas skills
+locais das skills do pacote global.
 Não execute init/update durante instalação global nem sem autorização.
 Novo projeto: confirme root e inventarie resíduos .opencode/, .agents/,
-.claude/, instruções marcadas e prompts opsx-* no HOME; se houver impacto,
-peça aprovação explícita antes de `openspec init --tools opencode`.
+.claude/, instruções marcadas e prompts legados no HOME; se houver impacto,
+peça aprovação específica antes de `openspec init --tools opencode` (confirme
+as opções suportadas pelo CLI instalado).
 Projeto existente completo: use como está. Incompleto: inspecione
 `openspec update --dry-run --json`, ferramentas configuradas, diferenças,
-arquivos customizados e efeitos globais antes de pedir autorização para update.
+arquivos customizados, propriedade dos gerados e efeitos globais antes de
+pedir autorização específica para update ou limpeza. Preserve versão anterior
+em conflito/falha; não remova personalizações nem arquivos de origem incerta.
 Se OpenCode não estiver configurado, só proponha `openspec init --tools`
 com união explícita de ferramentas existentes + opencode após aprovar qualquer
 limpeza; sem preservação garantida, bloqueie sem escrever. Nunca use --force.
 Compare config/specs/changes antes e depois. Abra sessão OpenCode NOVA e
-comprove descoberta/invocação dos quatro comandos /opsx-* e skills oficiais;
+comprove descoberta e invocação das quatro skills oficiais nativas;
 sem essa prova reporte bloqueio, não declare bootstrap concluído.
 {END}
 """

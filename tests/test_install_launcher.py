@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "scripts/install.sh"
 UPDATER = ROOT / "scripts/update.sh"
 ENTRY = ROOT / "scripts/install-global"
-REVISION = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
+REVISION = "386469f852d059363b9148a97e99aecd72dda30f"
 
 
 class LauncherTests(unittest.TestCase):
@@ -21,13 +21,13 @@ class LauncherTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
         self.log = root / "execution.log"
-        # The public launcher downloads the immutable published entrypoint,
-        # not the (possibly newer) installer currently being developed.
+        # Fetch the immutable published 2.x installer, not the newer
+        # development entrypoint in this checkout.
         pinned = subprocess.run(["git", "show", f"{REVISION}:scripts/install-global"],
                                 cwd=ROOT, capture_output=True, check=True).stdout
         self.assertEqual(hashlib.sha256(pinned).hexdigest(),
-                         "0e6103f3be6f1797978dba6bf09fd9485acf75346b4e9803ec271cd167cd75ed")
-        entry_source = root / "published-install-global"
+                         "a8be8a0f092f8b9550ef95019cd73f4f6b0cf226dd29b66e39d3102a33e4347f")
+        entry_source = root / "pinned-install-global"
         entry_source.write_bytes(pinned)
         bin_dir = root / "bin"
         bin_dir.mkdir()
@@ -77,7 +77,7 @@ class LauncherTests(unittest.TestCase):
         self.env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
                     "HOME": str(root), "XDG_DATA_HOME": str(root / "data"),
                     "XDG_CONFIG_HOME": str(root / "config"), "FAIL_OPENSPEC": "0",
-                     "ENTRY_SOURCE": str(entry_source), "LAUNCHER_SOURCE": str(LAUNCHER),
+                    "ENTRY_SOURCE": str(entry_source), "LAUNCHER_SOURCE": str(LAUNCHER),
                     "REAL_PYTHON": sys.executable, "FAKE_MAIN_REVISION": "a" * 40,
                     "GIT_FAIL": "0",
                     "EXECUTION_LOG": str(self.log), "CURL_LOG": str(root / "curl.log"),

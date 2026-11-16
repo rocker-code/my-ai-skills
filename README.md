@@ -22,7 +22,7 @@ Após uma instalação global atualizada, `worktree-reservation verify --session
 
 ## Instalar ou atualizar
 
-Linux/macOS: requer Git, Python 3.10+, `curl`, `gh`, `jq` e OpenCode V2 no `PATH`. Para usar o workflow, o OpenSpec é necessário, mas **não precisa estar instalado antes**: o instalador preserva o CLI existente ou instala a distribuição standalone oficial para seu usuário se estiver ausente. Autentique o GitHub CLI separadamente com `gh auth login`.
+Linux/macOS: requer Git, Python 3.10+, `curl`, `gh`, `jq` e OpenCode V2 no `PATH`. Para usar o workflow, OpenSpec **2.x** é necessário, mas **não precisa estar instalado antes**: o instalador verifica o CLI existente sem substituí-lo, recusa 1.x com instrução para atualizá-lo pela origem, ou instala a distribuição standalone oficial para seu usuário se estiver ausente. Autentique o GitHub CLI separadamente com `gh auth login`.
 
 Execute o instalador diretamente do GitHub:
 
@@ -30,7 +30,7 @@ Execute o instalador diretamente do GitHub:
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh
 ```
 
-O script instala a versão mais recente da `main`. Ele baixa uma versão fixa do **instalador**, confere seu SHA-256 e só então a usa para instalar a revisão atual. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use o [comando com entrada verificada](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global) para maior garantia.
+O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `386469f852d059363b9148a97e99aecd72dda30f`, confere seu SHA-256 `a8be8a0f092f8b9550ef95019cd73f4f6b0cf226dd29b66e39d3102a33e4347f` e só então o usa para instalar a revisão atual. Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use o [comando com entrada verificada](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global) para maior garantia.
 
 Para **atualizar para a versão mais recente da `main`**, execute (somente quando quiser atualizar):
 
@@ -140,7 +140,7 @@ Não exija que o usuário repita estas instruções.
 
 ## Usar
 
-O instalador e o atualizador conferem ao final o pacote, uma skill e o OpenSpec. Abra uma nova sessão OpenCode. No primeiro uso em um projeto, o agente confere a integração OpenSpec e pede autorização antes de inicializá-la; a instalação global não modifica projetos. Confira `/opsx-explore`, `/opsx-propose`, `/opsx-apply` e `/opsx-archive` antes de implementar.
+O instalador e o atualizador conferem ao final o pacote, uma skill e o OpenSpec. Abra uma nova sessão OpenCode. No primeiro uso em um projeto, o agente confere a integração OpenSpec 2.0 e pede autorização específica antes de inicializar ou atualizar; a instalação global não modifica projetos. Confira a descoberta e invocação das skills oficiais `openspec-explore`, `openspec-propose`, `openspec-apply-change` e `openspec-archive-change` antes de implementar; comandos `/opsx-*` legados não são exigidos. Preserve ferramentas já configuradas, arquivos personalizados e config/specs/changes; bloqueie conflitos sem forçar.
 
 Peça **“Cuide da issue: URL”**, **“Cuide da fila deste projeto”** ou **“Cuide deste milestone: URL”**; acrescente **“sem merge”** se quiser integrar manualmente. O fluxo planeja com OpenSpec, implementa, testa, prepara a PR e revisa; o merge padrão só ocorre após as verificações exigidas. O agente precisa de acesso ao GitHub e de sessões/worktrees isoladas para executar o fluxo completo.
 
