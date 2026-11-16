@@ -69,8 +69,23 @@ def main():
             run(["git", "add", "README.md"], cwd=repo)
             run(["git", "-c", "user.name=Smoke", "-c", "user.email=smoke@example.org",
                  "commit", "-qm", "base"], cwd=repo)
+            if name == "project-two":
+                # Existing root, custom specification and legacy residue must
+                # survive the explicitly authorized multi-tool initialization.
+                spec = repo / "openspec/specs/personal/spec.md"
+                spec.parent.mkdir(parents=True)
+                spec.write_text("# personal contract\n")
+                config = repo / "openspec/config.yaml"
+                config.write_text("schema: spec-driven\n# operator configuration\n")
+                legacy = repo / ".opencode/commands/opsx-legacy.md"
+                legacy.parent.mkdir(parents=True)
+                legacy.write_text("# keep custom command\n")
             run([openspec, "init", "--tools",
                  "claude,codex,opencode" if name == "project-two" else "opencode", str(repo)])
+            if name == "project-two":
+                assert spec.read_text() == "# personal contract\n"
+                assert config.read_text() == "schema: spec-driven\n# operator configuration\n"
+                assert legacy.read_text() == "# keep custom command\n"
             projects.append(repo)
         worktree = base / "worktree with spaces"
         run(["git", "worktree", "add", "-qb", "smoke-worktree", str(worktree)], cwd=projects[0])

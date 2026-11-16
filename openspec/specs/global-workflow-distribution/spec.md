@@ -77,19 +77,27 @@ O instalador SHALL ser idempotente para a mesma revisão e seleção de agentes.
 - **THEN** o instalador preserva o conteúdo, informa o conflito e não substitui o arquivo silenciosamente
 
 ### Requirement: Primeiro uso de OpenSpec por projeto
-A instalação SHALL disponibilizar o CLI OpenSpec quando suportado; no primeiro uso autorizado pelo agente a integração oficial para o agente selecionado SHALL disponibilizar skills e comandos `/opsx-*` aplicáveis ao perfil do projeto. Preparação local MUST NOT ocorrer na instalação global e MUST preservar configurações, artefatos e integrações existentes.
+A instalação SHALL disponibilizar o CLI OpenSpec quando suportado; no primeiro uso autorizado pelo agente a integração oficial OpenSpec 2.0 para o perfil selecionado SHALL disponibilizar suas skills nativas. Preparação local MUST NOT ocorrer na instalação global e MUST preservar configurações, artefatos e integrações existentes. A prova MUST verificar descoberta e invocação real no agente em sessão nova, sem exigir comandos legados ausentes.
 
 #### Scenario: Repositório ainda sem OpenSpec
-- **WHEN** o agente inicia um fluxo que precisa de OpenSpec em repositório sem raiz configurada
-- **THEN** verifica autorização e localização correta, inicializa por comando oficial para OpenCode e comprova arquivos oficiais de skills e comandos antes de qualquer proposta ou Apply
+- **WHEN** o agente inicia fluxo que precisa de OpenSpec em repositório sem raiz configurada
+- **THEN** verifica raiz pretendida, `context/list`, perfil e resíduos locais e globais; obtém autorização específica antes de inicializar pela interface oficial do perfil, confirma skills oficiais e preserva arquivos anteriores ou bloqueia sem escrita quando a preservação não puder ser demonstrada
 
 #### Scenario: Repositório com OpenSpec existente
 - **WHEN** o agente inicia o fluxo em repositório já configurado
-- **THEN** verifica integração efetiva, usa a existente quando completa e só propõe atualização/adição necessária com inspeção de alterações e autorização, sem sobrescrever configurações ou integrações personalizadas
+- **THEN** reutiliza a integração se completa; caso contrário inventaria config, specs, changes, instruções e integrações de todas as ferramentas configuradas e efeitos globais, inspeciona dry-run/diferenças antes de pedir autorização específica para update ou inclusão de ferramenta, preservando a união das ferramentas existentes, sem `--force` nem limpeza implícita
 
 #### Scenario: OpenCode recém-aberto após primeiro uso autorizado
 - **WHEN** o agente prepara OpenSpec com autorização em projeto novo ou existente e uma sessão OpenCode nova é aberta no projeto
-- **THEN** comandos `/opsx-explore`, `/opsx-propose`, `/opsx-apply` e `/opsx-archive` do perfil ativo e suas skills oficiais são descobertos e invocáveis, ou um bloqueio específico é reportado sem alegar integração completa
+- **THEN** skills oficiais Explore, Propose, Apply e Archive da interface nativa do perfil ativo são descobertas e invocáveis, ou um bloqueio específico é reportado sem alegar integração completa; a ausência de comandos `/opsx-*` que a 2.0 não gera não constitui falha
+
+#### Scenario: Resíduos gerados e personalizações
+- **WHEN** uma migração encontra comandos/skills antigos, links, instruções customizadas ou conteúdo modificado em caminhos potencialmente gerados
+- **THEN** identifica propriedade e alterações antes de substituir ou remover; somente gerados comprovados entram na limpeza aprovada, personalizações sobrevivem, e conflitos impedem publicação insegura sem inutilizar a versão anterior
+
+#### Scenario: Prova não conclusiva
+- **WHEN** a sessão nova não descobre ou não consegue invocar uma das skills oficiais requeridas
+- **THEN** o fluxo informa o bloqueio preciso e não libera proposta, Apply ou instalação como integração comprovada
 
 ### Requirement: Isolamento de dados de execução
 O pacote global SHALL compartilhar apenas ferramentas e orientação. Helpers de estado, reservas, logs e evidências MUST continuar escrevendo no escopo do repositório/worktree definido por seus contratos existentes e MUST NOT usar o diretório de instalação como armazenamento compartilhado de execuções.

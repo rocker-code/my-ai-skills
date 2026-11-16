@@ -13,8 +13,8 @@
 
 ## 3. Prova de sessão nova e integração final
 
-- [ ] 3.1 Adaptar `tests/smoke_global_opencode.py` para perfis 2.0 e invocação observável de quatro skills nativas em sessão OpenCode nova para dois projetos e worktree com espaços; verificar smoke em HOME descartável e resultado persistido, inclusive ausência/falha de skill sem falso sucesso.
-- [ ] 3.2 Executar sample focado do instalador/smoke antes da suíte local exigida `python3 -m unittest discover -s tests`; verificar resultados no SHA candidato sem tratar falha de baseline como aprovação, e executar `openspec validate issue-71-openspec2-native --strict --json` no SHA efetivo.
+- [x] 3.1 Adaptar `tests/smoke_global_opencode.py` para perfis 2.0 e invocação observável de quatro skills nativas em sessão OpenCode nova para dois projetos e worktree com espaços; verificar smoke em HOME descartável e resultado persistido, inclusive ausência/falha de skill sem falso sucesso.
+- [x] 3.2 Executar sample focado do instalador/smoke antes da suíte local exigida `python3 -m unittest discover -s tests`; verificar resultados no SHA candidato sem tratar falha de baseline como aprovação, e executar `openspec validate issue-71-openspec2-native --strict --json` no SHA efetivo.
 
 ## Workflow follow-up
 
