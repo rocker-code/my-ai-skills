@@ -8,7 +8,7 @@
 ## Distribution and documentation
 - [x] Add focused global installation/routing regression test.
 - [x] Document user request and limits in README/changelog.
-- [ ] Run official OpenSpec validation on this exact proposal revision in the repository environment.
+- [x] Run official OpenSpec validation on this exact proposal revision in the repository environment.
 - [ ] Execute focused installer and existing worktree/execution-state suites in the repository checkout.
 - [ ] Construir uma prova isolada de retomada T1/T5/T7 que instale a revisão candidata da skill em HOME descartável e abra sessões novas reais do OpenCode com modelo; não substituir esta prova pelo smoke de descoberta que instala `c48ac58`.
 - [ ] Executar T1/T5/T7 na revisão candidata e registrar SHA/versão da skill carregada, IDs das sessões, prompts, respostas e inventário Git/OpenSpec/PR antes/depois; comprovar Apply na proposta validada, bloqueio de dependência e desambiguação sem escrita.
