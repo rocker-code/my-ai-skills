@@ -20,7 +20,7 @@ In a **new OpenCode session**, from the relevant checkout, say **“continue whe
 
 ## Install or update
 
-Linux/macOS prerequisites: Git, Python 3.10+, `curl`, `gh`, `jq`, and OpenCode V2 on `PATH`. OpenSpec is required **to use the workflow**, but it need not be preinstalled: the installer preserves an existing CLI or installs the official standalone distribution for your user when missing. Authenticate GitHub CLI separately with `gh auth login`.
+Linux/macOS prerequisites: Git, Python 3.10+, `curl`, `gh`, `jq`, and OpenCode V2 on `PATH`. OpenSpec **2.x** is required **to use the workflow**, but it need not be preinstalled: the installer checks an existing CLI without replacing it, rejects 1.x with directions to update it through its original provider, or installs the official standalone distribution for your user when missing. Authenticate GitHub CLI separately with `gh auth login`.
 
 Run the installer directly from GitHub:
 
@@ -28,7 +28,7 @@ Run the installer directly from GitHub:
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh
 ```
 
-The script installs the latest `main` revision. It downloads a pinned **installer**, checks its SHA-256, and then uses it to install the current revision. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
+The script installs the latest `main` revision. It downloads the **installer** from immutable commit `386469f852d059363b9148a97e99aecd72dda30f`, verifies SHA-256 `a8be8a0f092f8b9550ef95019cd73f4f6b0cf226dd29b66e39d3102a33e4347f`, and then installs the current revision. That commit must remain an ancestor of `main`: integrate this PR with a **merge commit**, never squash/rebase, so the launcher and its pinned object are published together. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
 
 To **update to the latest `main` revision**, run this only when you want an update:
 

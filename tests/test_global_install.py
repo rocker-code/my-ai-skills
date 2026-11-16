@@ -381,13 +381,14 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
-        published = "0e6103f3be6f1797978dba6bf09fd9485acf75346b4e9803ec271cd167cd75ed"
-        # The published launcher pins an immutable historical entrypoint; the
-        # working-tree installer is allowed to evolve before a new release.
+        revision = "386469f852d059363b9148a97e99aecd72dda30f"
+        published = "a8be8a0f092f8b9550ef95019cd73f4f6b0cf226dd29b66e39d3102a33e4347f"
+        # Commit A already includes the 2.x gate. Commit B must leave it intact.
         pinned_entry = subprocess.check_output(
             ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
         self.assertEqual(hashlib.sha256(pinned_entry).hexdigest(), published)
+        self.assertEqual(ENTRY.read_bytes(), pinned_entry)
+        self.assertIn(b"OpenSpec 2.x necess", pinned_entry.replace("á".encode(), b"a"))
         launcher = (ROOT / "scripts/install.sh").read_text()
         self.assertIn(f"entry_revision={revision}", launcher)
         self.assertIn(f"entry_sha256={published}", launcher)
@@ -405,17 +406,20 @@ class GlobalInstallTests(unittest.TestCase):
                       (ROOT / "tests/smoke_global_opencode.py").read_text())
 
     def test_published_recipe_in_disposable_home(self):
-        # The immutable Git object exists locally before the feature branch is
-        # published. Substitute only the download and remote transports; run
-        # the README command and its launcher's independent digest gate unchanged.
-        revision = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
+        # Transport is mocked, but README pipelines, launcher, digest check,
+        # pinned installer and Git snapshot installation execute unchanged.
+        revision = "386469f852d059363b9148a97e99aecd72dda30f"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
-                        "case \"$2\" in\n"
-                        f"  */main/scripts/install.sh) cat {str(ROOT / 'scripts/install.sh')!r} ;;\n"
-                        f"  *{revision}/scripts/install-global) /usr/bin/git -C {str(ROOT)!r} show {revision}:scripts/install-global > \"$4\" ;;\n"
-                        "  *) exit 2 ;;\n"
-                        "esac\n")
+                         "case \"$2\" in\n"
+                         f"  */main/scripts/install.sh) cat {str(ROOT / 'scripts/install.sh')!r} ;;\n"
+                         f"  */main/scripts/update.sh) cat {str(ROOT / 'scripts/update.sh')!r} ;;\n"
+                         f"  *{revision}/scripts/install.sh) cp {str(ROOT / 'scripts/install.sh')!r} \"$4\" ;;\n"
+                         f"  *{revision}/scripts/install-global) "
+                         f"if [ \"$CURL_BAD_ENTRY\" = 1 ]; then printf bad > \"$4\"; "
+                         f"else /usr/bin/git -C {str(ROOT)!r} show {revision}:scripts/install-global > \"$4\"; fi ;;\n"
+                         "  *) exit 2 ;;\n"
+                         "esac\n")
         curl.chmod(0o755)
         git = self.bin / "git"
         git.write_text("#!/bin/sh\n"
@@ -427,14 +431,44 @@ class GlobalInstallTests(unittest.TestCase):
                        f"  exec /usr/bin/git \"$1\" \"$2\" remote add origin {str(ROOT)!r}\n"
                        "fi\nexec /usr/bin/git \"$@\"\n")
         git.chmod(0o755)
-        readme = (ROOT / "README.md").read_text()
-        snippet = readme.split("## Instalar ou atualizar\n", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
-        result = call("bash", "-c", snippet, cwd=self.root,
-                      env={k: v for k, v in self.env.items()
-                           if k != "MY_AI_SKILLS_TEST_SOURCE"}, timeout=90)
+        def recipe(readme, index):
+            section = (ROOT / readme).read_text().split("## Instalar ou atualizar\n" if readme == "README.md"
+                                                     else "## Install or update\n", 1)[1]
+            return section.split("```bash\n")[index + 1].split("\n```", 1)[0]
+
+        def execute(snippet, **changes):
+            return call("bash", "-c", snippet, cwd=self.root,
+                        env={**self.env, "CURL_BAD_ENTRY": "0", **changes}, timeout=90)
+
+        result = execute(recipe("README.md", 0))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"active={revision}", result.stdout)
         self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"], revision)
+        self.assertEqual((self.data / "active/scripts/install-global").read_bytes(),
+                         subprocess.check_output(["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT))
+        guidance = (self.home / ".config/opencode/AGENTS.md").read_bytes()
+        self.assertIn(b".agents/skills/openspec-", guidance)
+        self.assertNotIn(b".opencode/commands/opsx-", guidance)
+        active = os.readlink(self.data / "active")
+        for readme in ("README.md", "README.en.md"):
+            for index in (0, 1):
+                command = recipe(readme, index)
+                self.assertIn("/main/scripts/" + ("install.sh" if index == 0 else "update.sh"), command)
+                denied = execute(command, CURL_BAD_ENTRY="1")
+                self.assertNotEqual(denied.returncode, 0)
+                self.assertIn("SHA-256 mismatch", denied.stderr)
+                self.assertEqual(os.readlink(self.data / "active"), active)
+                self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), guidance)
+                cli = self.bin / "openspec"
+                cli.write_text("#!/bin/sh\necho '1.9.0'\n")
+                denied = execute(command)
+                self.assertNotEqual(denied.returncode, 0)
+                self.assertIn("OpenSpec 2.x necessário", denied.stderr)
+                self.assertEqual(os.readlink(self.data / "active"), active)
+                cli.write_text("#!/bin/sh\necho '2.0.0'\n")
+                accepted = execute(command)
+                self.assertEqual(accepted.returncode, 0, accepted.stderr)
+                self.assertIn(f"active={revision}", accepted.stdout)
 
     def test_install_complete_idempotent_and_preserves_instructions(self):
         config = self.home / ".config/opencode"

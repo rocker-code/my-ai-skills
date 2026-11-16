@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "scripts/install.sh"
 UPDATER = ROOT / "scripts/update.sh"
 ENTRY = ROOT / "scripts/install-global"
-REVISION = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
+REVISION = "386469f852d059363b9148a97e99aecd72dda30f"
 
 
 class LauncherTests(unittest.TestCase):
@@ -19,9 +19,8 @@ class LauncherTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="install-launcher-")
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
-        # The public launcher fetches its pinned, immutable historical entry.
-        # Testing a modified working-tree entry against that digest would fail
-        # for the wrong reason while developing the next release.
+        # The launcher fetches the immutable installer at commit A; commit B
+        # changes only the launcher/recipes, never those pinned installer bytes.
         pinned_entry = root / "pinned-install-global"
         pinned_entry.write_bytes(subprocess.check_output(
             ["git", "show", f"{REVISION}:scripts/install-global"], cwd=ROOT))
