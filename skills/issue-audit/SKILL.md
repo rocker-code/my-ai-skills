@@ -15,7 +15,7 @@ Read [the incremental delivery policy](references/INCREMENTAL_DELIVERY.md). Iden
 4. For cross-repository or producer-consumer work, run contract-handoff in design-review mode before declaring the consumer issue READY FOR EXPLORE. Trace consumer scenarios from requirements/wireframes/decisions to public operations, fields, states, domain errors and producer enforcement points. If any required producer capability is absent or implicit, record the exact hard dependency and return NEEDS REFINEMENT — CONTRACT GAP; do not let a consumer proposal be treated as ready.
 5. Identify security and correctness boundaries at the interface: authentication/authorization and ownership, sensitive data, stale state, retries/idempotency, concurrency, partial failure, and authoritative validation at the command/commit boundary when relevant.
 6. Report contradictions with evidence and propose the smallest issue refinement or `[QUESTION]`; do not change issue text without authorization.
-7. Do not invoke `/opsx-propose` or `/opsx-apply`. Hand off to `issue-explore` and the official `/opsx-explore` after the audit.
+7. Do not invoke `openspec-propose` or `openspec-apply-change`. Hand off to `issue-explore` and the official `openspec-explore` skill after the audit.
 
 Output: issue/ref, observed facts with evidence, assumptions, current implementation, dependencies, architectural impact, missing decisions, suggested scope/tests and one decision: `READY FOR EXPLORE` or `NEEDS REFINEMENT — <reason>`. A ready audit means exploration can begin, not that the issue is ready for proposal.
 

@@ -1,6 +1,6 @@
 ---
 name: issue-explore
-description: Supply the supervised GitHub workflow and question gate used when the CLI runs OpenSpec's official /opsx-explore command. Use before proposal or coding to inspect issue, code, tests and OpenSpec without implementing, then return READY FOR PROPOSAL or BLOCKED BY QUESTIONS.
+description: Supply the supervised GitHub workflow and question gate used when the CLI invokes OpenSpec's official openspec-explore skill. Use before proposal or coding to inspect issue, code, tests and OpenSpec without implementing, then return READY FOR PROPOSAL or BLOCKED BY QUESTIONS.
 metadata:
   category: workflow
   stage: discovery
@@ -11,10 +11,10 @@ metadata:
 This skill augments, but never replaces, OpenSpec's official CLI command:
 
 ```text
-/opsx-explore <GitHub issue URL>
+Invoke `openspec-explore` with the GitHub issue URL.
 ```
 
-When operating in the CLI, execute exploration through `/opsx-explore`; apply the GitHub markers, question gate and output contract below around that command. Do not introduce or instruct the user to run a competing `/issue-explore` command.
+When operating in the CLI, invoke the official `openspec-explore` skill; apply the GitHub markers, question gate and output contract below around that skill. Do not introduce or instruct the user to run a competing `/issue-explore` command.
 
 Explore before proposing or coding. **Never implement during exploration.** Do not modify production code, generate an apply change, open a PR or silently decide ambiguous business behavior.
 
