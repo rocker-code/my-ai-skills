@@ -22,7 +22,7 @@ Para comandos sobre um checkout existente, o helper SHALL usar `--path` explíci
 - **THEN** a operação exige `--path` e os parâmetros explícitos de repositório aplicáveis, sem inventar destino a partir do diretório corrente
 
 ### Requirement: Resumo humano e JSON compatível da reserva
-O helper SHALL emitir por padrão resumo nativo legível do resultado, estado, owner, HEAD, digest e drift, com causa e próxima ação segura quando falhar. `--json` MUST manter campos, tipos e códigos anteriores em sucesso e erro, com stdout exclusivamente JSON válido. O resumo MUST NOT substituir o gate de `verify` por `status`.
+O helper SHALL emitir por padrão resumo nativo legível do resultado, estado, owner, HEAD, digest e drift, com causa e próxima ação segura quando falhar. `--json` MUST manter campos, tipos e códigos anteriores em sucesso e erro, com stdout exclusivamente JSON válido. O resumo MUST NOT substituir o gate de `verify` por `status` nem imprimir inventário completo em todo `verify`.
 
 #### Scenario: Verificação humana bem-sucedida
 - **WHEN** o dono executa `verify --session <id>` sem `--json`
@@ -35,6 +35,21 @@ O helper SHALL emitir por padrão resumo nativo legível do resultado, estado, o
 #### Scenario: JSON de sucesso e erro
 - **WHEN** automação invoca o helper com `--json` em sucesso ou conflito
 - **THEN** stdout contém somente um objeto JSON parseável com os campos/tipos estáveis, dados de diagnóstico e exit code original
+
+### Requirement: Resumos operacionais por comando
+Para `reconcile` o resumo SHALL expor `inventory.digest` completo; para `clean-generated` SHALL expor caminhos exatos, elegibilidade e motivos dos candidatos; para `list` SHALL expor as entradas de reserva com caminho e dono/estado.
+
+#### Scenario: Inventário para takeover
+- **WHEN** o operador executa `reconcile` sem `--json` para revisar um checkout antes de `--takeover`
+- **THEN** o resumo inclui o `inventory.digest` completo necessário ao argumento `--inventory-digest` e dados suficientes para revisar o inventário, sem confundi-lo com o digest de código do checkout; a verificação de takeover permanece condicionada à evidência externa de término e ao inventário refeito sob lock
+
+#### Scenario: Candidatos de limpeza
+- **WHEN** o operador executa `clean-generated` sem `--json` para selecionar arquivos
+- **THEN** o resumo lista cada caminho exato com elegibilidade e motivo de recusa, e não autoriza `--apply` sem seleção, posse, recibo e motivo exigidos
+
+#### Scenario: Lista de reservas
+- **WHEN** o operador executa `list --repository <checkout>` sem `--json`
+- **THEN** o resumo apresenta cada reserva com caminho, issue, branch, estado e dono, inclusive lista vazia legível, sem conceder posse
 
 ### Requirement: Identidade do chamador permanece explícita
 Comandos que exigem `--session` SHALL obter a identidade do chamador por argumento explícito; o helper MUST NOT inferir sessão do owner registrado, mesmo quando houver exatamente uma reserva ativa. Handoff e takeover MUST manter exigências próprias de identidade/evidência.

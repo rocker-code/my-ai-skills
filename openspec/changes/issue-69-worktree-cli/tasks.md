@@ -7,8 +7,8 @@
 
 ## 2. Saídas públicas
 
-- [ ] 2.1 Adicionar renderização legível por padrão em `scripts/worktree-reservation` de sucesso, conflitos e próximo passo seguro, sem alterar `response()`/exit codes; provar conteúdo, HEAD/digest completos e erro de drift/lock/registry em `tests/test_worktree_reservation.py`.
-- [ ] 2.2 Garantir `--json` íntegro na stdout para sucesso/erro, inclusive erro de uso quando selecionado, mantendo shape e códigos 0/2/3/4/5/6/7; provar com parsing e comparação de fixture de resposta em teste focado.
+- [ ] 2.1 Adicionar renderização legível por padrão em `scripts/worktree-reservation` de sucesso, conflitos e próximo passo seguro, sem alterar `response()`/exit codes; provar HEAD/digest de código completos, `inventory.digest` de `reconcile` para takeover, candidatos exatos/elegibilidade/motivos de `clean-generated`, entradas múltiplas/vazias de `list`, ausência de inventário completo em `verify` e erro de drift/lock/registry em `tests/test_worktree_reservation.py`.
+- [ ] 2.2 Garantir `--json` íntegro na stdout para sucesso/erro, inclusive erro de uso quando selecionado, mantendo shape e códigos 0/2/3/4/5/6/7; provar com parsing e comparação de fixture de resposta em teste focado, incluindo shapes de `reconcile`, `clean-generated` e `list` e preservação de bloqueios de takeover/limpeza.
 - [ ] 2.3 Documentar em `protocol/WORKTREES.md` o comando curto, sessão explícita, `--json` para automação, fallback absoluto e parâmetros ainda explícitos; regenerar referências com `scripts/sync-skill-references` e verificar ausência de divergência das cópias oficiais.
 
 ## 3. Instalação e atualização globais
