@@ -2,14 +2,14 @@
 
 ## 1. Inventário seguro do perfil e migração
 
-- [ ] 1.1 Em sessão Apply fresca, verificar reserva e SHA; inventariar paths gerados rastreados, symlinks, metadados de origem, resíduos locais/globais e ferramentas configuradas; comparar geração oficial 2.0 em HOME/repo descartáveis e `update --dry-run --json`; verificar relatório de diferenças e aprovação específica antes de qualquer limpeza.
-- [ ] 1.2 Migrar somente paths comprovadamente gerados e autorizados; preservar customizações, união de ferramentas e versão anterior em conflito/falha; verificar `git diff --name-status`, links, config/specs/changes antes/depois e dry-run final sem diferenças inesperadas.
+- [x] 1.1 Em sessão Apply fresca, verificar reserva e SHA; inventariar paths gerados rastreados, symlinks, metadados de origem, resíduos locais/globais e ferramentas configuradas; comparar geração oficial 2.0 em HOME/repo descartáveis e `update --dry-run --json`; verificar relatório de diferenças e aprovação específica antes de qualquer limpeza.
+- [x] 1.2 Migrar somente paths comprovadamente gerados e autorizados; preservar customizações, união de ferramentas e versão anterior em conflito/falha; verificar `git diff --name-status`, links, config/specs/changes antes/depois e dry-run final sem diferenças inesperadas.
 
 ## 2. Distribuição e orientação de primeiro uso
 
-- [ ] 2.1 Adaptar `scripts/install-global`/bloco global `AGENTS.md` para skills 2.0 e gates de autorização, sem `init/update` local na instalação; estender `tests/test_global_install.py` para HOME isolado, idempotência, colisão/rollback e preservação; verificar testes focados do instalador.
-- [ ] 2.2 Atualizar `protocol/AI_WORKFLOW.md`, `skills/openspec-workflow/SKILL.md` e consumidores de `/opsx-*` em skills de planejamento/Apply/closeout para interface oficial 2.0 sem remover gates; atualizar `README.md` e `README.en.md` em paridade; verificar busca de referências obsoletas e testes/documentação afetados.
-- [ ] 2.3 Adaptar fixtures de primeiro uso novo/existente e perfil multi-tool, incluindo arquivos customizados e resíduos, em `tests/test_global_install.py`; verificar provas focadas de preservação e bloqueio sem forçar/bootstrap implícito.
+- [x] 2.1 Adaptar `scripts/install-global`/bloco global `AGENTS.md` para skills 2.0 e gates de autorização, sem `init/update` local na instalação; estender `tests/test_global_install.py` para HOME isolado, idempotência, colisão/rollback e preservação; verificar testes focados do instalador.
+- [x] 2.2 Atualizar `protocol/AI_WORKFLOW.md`, `skills/openspec-workflow/SKILL.md` e consumidores de `/opsx-*` em skills de planejamento/Apply/closeout para interface oficial 2.0 sem remover gates; atualizar `README.md` e `README.en.md` em paridade; verificar busca de referências obsoletas e testes/documentação afetados.
+- [x] 2.3 Adaptar fixtures de primeiro uso novo/existente e perfil multi-tool, incluindo arquivos customizados e resíduos, em `tests/test_global_install.py`; verificar provas focadas de preservação e bloqueio sem forçar/bootstrap implícito.
 
 ## 3. Prova de sessão nova e integração final
 

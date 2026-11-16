@@ -16,7 +16,6 @@ import time
 from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[1]
-ENTRY_REVISION = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
 ACTIONS = {"explore": "openspec-explore", "propose": "openspec-propose",
            "apply": "openspec-apply-change", "archive": "openspec-archive-change"}
 
@@ -26,6 +25,7 @@ def main():
     openspec = shutil.which("openspec")
     if not cli or not openspec:
         raise RuntimeError("Real opencode V2 and openspec CLIs required")
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     base = Path(tempfile.mkdtemp(prefix="smoke-global-opencode-", dir="/tmp/opencode"))
     home = base / "home"
     home.mkdir()
@@ -35,7 +35,7 @@ def main():
                XDG_STATE_HOME=str(home / ".local/state"), OPENSPEC_TELEMETRY="0",
                 PYTHONDONTWRITEBYTECODE="1",
                OPENCODE_PASSWORD=secrets.token_hex(24))
-    results = {"base": str(base), "installer_revision": ENTRY_REVISION, "locations": {}}
+    results = {"base": str(base), "installer_revision": revision, "locations": {}, "status": "FAIL"}
     server = None
 
     def run(args, cwd=ROOT, timeout=90):
@@ -56,9 +56,9 @@ def main():
                   "original=m.install; m.install=lambda args: original(args,source=source); "
                   "sys.exit(m.main())")
         run(["python3", "-c", runner, str(ROOT / "scripts/install-global"), str(ROOT),
-             "--agent", "opencode", "--revision", ENTRY_REVISION])
+             "--agent", "opencode", "--revision", revision])
         active = home / ".local/share/my-ai-skills/active"
-        assert json.loads((active / "manifest.json").read_text())["revision"] == ENTRY_REVISION
+        assert json.loads((active / "manifest.json").read_text())["revision"] == revision
 
         projects = []
         for name in ("project-one", "project-two"):
@@ -69,7 +69,8 @@ def main():
             run(["git", "add", "README.md"], cwd=repo)
             run(["git", "-c", "user.name=Smoke", "-c", "user.email=smoke@example.org",
                  "commit", "-qm", "base"], cwd=repo)
-            run([openspec, "init", "--tools", "opencode", str(repo)])
+            run([openspec, "init", "--tools",
+                 "claude,codex,opencode" if name == "project-two" else "opencode", str(repo)])
             projects.append(repo)
         worktree = base / "worktree with spaces"
         run(["git", "worktree", "add", "-qb", "smoke-worktree", str(worktree)], cwd=projects[0])
@@ -79,8 +80,8 @@ def main():
         locations = (*projects, worktree)
         for location in locations:
             for action, skill in ACTIONS.items():
-                assert (location / ".opencode/commands" / f"opsx-{action}.md").is_file()
-                assert (location / ".opencode/skills" / skill / "SKILL.md").is_file()
+                assert (location / ".agents/skills" / skill / "SKILL.md").is_file()
+                assert not (location / ".opencode/commands" / f"opsx-{action}.md").exists()
 
         server = subprocess.Popen([cli, "serve", "--hostname", "127.0.0.1", "--port", "0"],
                                   cwd=projects[0], env=env, stdout=subprocess.PIPE,
@@ -92,7 +93,7 @@ def main():
         url = match.group()
 
         def api(method, endpoint, cwd, body=None):
-            if endpoint in ("/api/command", "/api/skill"):
+            if endpoint == "/api/skill":
                 endpoint += "?" + urlencode({"location[directory]": str(cwd)})
             args = [cli, "--server", url, "api", method, endpoint]
             if body is not None:
@@ -105,26 +106,24 @@ def main():
             # often lists only built-ins. Do not use that as negative evidence.
             deadline = time.monotonic() + 25
             while True:
-                commands = api("get", "/api/command", location)
                 skills = api("get", "/api/skill", location)
-                assert commands["location"]["directory"] == str(location), commands["location"]
                 assert skills["location"]["directory"] == str(location), skills["location"]
-                command_names = {item["name"] for item in commands["data"]}
                 skill_map = {item["id"]: item for item in skills["data"]}
-                if all(f"opsx-{action}" in command_names and skill in skill_map
-                       for action, skill in ACTIONS.items()) and "apply-issue" in skill_map and "resume-workflow" in skill_map:
+                if all(skill in skill_map for skill in ACTIONS.values()) and "apply-issue" in skill_map and "resume-workflow" in skill_map:
                     break
                 if time.monotonic() > deadline:
-                    raise RuntimeError(f"Discovery timeout in {location}: {command_names}, {set(skill_map)}")
+                    raise RuntimeError(f"Discovery timeout in {location}: {set(skill_map)}")
                 time.sleep(0.5)
             assert Path(skill_map["resume-workflow"]["path"]).resolve() == (
                 active / "skills/resume-workflow/SKILL.md").resolve()
             assert Path(skill_map["apply-issue"]["path"]).resolve() == (
                 active / "skills/apply-issue/SKILL.md").resolve()
-            record = {"directory": str(location), "commands": sorted(command_names),
+            record = {"directory": str(location),
                       "skills": {skill: skill_map[skill]["path"] for skill in ACTIONS.values()},
                       "global_skill": skill_map["apply-issue"]["path"], "invoked": {}}
             for action, skill in ACTIONS.items():
+                assert Path(skill_map[skill]["path"]).resolve() == (
+                    location / ".agents/skills" / skill / "SKILL.md").resolve()
                 session = api("post", "/api/session", location,
                               {"location": {"directory": str(location)}})["data"]
                 assert session["location"]["directory"] == str(location)
@@ -134,21 +133,14 @@ def main():
                 messages = api("get", f"/api/session/{session_id}/message", location)["data"]
                 assert any(msg.get("type") == "skill" and msg.get("skill") == skill
                            and msg.get("text") for msg in messages)
-                api("post", f"/api/session/{session_id}/command", location,
-                    {"name": f"opsx-{action}", "text": "smoke (no model credentials)"})
-                deadline = time.monotonic() + 10
-                while True:
-                    messages = api("get", f"/api/session/{session_id}/message", location)["data"]
-                    if any(msg.get("type") == "user" and msg.get("text") and
-                           msg.get("text") != "smoke (no model credentials)" for msg in messages):
-                        break
-                    if time.monotonic() > deadline:
-                        raise RuntimeError(f"Command did not expand in {session_id}")
-                    time.sleep(0.2)
                 record["invoked"][action] = {"session_id": session_id,
-                                              "skill_message": True, "expanded_command": True}
+                                              "skill_message": True}
             results["locations"][location.name] = record
+        results["status"] = "PASS"
         print("PASS: real OpenCode/OpenSpec discovery and invocation in two projects + worktree")
+    except Exception as exc:
+        results["error"] = repr(exc)
+        raise
     finally:
         if server is not None:
             server.terminate()

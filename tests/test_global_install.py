@@ -383,7 +383,11 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_matches_verified_entry_and_parity(self):
         revision = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
         published = "0e6103f3be6f1797978dba6bf09fd9485acf75346b4e9803ec271cd167cd75ed"
-        self.assertEqual(hashlib.sha256(ENTRY.read_bytes()).hexdigest(), published)
+        # The published launcher pins an immutable historical entrypoint; the
+        # working-tree installer is allowed to evolve before a new release.
+        pinned_entry = subprocess.check_output(
+            ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
+        self.assertEqual(hashlib.sha256(pinned_entry).hexdigest(), published)
         launcher = (ROOT / "scripts/install.sh").read_text()
         self.assertIn(f"entry_revision={revision}", launcher)
         self.assertIn(f"entry_sha256={published}", launcher)
@@ -397,8 +401,8 @@ class GlobalInstallTests(unittest.TestCase):
             self.assertIn("/main/scripts/update.sh | sh", text)
             self.assertIn("https://github.com/rocker-code/my-ai-skills/wiki/", text)
             self.assertNotIn("8ddd9e60fbe773ca363293b8f0ff3a7b452eed37", text)
-        self.assertEqual(revision, re.search(r'ENTRY_REVISION = "([0-9a-f]{40})"',
-                                             (ROOT / "tests/smoke_global_opencode.py").read_text()).group(1))
+        self.assertIn('["git", "rev-parse", "HEAD"]',
+                      (ROOT / "tests/smoke_global_opencode.py").read_text())
 
     def test_published_recipe_in_disposable_home(self):
         # The immutable Git object exists locally before the feature branch is
@@ -715,8 +719,7 @@ class GlobalInstallTests(unittest.TestCase):
                 before = (spec.read_bytes(), config.read_bytes())
             self.assertEqual(self.install(env=env).returncode, 0)
             guidance = (self.home / ".config/opencode/AGENTS.md").read_text()
-            self.assertIn("openspec-apply-change/SKILL.md", guidance)
-            self.assertIn("openspec-archive-change/SKILL.md", guidance)
+            self.assertIn("openspec-{explore,propose,apply-change,archive-change}/SKILL.md", guidance)
             # Installation never bootstraps a repository implicitly.
             self.assertFalse((repo / ".opencode").exists())
             context = call(str(self.bin / "openspec"), "context", "--json", cwd=repo, env=env)
@@ -731,10 +734,12 @@ class GlobalInstallTests(unittest.TestCase):
             # Authorized first-use setup in this disposable repo only.
             initialized = call(str(self.bin / "openspec"), "init", "--tools", "opencode", str(repo), env=env)
             self.assertEqual(initialized.returncode, 0, initialized.stderr)
-            for action in ("explore", "propose", "apply", "archive"):
-                self.assertTrue((repo / ".opencode/commands" / f"opsx-{action}.md").is_file())
-                skill = "openspec-apply-change" if action == "apply" else f"openspec-{action}" + ("-change" if action == "archive" else "")
-                self.assertTrue((repo / ".opencode/skills" / skill / "SKILL.md").is_file())
+            for skill in ("openspec-explore", "openspec-propose",
+                          "openspec-apply-change", "openspec-archive-change"):
+                generated = repo / ".agents/skills" / skill / "SKILL.md"
+                self.assertTrue(generated.is_file(), generated)
+                self.assertIn("generatedBy: \"2.0.0\"", generated.read_text())
+            self.assertFalse((repo / ".opencode/commands/opsx-apply.md").exists())
             if case == "existing":
                 self.assertEqual(spec.read_bytes(), before[0])
                 self.assertIn("# custom configuration", config.read_text())
@@ -762,11 +767,36 @@ class GlobalInstallTests(unittest.TestCase):
         union = call(str(self.bin / "openspec"), "init", "--tools", "codex,opencode", str(repo), env=env)
         self.assertEqual(union.returncode, 0, union.stderr)
         self.assertTrue((repo / ".agents/skills/openspec-explore/SKILL.md").exists())
-        self.assertTrue((repo / ".opencode/skills/openspec-apply-change/SKILL.md").exists())
-        # CLI success is not a successful chat integration: the migrated
-        # custom profile may be skills-only and omit all /opsx-* commands.
-        if not (repo / ".opencode/commands/opsx-apply.md").exists():
-            self.assertIn("sem essa prova reporte bloqueio", (self.home / ".config/opencode/AGENTS.md").read_text())
+        self.assertTrue((repo / ".agents/skills/openspec-apply-change/SKILL.md").exists())
+        self.assertIn("opencode", (repo / ".agents/skills/.openspec-target").read_text())
+        self.assertIn("codex", (repo / ".agents/skills/.openspec-target").read_text())
+        self.assertIn("sem essa prova reporte bloqueio", (self.home / ".config/opencode/AGENTS.md").read_text())
+
+    @unittest.skipUnless(shutil.which("openspec"), "official OpenSpec CLI unavailable")
+    def test_custom_skill_and_legacy_residue_require_explicit_migration(self):
+        (self.bin / "openspec").unlink()
+        (self.bin / "openspec").symlink_to(shutil.which("openspec"))
+        env = {**self.env, "OPENSPEC_TELEMETRY": "0"}
+        repo = self.root / "custom-profile"
+        repo.mkdir()
+        initialized = call(str(self.bin / "openspec"), "init", "--tools",
+                           "claude,codex,opencode", str(repo), env=env)
+        self.assertEqual(initialized.returncode, 0, initialized.stderr)
+        custom = repo / ".agents/skills/openspec-explore/SKILL.md"
+        custom.write_text(custom.read_text() + "\n# locally customized\n")
+        legacy = repo / ".opencode/commands/opsx-explore.md"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("# custom legacy command\n")
+        before = (custom.read_bytes(), legacy.read_bytes(),
+                  (repo / "openspec/config.yaml").read_bytes())
+        self.assertEqual(self.install(env=env).returncode, 0)
+        self.assertEqual((custom.read_bytes(), legacy.read_bytes(),
+                          (repo / "openspec/config.yaml").read_bytes()), before)
+        dry = call(str(self.bin / "openspec"), "update", "--dry-run",
+                   "--json", str(repo), env=env)
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertFalse(any(item["path"] == ".opencode/commands/opsx-explore.md"
+                             for item in json.loads(dry.stdout)["changes"]))
 
 
 if __name__ == "__main__":

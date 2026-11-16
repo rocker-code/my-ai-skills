@@ -138,7 +138,7 @@ Não exija que o usuário repita estas instruções.
 
 ## Usar
 
-O instalador e o atualizador conferem ao final o pacote, uma skill e o OpenSpec. Abra uma nova sessão OpenCode. No primeiro uso em um projeto, o agente confere a integração OpenSpec e pede autorização antes de inicializá-la; a instalação global não modifica projetos. Confira `/opsx-explore`, `/opsx-propose`, `/opsx-apply` e `/opsx-archive` antes de implementar.
+O instalador e o atualizador conferem ao final o pacote, uma skill e o OpenSpec. Abra uma nova sessão OpenCode. No primeiro uso em um projeto, o agente confere a integração OpenSpec 2.0 e pede autorização específica antes de inicializar ou atualizar; a instalação global não modifica projetos. Confira a descoberta e invocação das skills oficiais `openspec-explore`, `openspec-propose`, `openspec-apply-change` e `openspec-archive-change` antes de implementar; comandos `/opsx-*` legados não são exigidos. Preserve ferramentas já configuradas, arquivos personalizados e config/specs/changes; bloqueie conflitos sem forçar.
 
 Peça **“Cuide da issue: URL”**, **“Cuide da fila deste projeto”** ou **“Cuide deste milestone: URL”**; acrescente **“sem merge”** se quiser integrar manualmente. O fluxo planeja com OpenSpec, implementa, testa, prepara a PR e revisa; o merge padrão só ocorre após as verificações exigidas. O agente precisa de acesso ao GitHub e de sessões/worktrees isoladas para executar o fluxo completo.
 

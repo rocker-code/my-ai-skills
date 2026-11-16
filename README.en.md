@@ -138,7 +138,7 @@ Do not require the user to repeat these instructions.
 
 ## Use
 
-The installer and updater verify the package, a skill, and OpenSpec at the end. Open a new OpenCode session. On first use in a project, the agent checks OpenSpec integration and asks for authorization before initializing it; global installation does not modify projects. Check `/opsx-explore`, `/opsx-propose`, `/opsx-apply`, and `/opsx-archive` before implementing.
+The installer and updater verify the package, a skill, and OpenSpec at the end. Open a new OpenCode session. On first use in a project, the agent checks OpenSpec 2.0 integration and asks for specific authorization before initialization or update; global installation does not modify projects. Check discovery and invocation of the official `openspec-explore`, `openspec-propose`, `openspec-apply-change`, and `openspec-archive-change` skills before implementing; legacy `/opsx-*` commands are not required. Preserve configured tools, customized files and config/specs/changes; block conflicts without forcing.
 
 Ask **“Take care of this issue: URL”**, **“Take care of this project queue”**, or **“Take care of this milestone: URL”**; add **“no merge”** for manual integration. The workflow plans with OpenSpec, implements, tests, prepares the PR and reviews; default merge happens only after required checks pass. The agent needs GitHub access and isolated sessions/worktrees to run the full flow.
 
