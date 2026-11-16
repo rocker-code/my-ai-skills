@@ -444,7 +444,9 @@ def main():
             prompts.append(
                 "Escolho explicitamente a issue #21, run wf-disposable-a. Continue "
                 "NESTA MESMA sessão somente leitura: reinventarie ambos os checkouts, "
-                "reservas, ledgers via gh api, Git/OpenSpec/GitHub; confirme o writer "
+                "reservas, ledgers via gh api, Git/OpenSpec/GitHub (execute "
+                "`openspec context --json` e `openspec list --json` antes da skill); "
+                "confirme o writer "
                 "anterior pelo runtime_receipt_command de recovery-evidence.json "
                 f"com execução {selected['execution_id']}, owner {selected['owner']} "
                 f"e run {selected['run']}. Sem prova terminal bloqueie. "
@@ -505,9 +507,15 @@ def main():
                 required &= bool(resume_invocation) and not all_native_invocations
                 required &= not tool_events(events, session, contains="reconcile")
             else:
-                required &= bool(native_discovery and native_invocation and native_instructions)
-                required &= any(d["event_index"] < i["event_index"]
-                                for d in native_discovery for i in native_invocation)
+                # Discovery may occur in the ambiguity turn, but invocation
+                # must happen only after explicit choice in this same session.
+                previous_discovery = (phases[0]["native_discovery"]
+                                      if case == "T7" and phase == 2 else [])
+                required &= bool((native_discovery or previous_discovery) and
+                                 native_invocation and native_instructions)
+                required &= bool(previous_discovery) or any(
+                    d["event_index"] < i["event_index"] for d in native_discovery
+                    for i in native_invocation)
                 required &= any(i["event_index"] < c["event_index"]
                                 for i in native_invocation for c in native_instructions)
                 if case == "T1" or case == "T7":
@@ -515,6 +523,15 @@ def main():
                     required &= any(chosen["execution_id"] in json.dumps(e["input"]) and
                                     chosen["owner"] in json.dumps(e["input"])
                                     for e in receipt_reads)
+                    if case == "T7":
+                        calls = tool_events(events, session)
+                        first_native = min(i["event_index"] for i in native_invocation)
+                        required &= all(any(
+                            e["index"] < first_native and marker in
+                            json.dumps(e["input"]) for e in calls)
+                            for marker in ("worktree-reservation list", "gh api",
+                                           "git rev-parse", "openspec context",
+                                           "openspec list", str(reader)))
                 if phase == 1:
                     required &= bool(resume_invocation)
             if not required:
