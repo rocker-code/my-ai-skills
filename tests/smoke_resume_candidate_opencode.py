@@ -233,9 +233,13 @@ def main():
         for issue, run_id in issue_runs:
             branch = f"issue-{issue}-fixture"
             path = base / f"{case}-issue-{issue}"
+            issue_url = f"https://github.com/disposable/recovery/issues/{issue}"
+            checked_json([str(reservation), "reserve", "--planned", "--path", str(path),
+                          "--repository", str(repo), "--issue", issue_url, "--branch",
+                          branch, "--session", f"seed-{case}", "--run", run_id,
+                          "--json"], cwd=repo, env=case_env)
             git(repo, env, "worktree", "add", "-qb", branch, str(path), "HEAD")
             worktrees.append(path)
-            issue_url = f"https://github.com/disposable/recovery/issues/{issue}"
             checked_json([str(reservation), "reserve", "--path", str(path), "--issue",
                           issue_url, "--branch", branch, "--session", f"seed-{case}",
                           "--run", run_id, "--json"], cwd=repo, env=case_env)
