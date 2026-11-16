@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "scripts/install.sh"
 UPDATER = ROOT / "scripts/update.sh"
 ENTRY = ROOT / "scripts/install-global"
-REVISION = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
+REVISION = "386469f852d059363b9148a97e99aecd72dda30f"
 
 
 class LauncherTests(unittest.TestCase):
@@ -19,6 +19,11 @@ class LauncherTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="install-launcher-")
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
+        # The launcher fetches the immutable installer at commit A; commit B
+        # changes only the launcher/recipes, never those pinned installer bytes.
+        pinned_entry = root / "pinned-install-global"
+        pinned_entry.write_bytes(subprocess.check_output(
+            ["git", "show", f"{REVISION}:scripts/install-global"], cwd=ROOT))
         self.log = root / "execution.log"
         bin_dir = root / "bin"
         bin_dir.mkdir()
@@ -68,7 +73,7 @@ class LauncherTests(unittest.TestCase):
         self.env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
                     "HOME": str(root), "XDG_DATA_HOME": str(root / "data"),
                     "XDG_CONFIG_HOME": str(root / "config"), "FAIL_OPENSPEC": "0",
-                    "ENTRY_SOURCE": str(ENTRY), "LAUNCHER_SOURCE": str(LAUNCHER),
+                    "ENTRY_SOURCE": str(pinned_entry), "LAUNCHER_SOURCE": str(LAUNCHER),
                     "REAL_PYTHON": sys.executable, "FAKE_MAIN_REVISION": "a" * 40,
                     "GIT_FAIL": "0",
                     "EXECUTION_LOG": str(self.log), "CURL_LOG": str(root / "curl.log"),

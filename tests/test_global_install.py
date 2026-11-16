@@ -32,7 +32,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.bin.mkdir()
         for executable in ("opencode", "openspec"):
             path = self.bin / executable
-            path.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'opencode v2.2.6'; else printf '  api\\n  run\\n  service\\n'; fi\n" if executable == "opencode" else "#!/bin/sh\necho 'test version 1'\n")
+            path.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'opencode v2.2.6'; else printf '  api\\n  run\\n  service\\n'; fi\n" if executable == "opencode" else "#!/bin/sh\necho '2.0.0'\n")
             path.chmod(0o755)
         self.env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_DATA_HOME": str(self.home / ".local/share"),
@@ -381,9 +381,14 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
-        published = "0e6103f3be6f1797978dba6bf09fd9485acf75346b4e9803ec271cd167cd75ed"
-        self.assertEqual(hashlib.sha256(ENTRY.read_bytes()).hexdigest(), published)
+        revision = "386469f852d059363b9148a97e99aecd72dda30f"
+        published = "a8be8a0f092f8b9550ef95019cd73f4f6b0cf226dd29b66e39d3102a33e4347f"
+        # Commit A already includes the 2.x gate. Commit B must leave it intact.
+        pinned_entry = subprocess.check_output(
+            ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
+        self.assertEqual(hashlib.sha256(pinned_entry).hexdigest(), published)
+        self.assertEqual(ENTRY.read_bytes(), pinned_entry)
+        self.assertIn(b"OpenSpec 2.x necess", pinned_entry.replace("á".encode(), b"a"))
         launcher = (ROOT / "scripts/install.sh").read_text()
         self.assertIn(f"entry_revision={revision}", launcher)
         self.assertIn(f"entry_sha256={published}", launcher)
@@ -397,21 +402,24 @@ class GlobalInstallTests(unittest.TestCase):
             self.assertIn("/main/scripts/update.sh | sh", text)
             self.assertIn("https://github.com/rocker-code/my-ai-skills/wiki/", text)
             self.assertNotIn("8ddd9e60fbe773ca363293b8f0ff3a7b452eed37", text)
-        self.assertEqual(revision, re.search(r'ENTRY_REVISION = "([0-9a-f]{40})"',
-                                             (ROOT / "tests/smoke_global_opencode.py").read_text()).group(1))
+        self.assertIn('["git", "rev-parse", "HEAD"]',
+                      (ROOT / "tests/smoke_global_opencode.py").read_text())
 
     def test_published_recipe_in_disposable_home(self):
-        # The immutable Git object exists locally before the feature branch is
-        # published. Substitute only the download and remote transports; run
-        # the README command and its launcher's independent digest gate unchanged.
-        revision = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
+        # Transport is mocked, but README pipelines, launcher, digest check,
+        # pinned installer and Git snapshot installation execute unchanged.
+        revision = "386469f852d059363b9148a97e99aecd72dda30f"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
-                        "case \"$2\" in\n"
-                        f"  */main/scripts/install.sh) cat {str(ROOT / 'scripts/install.sh')!r} ;;\n"
-                        f"  *{revision}/scripts/install-global) /usr/bin/git -C {str(ROOT)!r} show {revision}:scripts/install-global > \"$4\" ;;\n"
-                        "  *) exit 2 ;;\n"
-                        "esac\n")
+                         "case \"$2\" in\n"
+                         f"  */main/scripts/install.sh) cat {str(ROOT / 'scripts/install.sh')!r} ;;\n"
+                         f"  */main/scripts/update.sh) cat {str(ROOT / 'scripts/update.sh')!r} ;;\n"
+                         f"  *{revision}/scripts/install.sh) cp {str(ROOT / 'scripts/install.sh')!r} \"$4\" ;;\n"
+                         f"  *{revision}/scripts/install-global) "
+                         f"if [ \"$CURL_BAD_ENTRY\" = 1 ]; then printf bad > \"$4\"; "
+                         f"else /usr/bin/git -C {str(ROOT)!r} show {revision}:scripts/install-global > \"$4\"; fi ;;\n"
+                         "  *) exit 2 ;;\n"
+                         "esac\n")
         curl.chmod(0o755)
         git = self.bin / "git"
         git.write_text("#!/bin/sh\n"
@@ -423,14 +431,44 @@ class GlobalInstallTests(unittest.TestCase):
                        f"  exec /usr/bin/git \"$1\" \"$2\" remote add origin {str(ROOT)!r}\n"
                        "fi\nexec /usr/bin/git \"$@\"\n")
         git.chmod(0o755)
-        readme = (ROOT / "README.md").read_text()
-        snippet = readme.split("## Instalar ou atualizar\n", 1)[1].split("```bash\n", 1)[1].split("\n```", 1)[0]
-        result = call("bash", "-c", snippet, cwd=self.root,
-                      env={k: v for k, v in self.env.items()
-                           if k != "MY_AI_SKILLS_TEST_SOURCE"}, timeout=90)
+        def recipe(readme, index):
+            section = (ROOT / readme).read_text().split("## Instalar ou atualizar\n" if readme == "README.md"
+                                                     else "## Install or update\n", 1)[1]
+            return section.split("```bash\n")[index + 1].split("\n```", 1)[0]
+
+        def execute(snippet, **changes):
+            return call("bash", "-c", snippet, cwd=self.root,
+                        env={**self.env, "CURL_BAD_ENTRY": "0", **changes}, timeout=90)
+
+        result = execute(recipe("README.md", 0))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"active={revision}", result.stdout)
         self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"], revision)
+        self.assertEqual((self.data / "active/scripts/install-global").read_bytes(),
+                         subprocess.check_output(["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT))
+        guidance = (self.home / ".config/opencode/AGENTS.md").read_bytes()
+        self.assertIn(b".agents/skills/openspec-", guidance)
+        self.assertNotIn(b".opencode/commands/opsx-", guidance)
+        active = os.readlink(self.data / "active")
+        for readme in ("README.md", "README.en.md"):
+            for index in (0, 1):
+                command = recipe(readme, index)
+                self.assertIn("/main/scripts/" + ("install.sh" if index == 0 else "update.sh"), command)
+                denied = execute(command, CURL_BAD_ENTRY="1")
+                self.assertNotEqual(denied.returncode, 0)
+                self.assertIn("SHA-256 mismatch", denied.stderr)
+                self.assertEqual(os.readlink(self.data / "active"), active)
+                self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), guidance)
+                cli = self.bin / "openspec"
+                cli.write_text("#!/bin/sh\necho '1.9.0'\n")
+                denied = execute(command)
+                self.assertNotEqual(denied.returncode, 0)
+                self.assertIn("OpenSpec 2.x necessário", denied.stderr)
+                self.assertEqual(os.readlink(self.data / "active"), active)
+                cli.write_text("#!/bin/sh\necho '2.0.0'\n")
+                accepted = execute(command)
+                self.assertEqual(accepted.returncode, 0, accepted.stderr)
+                self.assertIn(f"active={revision}", accepted.stdout)
 
     def test_install_complete_idempotent_and_preserves_instructions(self):
         config = self.home / ".config/opencode"
@@ -510,6 +548,27 @@ class GlobalInstallTests(unittest.TestCase):
             result = self.install()
             self.assertIn("OpenCode V2", result.stderr)
             self.assertFalse(self.data.exists())
+
+    def test_existing_openspec_v1_refused_without_replacing_cli_or_active_version(self):
+        first = self.install()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        active = os.readlink(self.data / "active")
+        guidance = (self.home / ".config/opencode/AGENTS.md").read_bytes()
+        binary = self.bin / "openspec"
+        binary.write_text("#!/bin/sh\necho '1.9.0'\n")
+        original = binary.read_bytes()
+        for revision in (self.revision, self.next_revision()):
+            denied = self.install(revision=revision)
+            self.assertEqual(denied.returncode, 1)
+            self.assertIn("OpenSpec 2.x necessário", denied.stderr)
+            self.assertIn("não substituirá o CLI existente", denied.stderr)
+            self.assertEqual(os.readlink(self.data / "active"), active)
+            self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), guidance)
+            self.assertEqual(binary.read_bytes(), original)
+        binary.write_text("#!/bin/sh\necho '2.0.0'\n")
+        updated = self.install(revision=revision)
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertIn(f"active={revision}", updated.stdout)
 
     def test_open_spec_installer_digest_gate(self):
         # Exercise the actual fallback with an intercepted curl and no executable OpenSpec.
@@ -715,8 +774,7 @@ class GlobalInstallTests(unittest.TestCase):
                 before = (spec.read_bytes(), config.read_bytes())
             self.assertEqual(self.install(env=env).returncode, 0)
             guidance = (self.home / ".config/opencode/AGENTS.md").read_text()
-            self.assertIn("openspec-apply-change/SKILL.md", guidance)
-            self.assertIn("openspec-archive-change/SKILL.md", guidance)
+            self.assertIn("openspec-{explore,propose,apply-change,archive-change}/SKILL.md", guidance)
             # Installation never bootstraps a repository implicitly.
             self.assertFalse((repo / ".opencode").exists())
             context = call(str(self.bin / "openspec"), "context", "--json", cwd=repo, env=env)
@@ -731,10 +789,12 @@ class GlobalInstallTests(unittest.TestCase):
             # Authorized first-use setup in this disposable repo only.
             initialized = call(str(self.bin / "openspec"), "init", "--tools", "opencode", str(repo), env=env)
             self.assertEqual(initialized.returncode, 0, initialized.stderr)
-            for action in ("explore", "propose", "apply", "archive"):
-                self.assertTrue((repo / ".opencode/commands" / f"opsx-{action}.md").is_file())
-                skill = "openspec-apply-change" if action == "apply" else f"openspec-{action}" + ("-change" if action == "archive" else "")
-                self.assertTrue((repo / ".opencode/skills" / skill / "SKILL.md").is_file())
+            for skill in ("openspec-explore", "openspec-propose",
+                          "openspec-apply-change", "openspec-archive-change"):
+                generated = repo / ".agents/skills" / skill / "SKILL.md"
+                self.assertTrue(generated.is_file(), generated)
+                self.assertIn("generatedBy: \"2.0.0\"", generated.read_text())
+            self.assertFalse((repo / ".opencode/commands/opsx-apply.md").exists())
             if case == "existing":
                 self.assertEqual(spec.read_bytes(), before[0])
                 self.assertIn("# custom configuration", config.read_text())
@@ -762,11 +822,36 @@ class GlobalInstallTests(unittest.TestCase):
         union = call(str(self.bin / "openspec"), "init", "--tools", "codex,opencode", str(repo), env=env)
         self.assertEqual(union.returncode, 0, union.stderr)
         self.assertTrue((repo / ".agents/skills/openspec-explore/SKILL.md").exists())
-        self.assertTrue((repo / ".opencode/skills/openspec-apply-change/SKILL.md").exists())
-        # CLI success is not a successful chat integration: the migrated
-        # custom profile may be skills-only and omit all /opsx-* commands.
-        if not (repo / ".opencode/commands/opsx-apply.md").exists():
-            self.assertIn("sem essa prova reporte bloqueio", (self.home / ".config/opencode/AGENTS.md").read_text())
+        self.assertTrue((repo / ".agents/skills/openspec-apply-change/SKILL.md").exists())
+        self.assertIn("opencode", (repo / ".agents/skills/.openspec-target").read_text())
+        self.assertIn("codex", (repo / ".agents/skills/.openspec-target").read_text())
+        self.assertIn("sem essa prova reporte bloqueio", (self.home / ".config/opencode/AGENTS.md").read_text())
+
+    @unittest.skipUnless(shutil.which("openspec"), "official OpenSpec CLI unavailable")
+    def test_custom_skill_and_legacy_residue_require_explicit_migration(self):
+        (self.bin / "openspec").unlink()
+        (self.bin / "openspec").symlink_to(shutil.which("openspec"))
+        env = {**self.env, "OPENSPEC_TELEMETRY": "0"}
+        repo = self.root / "custom-profile"
+        repo.mkdir()
+        initialized = call(str(self.bin / "openspec"), "init", "--tools",
+                           "claude,codex,opencode", str(repo), env=env)
+        self.assertEqual(initialized.returncode, 0, initialized.stderr)
+        custom = repo / ".agents/skills/openspec-explore/SKILL.md"
+        custom.write_text(custom.read_text() + "\n# locally customized\n")
+        legacy = repo / ".opencode/commands/opsx-explore.md"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("# custom legacy command\n")
+        before = (custom.read_bytes(), legacy.read_bytes(),
+                  (repo / "openspec/config.yaml").read_bytes())
+        self.assertEqual(self.install(env=env).returncode, 0)
+        self.assertEqual((custom.read_bytes(), legacy.read_bytes(),
+                          (repo / "openspec/config.yaml").read_bytes()), before)
+        dry = call(str(self.bin / "openspec"), "update", "--dry-run",
+                   "--json", str(repo), env=env)
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertFalse(any(item["path"] == ".opencode/commands/opsx-explore.md"
+                             for item in json.loads(dry.stdout)["changes"]))
 
 
 if __name__ == "__main__":

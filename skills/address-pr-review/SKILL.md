@@ -32,7 +32,7 @@ Fix all valid blockers and must-fix items. Normally fix valid should-fix items w
 
 ## OpenSpec rule
 
-Implementation defects that preserve the contract change only code/tests. Behavioral or architectural review changes must follow `openspec-workflow`: record the material decision, revise and review the contract, officially validate the new exact revision and only then resume `/opsx-apply` and code/tests. Ask the owner only for unresolved material decisions. Do not silently rewrite an archived validated contract.
+Implementation defects that preserve the contract change only code/tests. Behavioral or architectural review changes must follow `openspec-workflow`: record the material decision, revise and review the contract, officially validate the new exact revision and only then resume the official `openspec-apply-change` skill and code/tests. Ask the owner only for unresolved material decisions. Do not silently rewrite an archived validated contract.
 
 ## Correct and validate
 
