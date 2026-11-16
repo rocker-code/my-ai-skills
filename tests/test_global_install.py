@@ -32,7 +32,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.bin.mkdir()
         for executable in ("opencode", "openspec"):
             path = self.bin / executable
-            path.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'opencode v2.2.6'; else printf '  api\\n  run\\n  service\\n'; fi\n" if executable == "opencode" else "#!/bin/sh\necho 'test version 1'\n")
+            path.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'opencode v2.2.6'; else printf '  api\\n  run\\n  service\\n'; fi\n" if executable == "opencode" else "#!/bin/sh\necho '2.0.0'\n")
             path.chmod(0o755)
         self.env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_DATA_HOME": str(self.home / ".local/share"),
@@ -514,6 +514,27 @@ class GlobalInstallTests(unittest.TestCase):
             result = self.install()
             self.assertIn("OpenCode V2", result.stderr)
             self.assertFalse(self.data.exists())
+
+    def test_existing_openspec_v1_refused_without_replacing_cli_or_active_version(self):
+        first = self.install()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        active = os.readlink(self.data / "active")
+        guidance = (self.home / ".config/opencode/AGENTS.md").read_bytes()
+        binary = self.bin / "openspec"
+        binary.write_text("#!/bin/sh\necho '1.9.0'\n")
+        original = binary.read_bytes()
+        for revision in (self.revision, self.next_revision()):
+            denied = self.install(revision=revision)
+            self.assertEqual(denied.returncode, 1)
+            self.assertIn("OpenSpec 2.x necessário", denied.stderr)
+            self.assertIn("não substituirá o CLI existente", denied.stderr)
+            self.assertEqual(os.readlink(self.data / "active"), active)
+            self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), guidance)
+            self.assertEqual(binary.read_bytes(), original)
+        binary.write_text("#!/bin/sh\necho '2.0.0'\n")
+        updated = self.install(revision=revision)
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertIn(f"active={revision}", updated.stdout)
 
     def test_open_spec_installer_digest_gate(self):
         # Exercise the actual fallback with an intercepted curl and no executable OpenSpec.

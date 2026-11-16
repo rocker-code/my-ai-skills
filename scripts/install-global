@@ -81,7 +81,13 @@ def preflight(home, agents):
 def ensure_openspec(data, env):
     existing = shutil.which("openspec", path=env.get("PATH"))
     if existing:
-        run(existing, "--version", env=env)
+        version = run(existing, "--version", env=env)
+        if not re.fullmatch(r"(?:openspec(?: cli)?\s+)?v?2\.\d+\.\d+(?:[-+][0-9a-z.-]+)?",
+                            version, re.IGNORECASE):
+            raise InstallError(
+                f"OpenSpec 2.x necessário para as skills nativas; CLI existente em {existing} "
+                f"reporta {version!r}. Atualize o CLI pela instalação de sua origem e repita; "
+                "o instalador não substituirá o CLI existente.")
         return existing
     # The upstream standalone installer checks the released binary against
     # SHA256SUMS. It is used only when no existing method owns this tool.
@@ -97,7 +103,10 @@ def ensure_openspec(data, env):
         binary = target / "openspec"
         if not binary.is_file():
             raise InstallError("OpenSpec standalone não foi instalado; consulte https://github.com/Fission-AI/OpenSpec/blob/main/docs/installation.md")
-        run(str(binary), "--version", env=env)
+        version = run(str(binary), "--version", env=env)
+        if not re.fullmatch(r"(?:openspec(?: cli)?\s+)?v?2\.\d+\.\d+(?:[-+][0-9a-z.-]+)?",
+                            version, re.IGNORECASE):
+            raise InstallError(f"Distribuição OpenSpec incompatível ({version!r}); exige 2.x.")
         if shutil.which("openspec", path=env.get("PATH")) != str(binary):
             raise InstallError(f"OpenSpec instalado em {binary}, mas fora do PATH. Adicione {target} ao PATH e repita.")
         return str(binary)
