@@ -106,6 +106,7 @@ def native_calls(events, session, native):
     name = native.parent.name
     discovery = []
     invocation = []
+    instructions = []
     for index, event in enumerate(events):
         if event.get("sessionID") != session or event.get("type") != "tool_use":
             continue
@@ -122,9 +123,11 @@ def native_calls(events, session, native):
         elif tool == "read" and inp.get("path") in (path, str(native)) and name in output:
             invocation.append({"tool": tool, "id": part.get("id"),
                                "path": inp["path"], "event_index": index})
-        if tool in ("glob", "shell") and ".agents/skills" in json.dumps(inp) and name in output:
+        if tool in ("glob", "shell") and ".agents" in json.dumps(inp) and name in output:
             discovery.append({"tool": tool, "id": part.get("id"), "event_index": index})
-    return discovery, invocation
+        if tool == "shell" and "openspec instructions " in inp.get("command", "") and output:
+            instructions.append({"tool": tool, "id": part.get("id"), "event_index": index})
+    return discovery, invocation, instructions
 
 
 def main():
@@ -313,8 +316,8 @@ def main():
         calls_safe = all(not any(a == "--method" or a.startswith("body=") or
                                  a in ("edit", "create", "merge", "close", "delete")
                                  for a in args) for args in new_calls)
-        native_discovery, native_invocation = (
-            native_calls(events, sessions[0], native) if len(sessions) == 1 else ([], []))
+        native_discovery, native_invocation, native_instructions = (
+            native_calls(events, sessions[0], native) if len(sessions) == 1 else ([], [], []))
         resume_invocation = [item["part"]["id"] for item in events
                              if item.get("sessionID") in sessions and
                              item.get("type") == "tool_use" and
@@ -337,6 +340,7 @@ def main():
                   "github_calls": new_calls, "github_read_only": calls_safe,
                   "native": native_provenance, "native_discovery": native_discovery,
                   "native_invocation": native_invocation,
+                  "native_instructions": native_instructions,
                   "resume_invocation": resume_invocation, "outcome": outcome,
                   "model_text_observed": bool(texts)}
         results["scenarios"][case] = record
@@ -345,9 +349,11 @@ def main():
                 or not calls_safe or not new_calls or
                 not any(args[:1] == ["api"] for args in new_calls) or
                 not resume_invocation or not native_discovery
-                or not native_invocation or not outcome or
+                or not native_invocation or not native_instructions or not outcome or
                 not any(d["event_index"] < i["event_index"] for d in native_discovery
-                        for i in native_invocation)):
+                        for i in native_invocation) or
+                not any(i["event_index"] < c["event_index"] for i in native_invocation
+                        for c in native_instructions)):
             raise RuntimeError(f"{case}: recovery proof incomplete; see {base}/results.json")
     results["finished_at"] = datetime.now(timezone.utc).isoformat()
     (base / "results.json").write_text(json.dumps(results, indent=2) + "\n")
