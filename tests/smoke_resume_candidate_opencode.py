@@ -147,12 +147,18 @@ def main():
         if case == "T1":
             run([openspec, "init", "--tools", "opencode", str(repo)], cwd=base,
                 env=env, timeout=90)
+            base_spec = ROOT / "openspec/specs/global-workflow-distribution/spec.md"
+            target_spec = repo / "openspec/specs/global-workflow-distribution/spec.md"
+            target_spec.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(base_spec, target_spec)
             shutil.copytree(ROOT / "openspec/changes" / CHANGE,
                             repo / "openspec/changes" / CHANGE)
-            fixture["proposal_sha"] = git(
-                repo, env, "hash-object", f"openspec/changes/{CHANGE}/proposal.md")
             fixture["strict_validation"] = run(
                 [openspec, "validate", CHANGE, "--strict"], cwd=repo, env=env)
+            git(repo, env, "add", "-A")
+            git(repo, env, "-c", "user.name=Smoke", "-c",
+                "user.email=smoke@example.org", "commit", "-qm", "validated proposal")
+            fixture["proposal_sha"] = git(repo, env, "rev-parse", "HEAD")
         evidence = repo / "recovery-evidence.json"
         evidence.write_text(json.dumps(fixture, indent=2) + "\n")
         git(repo, env, "add", "-A")
