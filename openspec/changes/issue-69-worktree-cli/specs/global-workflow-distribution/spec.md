@@ -23,4 +23,4 @@ A instalação global SHALL disponibilizar `worktree-reservation` no PATH como e
 
 #### Scenario: Orientação do launcher em ambiente OpenSpec 2.0
 - **WHEN** a instalação publica a orientação do comando global de reserva em ambiente com OpenSpec 2.0
-- **THEN** o uso do launcher é comprovado independentemente da existência de `/opsx-*` e a orientação não oferece arquivos de comandos legados fabricados nem instalação 1.x como condição para utilizar a reserva; a verificação de bootstrap OpenSpec segue seu contrato próprio e não é declarada aprovada por esta prova
+- **THEN** o uso do launcher é comprovado independentemente da existência de `/opsx-*` e a orientação conserva o contrato nativo de skills oficiais entregue pela #71 no merge `5e33688d2a9db702e6bd0f2027d778f3baebdf35`, sem oferecer comandos legados fabricados nem instalação 1.x como condição para utilizar a reserva; a verificação de bootstrap OpenSpec segue seu contrato próprio e não é declarada aprovada por esta prova
