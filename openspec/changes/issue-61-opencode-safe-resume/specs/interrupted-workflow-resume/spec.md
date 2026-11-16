@@ -20,7 +20,7 @@ The workflow SHALL recognize a natural request to continue interrupted developme
 
 #### Scenario: Explicit choice after ambiguous pause in the same session
 - **WHEN** the agent has paused on two equally plausible issue/run candidates and the user explicitly chooses one issue/run in that same OpenCode session
-- **THEN** the agent re-inventories the checkout, both reservations and ledgers, checks stopped-writer evidence before any ownership transition, and may inspect the applicable native OpenSpec skill read-only without dispatch or writes; the initial ambiguous pause does not require native invocation
+- **THEN** the agent SHALL re-inventory the checkout, both reservations and ledgers and check independent stopped-writer evidence before any ownership transition; if safe, it SHALL discover and invoke the applicable native OpenSpec 2.0 skill read-only in that same session, with discovery and invocation events tied to its canonical path/hash and session ID, and SHALL recheck both reservations and ledgers, Git, OpenSpec and GitHub without dispatch or writes. Before the explicit choice the agent SHALL pause after one question with no native invocation required; without a safe writer determination or observable post-choice invocation the proof SHALL remain blocked, not PASS
 
 ### Requirement: Preserve work and verify ownership
 
