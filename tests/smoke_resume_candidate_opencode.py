@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timezone
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE = "issue-61-opencode-safe-resume"
@@ -22,7 +23,10 @@ MODEL = os.environ.get("RESUME_SMOKE_MODEL", "opencode/glm-5.3-flash-free")
 PROMPTS = {
     "T1": (
         "Continue de onde parou nesta issue. Consulte evidências duráveis locais e "
-        "o ledger da issue via gh api (fixture somente leitura), "
+        "o ledger da issue via gh api (fixture somente leitura). Antes de afirmar "
+        "que o antigo writer parou, consulte o comando runtime_receipt_command "
+        "em recovery-evidence.json para obter confirmação terminal independente "
+        "pelo harness; sem ela bloqueie Apply. "
         "OpenSpec; descubra as skills nativas em .agents/skills e invoque a "
         "skill OpenSpec aplicável para conferir o próximo gate. Diga o último "
         "gate comprovado e a próxima ação. Esta prova é "
@@ -39,12 +43,83 @@ PROMPTS = {
     "T7": (
         "Continue de onde parou. Há duas execuções candidatas neste checkout. "
         "Use evidências duráveis, incluindo ledgers via gh api (fixture somente "
-        "leitura); descubra e consulte as skills OpenSpec nativas "
-        "em .agents/skills apenas se isso não ultrapassar o gate de "
+        "leitura); pode descobrir arquivos das skills OpenSpec nativas "
+        "em .agents/skills, mas NÃO invoque nenhuma skill OpenSpec antes da escolha. "
+        "Não selecione candidato nem faça takeover ou dispatch. Respeite o gate de "
         "desambiguação. Se ambíguo, faça só a pergunta necessária. "
         "Prova somente leitura, sem escolher pela recência."
     ),
 }
+
+RUNTIME_READER = '''#!/usr/bin/env python3
+"""Fixture-only terminal observation; never derives liveness from a PID alone."""
+import json
+import os
+from pathlib import Path
+import sys
+if len(sys.argv) != 4:
+    sys.exit(2)
+execution, owner, run = sys.argv[1:]
+records = json.loads((Path(os.environ["RESUME_RUNTIME_ROOT"]) / "receipts.json").read_text())
+matching = [r for r in records if r["execution_id"] == execution and
+            r["owner"] == owner and r["run"] == run and r["exit_code"] == 0]
+if len(matching) != 1:
+    print(json.dumps({"terminal": False, "execution_id": execution}))
+    sys.exit(3)
+print(json.dumps({"terminal": True, **matching[0]}))
+'''
+
+
+def process_start(pid):
+    # Field 22 of /proc/<pid>/stat; skip the parenthesized executable safely.
+    return int(Path(f"/proc/{pid}/stat").read_text().rsplit(") ", 1)[1].split()[19])
+
+
+def terminal_receipt(reservation, repo, path, issue, run_id, case_env, root):
+    """Observe a real cooperative fixture writer's exit via Popen.wait()."""
+    owner = f"seed-{path.parent.name}-{issue}"
+    execution_id = f"writer-{path.parent.name}-{issue}"
+    child = '''import json, os, subprocess, sys
+reservation, path, issue, branch, owner, run_id = sys.argv[1:]
+start = int(open(f"/proc/{os.getpid()}/stat").read().rsplit(") ",1)[1].split()[19])
+subprocess.run([reservation,"reserve","--path",path,"--issue",issue,
+    "--branch",branch,"--session",owner,"--run",run_id,
+    "--owner-pid",str(os.getpid()),"--json"],check=True,capture_output=True,text=True)
+v = subprocess.run([reservation,"verify","--path",path,"--session",owner,
+    "--run",run_id,"--json"],check=True,capture_output=True,text=True)
+assert json.loads(v.stdout)["ok"]
+print(json.dumps({"pid":os.getpid(),"start":start}), flush=True)
+sys.stdin.read()
+'''
+    process = subprocess.Popen(
+        ["python3", "-c", child, str(reservation), str(path), issue,
+         f"issue-{issue.split('/')[-1]}-fixture", owner, run_id],
+        cwd=repo, env=case_env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True)
+    ready = process.stdout.readline()
+    if not ready:
+        raise RuntimeError(f"fixture writer did not reserve: {process.stderr.read()[:500]}")
+    identity = json.loads(ready)
+    assert process.pid == identity["pid"] and process_start(process.pid) == identity["start"]
+    observed_at = datetime.now(timezone.utc).isoformat()
+    process.stdin.close()
+    code = process.wait(timeout=20)
+    assert code == 0, process.stderr.read()[:500]
+    receipt = {"execution_id": execution_id, "owner": owner, "run": run_id,
+               "pid": identity["pid"], "process_start": identity["start"],
+               "exit_code": code, "observed_at": datetime.now(timezone.utc).isoformat(),
+               "running_observed_at": observed_at}
+    (root / "receipts.json").write_text(json.dumps([receipt]))
+    assert subprocess.run(["python3", str(root / "read-receipt"), execution_id,
+                           owner, run_id], cwd=repo, env=case_env,
+                          capture_output=True).returncode == 0
+    assert subprocess.run(["python3", str(root / "read-receipt"), execution_id,
+                           "wrong-owner", run_id], cwd=repo, env=case_env,
+                          capture_output=True).returncode == 3
+    assert subprocess.run(["python3", str(root / "read-receipt"), "absent",
+                           owner, run_id], cwd=repo, env=case_env,
+                          capture_output=True).returncode == 3
+    return receipt
 
 
 def run(args, *, cwd, env, timeout=90):
@@ -131,6 +206,47 @@ def native_calls(events, session, native):
         ) and output:
             instructions.append({"tool": tool, "id": part.get("id"), "event_index": index})
     return discovery, invocation, instructions
+
+
+def tool_events(events, session, *, tool=None, contains=None):
+    found = []
+    for index, event in enumerate(events):
+        if event.get("sessionID") != session or event.get("type") != "tool_use":
+            continue
+        part = event.get("part", {})
+        state = part.get("state", {})
+        if state.get("status") != "completed" or (tool and part.get("tool") != tool):
+            continue
+        if contains and contains not in json.dumps(state.get("input", {})):
+            continue
+        found.append({"index": index, "input": state.get("input", {}),
+                      "output": state.get("output", ""), "tool": part.get("tool"),
+                      "id": part.get("id")})
+    return found
+
+
+def execute_model(cli, repo, env, base, case, prompt, session=None):
+    command = [cli, "run", "--standalone", "--archived", "--model", MODEL,
+               "--format", "json"]
+    if session:
+        command.extend(["--session", session])
+    try:
+        execution = subprocess.run([*command, prompt], cwd=repo, env=env,
+                                   capture_output=True, text=True, timeout=240)
+    except subprocess.TimeoutExpired as error:
+        (base / f"{case}-timeout.log").write_bytes(error.stdout or b"")
+        raise RuntimeError(f"{case}: model timeout; retained {base}") from error
+    transcript = base / f"{case}-events.jsonl"
+    transcript.write_text(execution.stdout + "\n")
+    (base / f"{case}-stderr.log").write_text(execution.stderr)
+    events = [json.loads(line) for line in execution.stdout.splitlines()]
+    texts = [item["part"]["text"] for item in events
+             if item.get("type") == "text" and isinstance(item.get("part", {}).get("text"), str)]
+    sessions = sorted({item["sessionID"] for item in events if "sessionID" in item})
+    assert execution.returncode == 0 and texts and len(sessions) == 1
+    if session:
+        assert sessions == [session], f"{case}: OpenCode changed session"
+    return events, "\n".join(texts), sessions[0], str(transcript)
 
 
 def main():
@@ -235,7 +351,15 @@ def main():
                                       "state": "OPEN", "url": "https://github.com/disposable/recovery/pull/12"}
                                      if case == "T5" else None)}))
         (gh_root / "calls.jsonl").write_text("")
-        case_env = {**env, "RESUME_GH_ROOT": str(gh_root)}
+        runtime_root = base / f"{case}-runtime"
+        runtime_root.mkdir()
+        reader = runtime_root / "read-receipt"
+        reader.write_text(RUNTIME_READER)
+        reader.chmod(0o755)
+        (runtime_root / "receipts.json").write_text("[]")
+        case_env = {**env, "RESUME_GH_ROOT": str(gh_root),
+                    "RESUME_RUNTIME_ROOT": str(runtime_root)}
+        receipts = {}
         worktrees = []
         issue_runs = [(fixture["issue"], fixture["run"])] if case != "T7" else [
             (candidate["issue"], candidate["run"]) for candidate in fixture["candidates"]]
@@ -249,9 +373,10 @@ def main():
                           "--json"], cwd=repo, env=case_env)
             git(repo, env, "worktree", "add", "-qb", branch, str(path), "HEAD")
             worktrees.append(path)
-            checked_json([str(reservation), "reserve", "--path", str(path), "--issue",
-                          issue_url, "--branch", branch, "--session", f"seed-{case}",
-                          "--run", run_id, "--json"], cwd=repo, env=case_env)
+            receipt = terminal_receipt(reservation, repo, path, issue_url, run_id,
+                                       case_env, runtime_root)
+            receipts[issue] = receipt
+            (runtime_root / "receipts.json").write_text(json.dumps(list(receipts.values())))
             seed_env = {**case_env, "RESUME_GH_SEED": "1"}
             event = [str(workflow_event), "--issue", issue_url, "--run-id", run_id]
             run([*event, "run-start", *(
@@ -260,15 +385,15 @@ def main():
             )], cwd=repo, env=seed_env)
             if case == "T1":
                 run([*event, "stage-start", "--stage", "proposal_review",
-                     "--worker-id", "reviewer", "--execution-kind", "worker",
-                     "--execution-id", "review-61"], cwd=repo, env=seed_env)
+                     "--worker-id", receipt["owner"], "--execution-kind", "worker",
+                     "--execution-id", receipt["execution_id"]], cwd=repo, env=seed_env)
                 run([*event, "observe", "--stage", "proposal_review", "--worker-id",
-                     "reviewer", "--execution-kind", "worker", "--execution-id",
-                     "review-61", "--state", "completed", "--source", "runtime_event",
+                     receipt["owner"], "--execution-kind", "worker", "--execution-id",
+                     receipt["execution_id"], "--state", "completed", "--source", "runtime_event",
                      "--next", f"Apply at {proposal_sha}"], cwd=repo, env=seed_env)
                 run([*event, "stage-end", "--stage", "proposal_review", "--worker-id",
-                     "reviewer", "--execution-kind", "worker", "--execution-id",
-                     "review-61", "--status", "completed"], cwd=repo, env=seed_env)
+                     receipt["owner"], "--execution-kind", "worker", "--execution-id",
+                     receipt["execution_id"], "--status", "completed"], cwd=repo, env=seed_env)
             elif case == "T5" and issue == 11:
                 run([*event, "stage-start", "--stage", "pr_audit", "--worker-id",
                      "reviewer", "--execution-kind", "worker", "--execution-id",
@@ -283,86 +408,117 @@ def main():
             # The fixture writer has stopped; it is not evidence authorizing
             # takeover. Read-only recovery must leave the owner untouched.
             assert checked_json([str(reservation), "verify", "--path", str(path),
-                                 "--session", f"seed-{case}", "--json"], cwd=repo,
+                                 "--session", receipt["owner"], "--json"], cwd=repo,
                                 env=case_env)["ok"]
+        fixture["runtime_receipt_command"] = f"python3 {reader}"
+        fixture["writer_execution_ids"] = {str(issue): receipts[issue]["execution_id"]
+                                           for issue, _ in issue_runs}
+        # The evidence file is committed before model invocation, while runtime
+        # receipts live outside every checkout and are independently observed.
+        evidence.write_text(json.dumps(fixture, indent=2) + "\n")
+        git(repo, env, "add", "-A")
+        git(repo, env, "-c", "user.name=Smoke", "-c",
+            "user.email=smoke@example.org", "commit", "-qm", "runtime reader locator")
         # Exercise the public report reader against the actual seeded ledger.
         report = checked_json([str(workflow_report), issue_url, "--format", "json"],
                               cwd=repo, env=case_env)
         assert report["runs"] and report["runs"][0]["run_id"] == run_id
         before = snapshot(repo, worktrees, gh_root, reservation, case_env, openspec)
         calls_before = (gh_root / "calls.jsonl").read_text().splitlines()
+        if case == "T7":
+            native = repo / ".agents/skills/openspec-explore/SKILL.md"
         native_provenance = {"path": str(native), "resolved": str(native.resolve()),
                              "sha256": sha(native), "source_sha256":
-                             sha(ROOT / ".agents/skills/openspec-apply-change/SKILL.md"),
+                             sha(ROOT / ".agents/skills" / native.parent.name / "SKILL.md"),
                              "symlink": native.is_symlink()}
         assert native_provenance["sha256"] == native_provenance["source_sha256"]
-        command = [cli, "run", "--standalone", "--archived", "--model", MODEL,
-                   "--format", "json", prompt]
-        try:
-            execution = subprocess.run(command, cwd=repo, env=case_env,
-                                       capture_output=True, text=True, timeout=240)
-        except subprocess.TimeoutExpired as error:
-            (base / f"{case}-timeout.log").write_bytes(error.stdout or b"")
-            raise RuntimeError(f"{case}: model timeout; retained {base}") from error
-        transcript = base / f"{case}-events.jsonl"
-        transcript.write_text(execution.stdout + "\n")
-        (base / f"{case}-stderr.log").write_text(execution.stderr)
-        events = []
-        for line in execution.stdout.splitlines():
-            events.append(json.loads(line))
-        texts = [item["part"]["text"] for item in events
-                 if item.get("type") == "text" and isinstance(item.get("part", {}).get("text"), str)]
-        sessions = sorted({item["sessionID"] for item in events if "sessionID" in item})
-        after = snapshot(repo, worktrees, gh_root, reservation, case_env, openspec)
-        calls_after = (gh_root / "calls.jsonl").read_text().splitlines()
-        new_calls = [json.loads(line) for line in calls_after[len(calls_before):]]
-        calls_safe = all(not any(a == "--method" or a.startswith("body=") or
-                                 a in ("edit", "create", "merge", "close", "delete")
-                                 for a in args) for args in new_calls)
-        native_discovery, native_invocation, native_instructions = (
-            native_calls(events, sessions[0], native) if len(sessions) == 1 else ([], [], []))
-        resume_invocation = [item["part"]["id"] for item in events
-                             if item.get("sessionID") in sessions and
-                             item.get("type") == "tool_use" and
-                             item["part"]["state"].get("status") == "completed" and (
-                                 (item["part"].get("tool") == "skill" and
-                                  item["part"]["state"].get("input", {}).get("id") ==
-                                  "resume-workflow") or
-                                 (item["part"].get("tool") == "read" and
-                                  item["part"]["state"].get("input", {}).get("path") in
-                                  (str(skill), str(skill.resolve())) and
-                                  "resume-workflow" in item["part"]["state"].get("output", "")))]
-        response = "\n".join(texts)
-        if case == "T1":
-            expected = (str(fixture["issue"]), fixture["run"], proposal_sha[:7], "Apply")
-        elif case == "T5":
-            expected = ("12", fixture["pr_head"], "manual", "13")
-        else:
-            expected = ("21", "22", "wf-disposable-a", "wf-disposable-b")
-        outcome = all(term.lower() in response.lower() for term in expected)
+        phases = []
+        session = None
+        prompts = [prompt]
         if case == "T7":
-            outcome = outcome and "?" in response
-        record = {"prompt": prompt, "session_ids": sessions, "exit": execution.returncode,
-                  "response": response, "events": str(transcript),
-                  "before": before, "after": after, "unchanged": before == after,
-                  "github_calls": new_calls, "github_read_only": calls_safe,
-                  "native": native_provenance, "native_discovery": native_discovery,
-                  "native_invocation": native_invocation,
-                  "native_instructions": native_instructions,
-                  "resume_invocation": resume_invocation, "outcome": outcome,
-                  "model_text_observed": bool(texts)}
-        results["scenarios"][case] = record
-        (base / "results.json").write_text(json.dumps(results, indent=2) + "\n")
-        if (execution.returncode or not texts or len(sessions) != 1 or before != after
-                or not calls_safe or not new_calls or
-                not any(args[:1] == ["api"] for args in new_calls) or
-                not resume_invocation or not native_discovery
-                or not native_invocation or not native_instructions or not outcome or
-                not any(d["event_index"] < i["event_index"] for d in native_discovery
-                        for i in native_invocation) or
-                not any(i["event_index"] < c["event_index"] for i in native_invocation
-                        for c in native_instructions)):
-            raise RuntimeError(f"{case}: recovery proof incomplete; see {base}/results.json")
+            selected = receipts[21]
+            prompts.append(
+                "Escolho explicitamente a issue #21, run wf-disposable-a. Continue "
+                "NESTA MESMA sessão somente leitura: reinventarie ambos os checkouts, "
+                "reservas, ledgers via gh api, Git/OpenSpec/GitHub; confirme o writer "
+                "anterior pelo runtime_receipt_command de recovery-evidence.json "
+                f"com execução {selected['execution_id']}, owner {selected['owner']} "
+                f"e run {selected['run']}. Sem prova terminal bloqueie. "
+                "Depois da escolha descubra .agents/skills e invoque explicitamente "
+                "openspec-explore nativa em modo somente leitura (arquivo canônico "
+                "ou ferramenta skill), depois execute openspec validate somente "
+                "leitura para conferir o change no contexto da issue. "
+                "Não invoque Apply, faça takeover, dispatch ou escrita.")
+        for phase, message in enumerate(prompts, 1):
+            events, response, session, transcript = execute_model(
+                cli, repo, case_env, base, f"{case}-phase{phase}", message, session)
+            after = snapshot(repo, worktrees, gh_root, reservation, case_env, openspec)
+            calls_after = (gh_root / "calls.jsonl").read_text().splitlines()
+            new_calls = [json.loads(line) for line in calls_after[len(calls_before):]]
+            calls_safe = all(not any(a == "--method" or a.startswith("body=") or
+                                     a in ("edit", "create", "merge", "close", "delete")
+                                     for a in args) for args in new_calls)
+            native_discovery, native_invocation, native_instructions = (
+                native_calls(events, session, native))
+            resume_invocation = tool_events(events, session, tool="skill",
+                                            contains="resume-workflow") + [
+                e for e in tool_events(events, session, tool="read",
+                                       contains=str(skill)) if "resume-workflow" in e["output"]]
+            receipt_reads = [e for e in tool_events(events, session, contains=str(reader))
+                             if '"terminal": true' in e["output"] or
+                                '"terminal":true' in e["output"]]
+            if case == "T1":
+                expected = (str(fixture["issue"]), fixture["run"], proposal_sha[:7], "Apply")
+            elif case == "T5":
+                expected = ("12", fixture["pr_head"], "manual", "13")
+            elif phase == 1:
+                expected = ("21", "22", "wf-disposable-a", "wf-disposable-b", "?")
+            else:
+                expected = ("21", "wf-disposable-a")
+            outcome = all(term.lower() in response.lower() for term in expected)
+            record = {"phase": phase, "prompt": message, "session_id": session,
+                      "response": response, "events": transcript, "before": before,
+                      "after": after, "unchanged": before == after,
+                      "github_calls": new_calls, "github_read_only": calls_safe,
+                      "native": native_provenance, "native_discovery": native_discovery,
+                      "native_invocation": native_invocation,
+                      "native_instructions": native_instructions,
+                      "resume_invocation": resume_invocation, "runtime_receipts": receipts,
+                      "runtime_reads": receipt_reads, "outcome": outcome}
+            phases.append(record)
+            results["scenarios"][case] = phases
+            (base / "results.json").write_text(json.dumps(results, indent=2) + "\n")
+            required = before == after and calls_safe and new_calls and outcome
+            required &= any(args[:1] == ["api"] for args in new_calls)
+            if case == "T7" and phase == 1:
+                # Any native invocation before explicit user choice fails closed.
+                all_native_invocations = [
+                    e for e in tool_events(events, session)
+                    if (e["tool"] == "skill" and
+                        str(e["input"].get("id", "")).startswith("openspec-")) or
+                       (e["tool"] == "read" and
+                        "/.agents/skills/openspec-" in str(e["input"].get("path", "")))]
+                required &= bool(resume_invocation) and not all_native_invocations
+                required &= not tool_events(events, session, contains="reconcile")
+            else:
+                required &= bool(native_discovery and native_invocation and native_instructions)
+                required &= any(d["event_index"] < i["event_index"]
+                                for d in native_discovery for i in native_invocation)
+                required &= any(i["event_index"] < c["event_index"]
+                                for i in native_invocation for c in native_instructions)
+                if case == "T1" or case == "T7":
+                    chosen = receipts[61 if case == "T1" else 21]
+                    required &= any(chosen["execution_id"] in json.dumps(e["input"]) and
+                                    chosen["owner"] in json.dumps(e["input"])
+                                    for e in receipt_reads)
+                if phase == 1:
+                    required &= bool(resume_invocation)
+            if not required:
+                raise RuntimeError(f"{case} phase {phase}: recovery proof incomplete; "
+                                   f"see {base}/results.json")
+            before, calls_before = after, calls_after
+        if case == "T7":
+            assert phases[0]["session_id"] == phases[1]["session_id"]
     results["finished_at"] = datetime.now(timezone.utc).isoformat()
     (base / "results.json").write_text(json.dumps(results, indent=2) + "\n")
     print(f"Model-backed observations retained at {base}/results.json; inspect responses "
