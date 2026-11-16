@@ -50,6 +50,131 @@ class ReservationTest(unittest.TestCase):
         self.assertNotIn("Traceback", result.stderr)
         return json.loads(result.stdout) if result.stdout.startswith("{") else result
 
+    def public(self, command, *options, cwd=None, json_mode=False, code=0):
+        argv = [str(CLI), command, *options, *(["--json"] if json_mode else [])]
+        result = subprocess.run(argv, cwd=cwd or self.path, capture_output=True, text=True,
+                                env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+        self.assertEqual(result.returncode, code, (argv, result.stdout, result.stderr))
+        self.assertNotIn("Traceback", result.stderr)
+        return json.loads(result.stdout) if json_mode else result.stdout
+
+    def test_implicit_root_in_two_worktrees_and_explicit_path_with_spaces(self):
+        self.owned()
+        subdir = self.path / "nested"
+        subdir.mkdir()
+        self.cli("checkpoint")
+        root = self.public("verify", "--session", "writer", cwd=self.path, json_mode=True)
+        nested = self.public("verify", "--session", "writer", cwd=subdir, json_mode=True)
+        self.assertEqual(root["path"], nested["path"])
+        self.assertEqual(root["digest"], nested["digest"])
+        second = self.root / "second with spaces"
+        self.git("worktree", "add", "-qb", "second", str(second), cwd=self.primary)
+        other = self.public("reconcile", cwd=second, json_mode=True)
+        self.assertEqual(other["path"], str(second))
+        self.assertEqual(other["state"], "RECOVERY_REQUIRED")
+        self.assertEqual(self.public("verify", "--session", "writer", cwd=second, json_mode=True, code=3)["path"], str(second))
+        explicit = self.public("verify", "--path", str(self.path), "--session", "writer",
+                               cwd=second, json_mode=True)
+        self.assertEqual(explicit["path"], str(self.path))
+        self.assertEqual(self.data()["owner"]["session"], "writer")
+
+    def test_implicit_resolution_uses_read_only_git(self):
+        self.owned()
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir()
+        wrapper = bin_dir / "git"
+        wrapper.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$GIT_ARGS_LOG"\nexec "$REAL_GIT" "$@"\n')
+        wrapper.chmod(0o755)
+        log = self.root / "git-args.log"
+        result = subprocess.run([str(CLI), "verify", "--session", "writer", "--json"],
+                                cwd=self.path, capture_output=True, text=True,
+                                env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                                     "GIT_ARGS_LOG": str(log), "REAL_GIT": shutil.which("git"),
+                                     "GIT_OPTIONAL_LOCKS": "0"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["path"], str(self.path))
+        self.assertIn("--no-optional-locks rev-parse --show-toplevel", log.read_text())
+
+    def test_implicit_path_usage_identity_and_no_impersonation(self):
+        self.owned()
+        outside = self.root / "outside"
+        outside.mkdir()
+        self.assertIn("--path", self.public("verify", "--session", "writer", cwd=outside, code=6))
+        self.assertEqual(self.public("verify", "--session", "writer", cwd=outside, json_mode=True, code=6)["exit_code"], 6)
+        for command, args in (("reserve", ("--planned", "--repository", str(self.primary),
+                                           "--issue", self.issue, "--branch", "next")),
+                              ("cancel-planned", ("--repository", str(self.primary), "--reason", "unused")),
+                              ("mark-removed", ("--repository", str(self.primary)))):
+            self.assertEqual(self.public(command, *args, json_mode=True, code=2)["exit_code"], 2)
+        missing = self.public("verify", json_mode=True, code=2)
+        self.assertEqual(missing["exit_code"], 2)
+        self.assertIsNone(missing["owner"])
+        self.assertEqual(self.public("verify", "--session", "other", json_mode=True, code=3)["exit_code"], 3)
+        self.assertEqual(self.data()["verified_for"]["session"], "writer")
+
+    def test_native_summaries_inventory_candidates_list_and_errors(self):
+        recovery = self.public("reconcile")
+        digest = self.public("reconcile", json_mode=True)["inventory"]["digest"]
+        self.assertIn("inventory.digest (takeover): " + digest, recovery)
+        self.assertIn("inventory.worktrees:", recovery)
+        self.planned()
+        summary = self.public("verify", "--session", "writer")
+        self.assertIn(self.data()["baseline"]["digest"], summary)
+        self.assertIn(self.data()["baseline"]["head"], summary)
+        self.assertNotIn("inventory.", summary)
+        self.assertIn("next:", self.public("verify", "--session", "other", code=3))
+        self.pyc("manual.pyc")
+        candidates = self.public("clean-generated")
+        self.assertIn("scripts/__pycache__/manual.pyc", candidates)
+        self.assertIn("eligible=False", candidates)
+        self.assertIn("missing, altered or unsafe provenance", candidates)
+        self.assertEqual(self.public("clean-generated", json_mode=True)["candidates"][0]["eligible"], False)
+        listing = self.public("list", "--repository", str(self.primary))
+        self.assertIn(str(self.path), listing)
+        self.assertIn("issue-35", listing)
+        self.assertIn("writer", listing)
+        self.assertIn("entries:", listing)
+        self.assertEqual(len(self.public("list", "--repository", str(self.primary), json_mode=True)["entries"]), 1)
+        (self.path / "file.txt").write_text("changed")
+        self.assertIn("changed_paths", self.public("verify", "--session", "writer", code=4))
+
+    def test_native_list_empty_multiple_and_failure_codes(self):
+        self.assertIn("(none)", self.public("list", "--repository", str(self.primary)))
+        self.owned()
+        planned = self.root / "another planned"
+        self.cli("reserve", "--planned", "--path", str(planned),
+                 "--repository", str(self.primary), "--issue", self.issue + "-other",
+                 "--branch", "other")
+        listing = self.public("list", "--repository", str(self.primary))
+        self.assertIn(str(self.path), listing)
+        self.assertIn(str(planned), listing)
+        self.assertEqual(len(self.public("list", "--repository", str(self.primary),
+                                         json_mode=True)["entries"]), 2)
+        with (self.registry.parent / "worktrees.lock").open("a+b") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            self.assertIn("exit 5", self.public("verify", "--session", "writer",
+                                                "--lock-timeout", "0", code=5))
+        self.registry.write_text("{")
+        self.assertIn("exit 7", self.public("verify", "--session", "writer", code=7))
+        self.assertEqual(self.public("verify", "--session", "writer",
+                                     json_mode=True, code=7)["exit_code"], 7)
+
+    def test_native_eligible_candidate_and_json_shape_preserved(self):
+        self.owned()
+        script = ("from pathlib import Path; import importlib.util; "
+                  "Path('new.pyc').write_bytes(importlib.util.MAGIC_NUMBER+b'0'*20)")
+        self.cli("track-generated", "--", sys.executable, "-c", script)
+        self.cli("verify")
+        summary = self.public("clean-generated")
+        self.assertIn('"new.pyc" eligible=True reason=recorded', summary)
+        result = self.public("clean-generated", json_mode=True)
+        self.assertEqual(result["candidates"], [{"path": "new.pyc", "eligible": True, "reason": "recorded"}])
+        self.assertTrue({"ok", "exit_code", "error", "owner", "head", "digest",
+                         "drift", "generated_paths", "unknown_untracked_paths"} <= result.keys())
+        self.assertIn("next:", self.public("clean-generated", "--apply", "--paths", "new.pyc",
+                                            "--session", "other", "--reason", "test", code=3))
+        self.assertTrue((self.path / "new.pyc").exists())
+
     @property
     def registry(self):
         return Path(wr.identity(self.path)["common_dir"]) / "ai-workflow/worktrees.json"

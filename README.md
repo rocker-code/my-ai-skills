@@ -14,6 +14,8 @@ O ciclo passa por descoberta, prontidão, implementação, revisão e conclusão
 
 Em uma **nova sessão do OpenCode**, no checkout correspondente, peça **“continue de onde parou”** ou informe a URL da issue/milestone a retomar. A skill global `resume-workflow` reconcilia Git/GitHub, OpenSpec, evidências e a posse da worktree antes de delegar ao `milestone-orchestrator`. Quando o escopo ou a posse não forem verificáveis, preserva o trabalho e solicita somente a informação necessária, sem sobrescrever arquivos. Um teste/comando interrompido não é considerado aprovado sem evidência final. Alterações que nunca saíram de um disco perdido não podem ser restauradas automaticamente.
 
+Após uma instalação global atualizada, `worktree-reservation verify --session <id>` verifica a posse a partir de qualquer subdiretório do checkout; informe `--path <checkout>` ao selecionar outra worktree e `--json` para automação. A sessão sempre vem do chamador. Antes da atualização, use o helper em `~/.local/share/my-ai-skills/active/scripts/worktree-reservation` com `--path` explícito.
+
 ![Fluxo do AI Engineering Workflow: da ideia à issue, entrega incremental segura, registro de evoluções, recuperação após interrupções, changelog, revisão e merge.](docs/images/fluxo-my-ai-skills.svg)
 
 [Veja o fluxo completo na wiki](https://github.com/rocker-code/my-ai-skills/wiki/Guia-do-fluxo).

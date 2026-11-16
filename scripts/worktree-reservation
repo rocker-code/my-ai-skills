@@ -19,15 +19,24 @@ from worktree_registry import (
     save, socket, secrets, PROVENANCE_LIMIT,
 )
 
+class PublicParser(argparse.ArgumentParser):
+    """Keep argparse's exit 2, but honor --json even before parsing completes."""
+
+    def error(self, message):
+        if "--json" in sys.argv[1:]:
+            print(json.dumps(response(error=f"usage: {message}", code=2), sort_keys=True))
+            self.exit(2)
+        super().error(message)
+
 
 def parser():
-    cli = argparse.ArgumentParser(description=__doc__)
+    cli = PublicParser(description=__doc__)
     sub = cli.add_subparsers(dest="command", required=True)
     for name in ("reserve", "cancel-planned", "verify", "checkpoint", "release",
                  "handoff", "reconcile", "status", "list", "mark-removed",
                  "track-generated", "clean-generated"):
         p = sub.add_parser(name)
-        p.add_argument("--path", required=name != "list")
+        p.add_argument("--path")
         p.add_argument("--repository")
         p.add_argument("--session")
         p.add_argument("--run")
@@ -90,6 +99,9 @@ def validate(args, cli):
             cli.error("--set accepts only proposal_sha, pr_url, pr_head, sandbox")
     if args.command == "list" and not args.repository:
         cli.error("list requires --repository <existing-checkout>")
+    if (args.command in ("cancel-planned", "mark-removed") or
+            args.command == "reserve" and args.planned) and not args.path:
+        cli.error(f"{args.command} requires --path <destination>")
     if getattr(args, "owner_pid", None) is not None and args.owner_pid <= 0:
         cli.error("--owner-pid must be positive")
     if args.command == "cancel-planned" and (not args.repository or not args.reason):
@@ -122,6 +134,66 @@ def response(entry=None, current=None, *, path=None, error=None, code=0, extra=N
     if extra:
         result.update(extra)
     return result
+
+
+def render(result):
+    """Present the public response without changing its machine-readable shape."""
+    if "entries" in result:
+        lines = ["result: OK (exit 0)", "entries:"]
+        for entry in result["entries"]:
+            lines.append("  " + " ".join(
+                f"{key}={json.dumps(entry.get(key), sort_keys=True, ensure_ascii=True)}"
+                for key in ("path", "issue_url", "branch", "state", "owner")))
+        if not result["entries"]:
+            lines.append("  (none)")
+        return "\n".join(lines)
+    lines = [f"result: {'OK' if result['ok'] else 'BLOCKED'} (exit {result['exit_code']})"]
+    for key in ("error", "path", "issue_url", "branch", "state"):
+        if result.get(key) is not None:
+            lines.append(f"{key}: {result[key]}")
+    owner = result.get("owner")
+    lines.append("owner: " + (json.dumps(owner, sort_keys=True, ensure_ascii=True) if owner else "none"))
+    for key in ("head", "digest", "drift"):
+        value = result.get(key)
+        lines.append(f"{key}: {json.dumps(value, sort_keys=True, ensure_ascii=True) if isinstance(value, (dict, list)) else value or 'none'}")
+    if "inventory" in result and result["inventory"] is not None:
+        inventory = result["inventory"]
+        lines.append(f"inventory.digest (takeover): {inventory['digest']}")
+        for key, value in inventory.items():
+            if key != "digest":
+                lines.append(f"inventory.{key}: {json.dumps(value, sort_keys=True, ensure_ascii=True)}")
+    if "candidates" in result:
+        lines.append("candidates:")
+        for item in result["candidates"]:
+            lines.append(f"  {json.dumps(item['path'], ensure_ascii=True)} eligible={item['eligible']} reason={item['reason']}")
+        if not result["candidates"]:
+            lines.append("  (none)")
+    if result.get("generated_paths"):
+        lines.append("generated_paths: " + json.dumps(result["generated_paths"], ensure_ascii=True))
+    if result.get("unknown_untracked_paths"):
+        lines.append("unknown_untracked_paths: " + json.dumps(result["unknown_untracked_paths"], ensure_ascii=True))
+    if not result["ok"]:
+        actions = {2: "Correct the arguments; supply --path for destinations and --session for owner gates.",
+                   3: "Inspect the owner and reconcile the reservation; never assume takeover.",
+                   4: "Inspect drift; use explicit acceptance only after review.",
+                   5: "Wait for the common lock; do not write without verification.",
+                   6: "Check the selected checkout and repository identity.",
+                   7: "Preserve the registry and investigate corruption before writing."}
+        lines.append("next: " + actions.get(result["exit_code"], "Inspect the failure before proceeding."))
+    return "\n".join(lines)
+
+
+def checkout_path(args):
+    if args.path:
+        return str(Path(args.path).resolve())
+    if args.command == "list":
+        return None
+    git = subprocess.run(["git", "--no-optional-locks", "rev-parse", "--show-toplevel"],
+                         env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+                         text=True, capture_output=True)
+    if git.returncode or not git.stdout.strip():
+        raise ReservationError(6, "No Git checkout here; supply --path <existing-checkout>")
+    return str(Path(git.stdout.strip()).resolve())
 
 
 def candidates_for(entry, current, checkout):
@@ -385,14 +457,16 @@ def main():
     cli = parser()
     args = cli.parse_args()
     validate(args, cli)
-    checkout = str(Path(args.path).resolve()) if args.path else None
     if args.command in ("cancel-planned", "mark-removed") and not args.repository:
         cli.error("--repository is required")
-    anchor = args.repository or checkout
+    checkout = None
     ident = None
     current = None
     reg = None
     try:
+        checkout = checkout_path(args)
+        args.path = checkout
+        anchor = args.repository or checkout
         ident = identity(anchor)
         if args.command != "list" and Path(checkout).exists() and not (args.command == "reserve" and args.planned):
             actual = identity(checkout)
@@ -475,14 +549,14 @@ def main():
         if args.json:
             print(json.dumps(result, ensure_ascii=True, sort_keys=True))
         else:
-            print(json.dumps(result, ensure_ascii=True, indent=2))
+            print(render(result))
         return 0
     except ReservationError as exc:
         result = response(exc.entry, current, path=checkout, error=str(exc), code=exc.code,
                           extra={"inventory": exc.inventory} if exc.inventory else None)
         if exc.drift:
             result["drift"] = exc.drift
-        print(json.dumps(result, ensure_ascii=True, sort_keys=True) if args.json else str(exc), file=sys.stdout if args.json else sys.stderr)
+        print(json.dumps(result, ensure_ascii=True, sort_keys=True) if args.json else render(result))
         return exc.code
 
 

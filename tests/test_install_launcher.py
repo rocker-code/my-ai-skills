@@ -1,5 +1,6 @@
 """Offline checks for the public shell launcher (no user install or network)."""
 import os
+import hashlib
 from pathlib import Path
 import subprocess
 import sys
@@ -20,6 +21,14 @@ class LauncherTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
         self.log = root / "execution.log"
+        # The public launcher downloads the immutable published entrypoint,
+        # not the (possibly newer) installer currently being developed.
+        pinned = subprocess.run(["git", "show", f"{REVISION}:scripts/install-global"],
+                                cwd=ROOT, capture_output=True, check=True).stdout
+        self.assertEqual(hashlib.sha256(pinned).hexdigest(),
+                         "0e6103f3be6f1797978dba6bf09fd9485acf75346b4e9803ec271cd167cd75ed")
+        entry_source = root / "published-install-global"
+        entry_source.write_bytes(pinned)
         bin_dir = root / "bin"
         bin_dir.mkdir()
         curl = bin_dir / "curl"
@@ -68,7 +77,7 @@ class LauncherTests(unittest.TestCase):
         self.env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
                     "HOME": str(root), "XDG_DATA_HOME": str(root / "data"),
                     "XDG_CONFIG_HOME": str(root / "config"), "FAIL_OPENSPEC": "0",
-                    "ENTRY_SOURCE": str(ENTRY), "LAUNCHER_SOURCE": str(LAUNCHER),
+                     "ENTRY_SOURCE": str(entry_source), "LAUNCHER_SOURCE": str(LAUNCHER),
                     "REAL_PYTHON": sys.executable, "FAKE_MAIN_REVISION": "a" * 40,
                     "GIT_FAIL": "0",
                     "EXECUTION_LOG": str(self.log), "CURL_LOG": str(root / "curl.log"),

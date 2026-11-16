@@ -14,6 +14,8 @@ The lifecycle moves through discovery, readiness, implementation, review and com
 
 In a **new OpenCode session**, from the relevant checkout, say **“continue where you left off”** or supply an explicit issue/milestone URL. The global `resume-workflow` skill reconciles Git/GitHub, OpenSpec, evidence and worktree ownership before handing off to the existing `milestone-orchestrator`. Ambiguous scope or ownership blocks writes rather than risking local changes; interrupted tests never count as passed without conclusive evidence. Local-only changes lost with a missing disk cannot be recovered automatically.
 
+After an updated global installation, `worktree-reservation verify --session <id>` verifies ownership from any checkout subdirectory; pass `--path <checkout>` to select another worktree and `--json` for automation. The caller must provide its own session. Before updating, use `~/.local/share/my-ai-skills/active/scripts/worktree-reservation` with an explicit `--path`.
+
 ![AI Engineering Workflow: from an idea to a Web-authored issue, then CLI planning, implementation, validation and merge.](docs/images/fluxo-my-ai-skills.en.svg)
 
 [See the full workflow in the wiki](https://github.com/rocker-code/my-ai-skills/wiki/Workflow-guide).

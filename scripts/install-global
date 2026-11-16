@@ -209,8 +209,11 @@ def validate_manifest(root, manifest, staged=False, allow_extras=False):
 def guidance(data):
     return f"""{BEGIN}
 AI Engineering Workflow global: pacote em {data}/active (skills/, protocol/,
-templates/, scripts/). Use helpers por caminho absoluto, por exemplo
-{data}/active/scripts/worktree-reservation; cite argumentos e caminhos com espaços.
+templates/, scripts/). Use `worktree-reservation verify --session <id>` no checkout
+atual; se o launcher global não estiver disponível, use
+`{data}/active/scripts/worktree-reservation verify --path <checkout> --session <id>`.
+Não infira sessão do owner. Use --json para automação e preserve o exit status;
+cite argumentos e caminhos com espaços.
 Referências nas skills são relativas ao pacote global, nunca ao projeto atual.
 Regras locais AGENTS.md e instruções do usuário, especialmente restrições mais
 fortes, prevalecem; nenhuma permissão ou execução é concedida por este bloco.
@@ -363,6 +366,39 @@ def inspect_local(project, old_repo, new_repo, authorized):
     return pending, eligible
 
 
+def launcher_text(data):
+    return ("#!/bin/sh\n"
+            f'exec "{data}/active/scripts/worktree-reservation" "$@"\n')
+
+
+def inspect_launcher(home, data, env):
+    """Check effective PATH and a separately recorded, byte-exact ownership."""
+    binary = home / ".local/bin/worktree-reservation"
+    record = data / "launcher.json"
+    safe_parent(binary.parent, home)
+    safe_parent(record, home)
+    absent_or_regular(record)
+    if binary.parent.is_symlink() or (binary.parent.exists() and not binary.parent.is_dir()):
+        raise InstallError(f"Diretório de comando inseguro: {binary.parent}")
+    paths = [Path(p or ".").absolute() for p in env.get("PATH", "").split(os.pathsep)]
+    if binary.parent not in paths:
+        raise InstallError(f"{binary.parent} fora do PATH; adicione-o ao PATH e repita.")
+    first = shutil.which(binary.name, path=env.get("PATH"))
+    if first and Path(first).absolute() != binary:
+        raise InstallError(f"Comando de outra origem precede launcher no PATH: {first}")
+    if record.exists():
+        owned = json.loads(record.read_text())
+        if (owned != {"schema": 1, "path": str(binary),
+                      "sha256": hashlib.sha256(launcher_text(data).encode()).hexdigest(), "mode": 0o755}
+                or binary.is_symlink() or not binary.is_file()
+                or digest(binary) != owned["sha256"]
+                or stat.S_IMODE(binary.stat().st_mode) != owned["mode"]):
+            raise InstallError(f"Launcher alterado ou sem propriedade comprovada: {binary}")
+    elif binary.exists() or binary.is_symlink():
+        raise InstallError(f"Launcher sem registro de propriedade: {binary}")
+    return binary, record
+
+
 def install(args, *, source=ORIGIN):
     home = Path(os.environ["HOME"]).absolute()
     preflight(home, args.agent)
@@ -388,6 +424,7 @@ def install(args, *, source=ORIGIN):
             skills = config / "skills"
             agents = config / "AGENTS.md"
             ownership = data / "guidance.json"
+            launcher, launcher_record = inspect_launcher(home, data, env)
             for parent in (versions, config, skills):
                 safe_parent(parent, home)
                 parent.mkdir(parents=True, exist_ok=True)
@@ -504,6 +541,8 @@ def install(args, *, source=ORIGIN):
             removed = []
             published = False
             moved = []
+            launcher_created = False
+            launcher_record_created = False
             try:
                 if not target.exists():
                     with tempfile.TemporaryDirectory(prefix=".stage-", dir=versions) as stage:
@@ -565,6 +604,22 @@ def install(args, *, source=ORIGIN):
                     tmp.replace(ownership)
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "guidance":
                     raise InstallError("Falha simulada após orientação")
+                # Prepare only after snapshot validation. Never replace an
+                # unowned or altered command, including on idempotent updates.
+                inspect_launcher(home, data, env)
+                if not launcher_record.exists():
+                    launcher.parent.mkdir(parents=True, exist_ok=True)
+                    with launcher.open("x") as output:
+                        launcher_created = True
+                        output.write(launcher_text(data))
+                    launcher.chmod(0o755)
+                    with launcher_record.open("x") as output:
+                        launcher_record_created = True
+                        output.write(json.dumps({
+                            "schema": 1, "path": str(launcher),
+                            "sha256": digest(launcher), "mode": 0o755}) + "\n")
+                if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "launcher":
+                    raise InstallError("Falha simulada após launcher")
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "publish":
                     raise InstallError("Falha simulada antes da publicação")
                 if old_active != str(Path("versions") / args.revision):
@@ -574,6 +629,10 @@ def install(args, *, source=ORIGIN):
                     pointer.symlink_to(Path("versions") / args.revision)
                     pointer.replace(active)
             except Exception:
+                if launcher_record_created:
+                    launcher_record.unlink()
+                if launcher_created:
+                    launcher.unlink()
                 if ownership.exists() and ownership.read_text() == new_record and new_record != ownership_before:
                     if ownership_before is None:
                         ownership.unlink()

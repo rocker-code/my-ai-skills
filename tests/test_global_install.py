@@ -36,7 +36,7 @@ class GlobalInstallTests(unittest.TestCase):
             path.chmod(0o755)
         self.env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_DATA_HOME": str(self.home / ".local/share"),
-                     "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
+                     "PATH": str(self.bin) + os.pathsep + str(self.home / ".local/bin") + os.pathsep + os.environ["PATH"],
                      "PYTHONDONTWRITEBYTECODE": "1"}
         self.source = self.root / "source with spaces"
         self.source.mkdir()
@@ -63,6 +63,25 @@ class GlobalInstallTests(unittest.TestCase):
         return call("python3", "-c", runner, str(ENTRY), str(self.source),
                     "--revision", revision or self.revision, "--agent", "opencode", *extra,
                     env=env or self.env, timeout=90)
+
+    def openspec_with_command_profile(self):
+        """Run the real CLI that publishes both OpenCode commands and skills.
+
+        Set MY_AI_SKILLS_TEST_OPENSPEC to a disposable, isolated installation
+        of @fission-ai/openspec@1.17.0. Never change the operator's CLI or
+        accept a skills-only 2.x profile as proof of the first-use contract.
+        """
+        selected = os.environ.get("MY_AI_SKILLS_TEST_OPENSPEC") or shutil.which("openspec")
+        self.assertIsNotNone(selected, "Provide a real OpenSpec CLI for the command+skill profile")
+        selected = Path(selected).resolve()
+        self.assertTrue(selected.is_file(), f"OpenSpec CLI missing: {selected}")
+        version = call(str(selected), "--version", env=self.env)
+        self.assertEqual(version.returncode, 0, version.stderr)
+        self.assertEqual(version.stdout.strip(), "1.17.0",
+                         "First-use command+skill tests require isolated OpenSpec 1.17.0; "
+                         "set MY_AI_SKILLS_TEST_OPENSPEC, do not update the global CLI")
+        (self.bin / "openspec").unlink()
+        (self.bin / "openspec").symlink_to(selected)
 
     @property
     def data(self):
@@ -98,7 +117,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertIn("state=installed", first.stdout)
         revision = self.next_revision()
         before = (self.home / ".config/opencode/AGENTS.md").read_bytes()
-        for phase in ("skills", "guidance", "publish"):
+        for phase in ("skills", "guidance", "launcher", "publish"):
             failed = self.install(revision=revision, env={**self.env, "MY_AI_SKILLS_FAIL_AT": phase})
             self.assertEqual(failed.returncode, 1)
             self.assertIn(f"active={self.revision}", failed.stderr)
@@ -121,6 +140,59 @@ class GlobalInstallTests(unittest.TestCase):
         repeated = self.install(revision=revision)
         self.assertIn("state=already current", repeated.stdout)
         self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), before)
+
+    def test_launcher_executes_active_and_rejects_collisions_and_tampering(self):
+        self.assertEqual(self.install().returncode, 0)
+        launcher = self.home / ".local/bin/worktree-reservation"
+        outside = self.root / "outside"
+        outside.mkdir()
+        result = call("worktree-reservation", "list", "--repository", str(self.source),
+                      "--json", cwd=outside, env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["entries"], [])
+        self.assertEqual(launcher.read_text(), f'#!/bin/sh\nexec "{self.data}/active/scripts/worktree-reservation" "$@"\n')
+        revision = self.next_revision()
+        failed = self.install(revision=revision, env={**self.env, "MY_AI_SKILLS_FAIL_AT": "launcher"})
+        self.assertEqual(failed.returncode, 1)
+        self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"], self.revision)
+        self.assertEqual(call("worktree-reservation", "list", "--repository", str(self.source),
+                              "--json", cwd=outside, env=self.env).returncode, 0)
+        self.assertEqual(self.install(revision=revision).returncode, 0)
+        self.assertEqual(self.install(revision=revision).returncode, 0)
+        for replacement in ("#!/bin/sh\nexit 42\n", launcher.read_text()):
+            launcher.write_text(replacement)
+            if replacement.startswith("#!/bin/sh\nexit"):
+                self.assertIn("alterado", self.install(revision=revision).stderr)
+            else:
+                launcher.chmod(0o700)
+                self.assertIn("alterado", self.install(revision=revision).stderr)
+                launcher.chmod(0o755)
+        foreign = self.bin / "worktree-reservation"
+        foreign.write_text("#!/bin/sh\nexit 55\n")
+        foreign.chmod(0o755)
+        self.assertIn("outra origem", self.install(revision=revision).stderr)
+        foreign.unlink()
+
+    def test_launcher_path_absent_and_foreign_destination_fail_closed(self):
+        no_path = {**self.env, "PATH": str(self.bin) + os.pathsep + os.environ["PATH"]}
+        result = self.install(env=no_path)
+        self.assertIn("fora do PATH", result.stderr)
+        self.assertFalse((self.data / "active").exists())
+        launcher = self.home / ".local/bin/worktree-reservation"
+        launcher.parent.mkdir(parents=True)
+        launcher.write_text("# custom\n")
+        result = self.install()
+        self.assertIn("sem registro", result.stderr)
+        self.assertEqual(launcher.read_text(), "# custom\n")
+        self.assertFalse((self.data / "active").exists())
+
+    def test_fresh_launcher_fault_rolls_back_only_owned_file(self):
+        failed = self.install(env={**self.env, "MY_AI_SKILLS_FAIL_AT": "launcher"})
+        self.assertEqual(failed.returncode, 1)
+        self.assertFalse((self.data / "active").exists())
+        self.assertFalse((self.data / "launcher.json").exists())
+        self.assertFalse((self.home / ".local/bin/worktree-reservation").exists())
+        self.assertEqual(self.install().returncode, 0)
 
     def test_legacy_global_lock_collision_and_authorized_migration(self):
         self.assertEqual(self.install().returncode, 0)
@@ -383,7 +455,11 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_matches_verified_entry_and_parity(self):
         revision = "c48ac58beadc0a9712f59f60458a5c3df3ed5bfb"
         published = "0e6103f3be6f1797978dba6bf09fd9485acf75346b4e9803ec271cd167cd75ed"
-        self.assertEqual(hashlib.sha256(ENTRY.read_bytes()).hexdigest(), published)
+        # The published launcher pins the immutable published revision, not
+        # this checkout's development entrypoint. Preserve its independent
+        # digest gate while allowing a new revision to be prepared.
+        pinned = self.git("show", f"{revision}:scripts/install-global", cwd=ROOT)
+        self.assertEqual(hashlib.sha256(pinned.stdout.encode()).hexdigest(), published)
         launcher = (ROOT / "scripts/install.sh").read_text()
         self.assertIn(f"entry_revision={revision}", launcher)
         self.assertIn(f"entry_sha256={published}", launcher)
@@ -697,11 +773,8 @@ class GlobalInstallTests(unittest.TestCase):
             if name == "two":
                 self.assertFalse((Path(common) / "ai-workflow/evidence" / receipt["evidence_id"]).exists())
 
-    @unittest.skipUnless(shutil.which("openspec"), "official OpenSpec CLI unavailable")
     def test_openspec_first_use_new_and_existing_preserves_artifacts(self):
-        official = shutil.which("openspec")
-        (self.bin / "openspec").unlink()
-        (self.bin / "openspec").symlink_to(official)
+        self.openspec_with_command_profile()
         env = {**self.env, "OPENSPEC_TELEMETRY": "0"}
         for case in ("new", "existing"):
             repo = self.root / case
@@ -741,10 +814,8 @@ class GlobalInstallTests(unittest.TestCase):
                 dry = call(str(self.bin / "openspec"), "update", "--dry-run", "--json", str(repo), env=env)
                 self.assertEqual(dry.returncode, 0, dry.stderr)
 
-    @unittest.skipUnless(shutil.which("openspec"), "official OpenSpec CLI unavailable")
     def test_existing_other_tool_requires_explicit_union_on_first_use(self):
-        (self.bin / "openspec").unlink()
-        (self.bin / "openspec").symlink_to(shutil.which("openspec"))
+        self.openspec_with_command_profile()
         env = {**self.env, "OPENSPEC_TELEMETRY": "0"}
         repo = self.root / "existing-other-tool"
         repo.mkdir()
