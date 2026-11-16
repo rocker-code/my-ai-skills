@@ -324,9 +324,14 @@ def main():
         resume_invocation = [item["part"]["id"] for item in events
                              if item.get("sessionID") in sessions and
                              item.get("type") == "tool_use" and
-                             item["part"].get("tool") == "skill" and
-                             item["part"]["state"].get("status") == "completed" and
-                             item["part"]["state"].get("input", {}).get("id") == "resume-workflow"]
+                             item["part"]["state"].get("status") == "completed" and (
+                                 (item["part"].get("tool") == "skill" and
+                                  item["part"]["state"].get("input", {}).get("id") ==
+                                  "resume-workflow") or
+                                 (item["part"].get("tool") == "read" and
+                                  item["part"]["state"].get("input", {}).get("path") in
+                                  (str(skill), str(skill.resolve())) and
+                                  "resume-workflow" in item["part"]["state"].get("output", "")))]
         response = "\n".join(texts)
         if case == "T1":
             expected = (str(fixture["issue"]), fixture["run"], proposal_sha[:7], "Apply")
