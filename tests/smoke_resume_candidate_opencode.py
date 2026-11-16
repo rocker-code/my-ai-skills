@@ -36,7 +36,9 @@ PROMPTS = {
         "Retome este milestone após interrupção. Reconstitua PR, dependência e "
         "merge mode da evidência persistida, incluindo ledger via gh api e PR "
         "via gh pr view (fixture somente leitura); descubra as skills OpenSpec nativas "
-        "em .agents/skills e consulte a aplicável sem executar mudanças. "
+        "em .agents/skills, invoque a aplicável e execute `openspec validate "
+        "issue-61-opencode-safe-resume --strict --no-interactive` somente leitura "
+        "depois de consultá-la, sem executar mudanças. "
         "Indique a próxima ação sem agendar "
         "o consumidor. Prova somente leitura, sem operações GitHub de escrita."
     ),
