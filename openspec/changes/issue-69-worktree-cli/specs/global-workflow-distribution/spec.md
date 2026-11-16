@@ -24,3 +24,29 @@ A instalação global SHALL disponibilizar `worktree-reservation` no PATH como e
 #### Scenario: Orientação do launcher em ambiente OpenSpec 2.0
 - **WHEN** a instalação publica a orientação do comando global de reserva em ambiente com OpenSpec 2.0
 - **THEN** o uso do launcher é comprovado independentemente da existência de `/opsx-*` e a orientação conserva o contrato nativo de skills oficiais entregue pela #71 no merge `5e33688d2a9db702e6bd0f2027d778f3baebdf35`, sem oferecer comandos legados fabricados nem instalação 1.x como condição para utilizar a reserva; a verificação de bootstrap OpenSpec segue seu contrato próprio e não é declarada aprovada por esta prova
+
+### Requirement: Pin imutável do instalador no bootstrap público
+`scripts/install.sh` SHALL fixar o SHA Git completo de um commit anterior A com o novo `scripts/install-global` e o SHA-256 literal dos bytes `A:scripts/install-global`, em commit posterior B. MUST NOT usar ref móvel, digest de B ou cálculo dinâmico em lugar do pin literal.
+
+#### Scenario: Instalação pública pinada
+- **WHEN** o usuário executa o comando de instalação documentado, sem checkout do pacote, com HOME/PATH descartáveis
+- **THEN** o launcher público verifica o SHA-256 literal do instalador obtido de A, instala a revisão solicitada, e `worktree-reservation` no PATH importa seus módulos da revisão `active` e preserva saída e exit code
+
+#### Scenario: Diretório de dados com metacaracteres de shell
+- **WHEN** `XDG_DATA_HOME` contém aspas, `$()` ou outros metacaracteres e o instalador gera o launcher gerenciado
+- **THEN** o launcher executa somente o helper sob o caminho literal `active`, sem executar conteúdo do caminho como shell, e passa argumentos e exit code intactos
+
+#### Scenario: Digest do instalador divergente
+- **WHEN** os bytes baixados de `A:scripts/install-global` diferem do SHA-256 literal em `scripts/install.sh`
+- **THEN** o fluxo documentado falha antes de executar o instalador e mantém a instalação e o comando anteriores
+
+### Requirement: Anchor de publicação alcançável
+Ao publicar B, A SHALL permanecer alcançável em `main`; a distribuição MUST NOT ser declarada concluída antes das provas dos fluxos públicos com B.
+
+#### Scenario: Uma PR entrega A e B
+- **WHEN** uma PR entrega A e B na mesma branch
+- **THEN** a integração é por merge commit, sem squash/rebase, e A permanece alcançável em `main`
+
+#### Scenario: Duas PRs entregam A e B
+- **WHEN** a entrega é dividida em duas PRs revisadas
+- **THEN** A é integrado e alcançável em `main` antes de B, com gates aplicáveis em cada PR

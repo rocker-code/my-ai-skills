@@ -17,6 +17,10 @@ Para comandos sobre um checkout existente, o helper SHALL usar `--path` explíci
 - **WHEN** um comando para checkout existente é invocado fora de qualquer worktree Git sem `--path`
 - **THEN** a operação falha com código de uso ou identidade e indicação para informar `--path`, sem escolher checkout de outro projeto nem conceder posse
 
+#### Scenario: Variáveis Git herdadas redirecionam descoberta implícita
+- **WHEN** o cwd é um checkout e o processo herda `GIT_DIR` ou `GIT_WORK_TREE` que apontam a outro checkout
+- **THEN** a resolução sem `--path` neutraliza o redirecionamento ou comprova que a raiz retornada contém o cwd físico; nunca verifica ou concede posse do checkout alheio
+
 #### Scenario: Destino ausente não é inferido
 - **WHEN** `reserve --planned`, `cancel-planned` ou `mark-removed` omite o caminho de destino
 - **THEN** a operação exige `--path` e os parâmetros explícitos de repositório aplicáveis, sem inventar destino a partir do diretório corrente
@@ -27,6 +31,10 @@ O helper SHALL emitir por padrão resumo nativo legível do resultado, estado, o
 #### Scenario: Verificação humana bem-sucedida
 - **WHEN** o dono executa `verify --session <id>` sem `--json`
 - **THEN** a saída apresenta resultado, estado, owner, HEAD e digest completos, sem exigir pipe para filtrar o inventário
+
+#### Scenario: Recibo de geração e timestamp no resumo humano
+- **WHEN** o dono conclui `track-generated` com recibo e consulta a saída humana de `track-generated` ou `verify`
+- **THEN** os campos existentes `execution_ref`, `recorded_paths` quando presentes, e `last_verified_at` são legíveis sem perder o recibo necessário à auditoria; `--json` preserva campos, tipos e códigos atuais
 
 #### Scenario: Conflito, drift e falhas operacionais
 - **WHEN** há sessão alheia, drift, lock indisponível, registry inválido ou identidade divergente

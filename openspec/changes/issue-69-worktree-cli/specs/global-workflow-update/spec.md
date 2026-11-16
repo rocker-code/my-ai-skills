@@ -16,3 +16,14 @@ A atualização global explícita SHALL manter o comando `worktree-reservation` 
 #### Scenario: Launcher antigo alterado
 - **WHEN** o comando no PATH tem bytes, modo ou origem divergentes do registro gerenciado
 - **THEN** a atualização bloqueia antes de sobrescrevê-lo e preserva o comando e a instalação ativa
+
+### Requirement: Atualização pública usa pin novo verificado
+`scripts/update.sh` SHALL baixar `scripts/install.sh` da revisão escolhida em `main` e executar o instalador A por SHA Git completo e SHA-256 literal publicados em B. MUST NOT declarar a nova interface distribuída enquanto B fixar o instalador antigo.
+
+#### Scenario: Atualização pública documentada
+- **WHEN** o usuário executa o comando de atualização documentado com HOME/PATH descartáveis, partindo de instalação anterior funcional
+- **THEN** `scripts/update.sh` obtém o launcher de B, valida os bytes de A pelo digest literal, troca `active` para a revisão escolhida e a mesma invocação `worktree-reservation` importa módulos da revisão nova sem launcher duplicado
+
+#### Scenario: Colisão ou falha via atualização pública
+- **WHEN** o PATH contém comando alheio, o launcher gerenciado divergiu ou há falha antes de publicar a nova revisão
+- **THEN** a atualização documentada falha sem tomar posse do comando alheio, preserva o launcher anterior gerenciado e mantém `active` anterior funcional
