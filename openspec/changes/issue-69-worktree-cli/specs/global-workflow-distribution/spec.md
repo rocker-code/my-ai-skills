@@ -20,3 +20,7 @@ A instalação global SHALL disponibilizar `worktree-reservation` no PATH como e
 #### Scenario: Diretório global fora do PATH
 - **WHEN** o launcher não pode ser descoberto pelo PATH efetivo
 - **THEN** a instalação não declara o comando global disponível e indica a ação necessária sem alterar o PATH do usuário silenciosamente
+
+#### Scenario: Orientação do launcher em ambiente OpenSpec 2.0
+- **WHEN** a instalação publica a orientação do comando global de reserva em ambiente com OpenSpec 2.0
+- **THEN** o uso do launcher é comprovado independentemente da existência de `/opsx-*` e a orientação não oferece arquivos de comandos legados fabricados nem instalação 1.x como condição para utilizar a reserva; a verificação de bootstrap OpenSpec segue seu contrato próprio e não é declarada aprovada por esta prova
