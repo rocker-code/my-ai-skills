@@ -31,3 +31,15 @@ Natural-language routing is guidance to the agent, not a native OpenCode crash h
 - Isolated global installer test proving skill installation, global routing and retained safety rules.
 - Existing `tests/test_worktree_reservation.py` and `tests/test_workflow_execution_state.py` remain the primary automated contract for ownership/checkpoints.
 - Real OpenCode follow-up smoke required to exercise T1/T5/T7 (resume a single issue, milestone, ambiguous candidates) and verify observed behavior. Do not mark these executed without runtime evidence.
+
+## Matriz de prova pendente para a retomada real
+
+O `tests/smoke_global_opencode.py` verifica descoberta e expansão dos comandos, mas instala a revisão publicada `c48ac58beadc0a9712f59f60458a5c3df3ed5bfb`, não a versão atual da skill; portanto não prova T1/T5/T7. Na sessão Apply, preservar esse teste da distribuição pública e criar uma prova separada da revisão candidata em HOME e repositórios descartáveis, com OpenCode/OpenSpec reais, sem escrever no HOME do usuário nem substituir o pacote global. Registrar a revisão da skill efetivamente carregada, os IDs de sessão, os prompts, as respostas e o estado Git/OpenSpec antes/depois. Se for necessário um modelo para exercer a decisão do agente, não considerar como prova um smoke sem credenciais que somente verifica descoberta.
+
+| Cenário | Arranjo e resultado a comprovar | Prova existente / pendente |
+| --- | --- | --- |
+| T1 | Issue única, proposta validada em SHA fixo, worker encerrado e checkout reservado; sessão nova recupera a revisão, indica Apply como próximo gate e não recria branch, worktree ou change. | `tests/test_global_install.py` prova roteamento isolado; `tests/test_worktree_reservation.py` prova posse; comportamento da sessão nova pendente. |
+| T5 | Milestone descartável com PR já existente e dependência bloqueada; sessão nova preserva escopo/modo de merge, identifica PR e não agenda o dependente antes do gate exigido. | Contrato de `skills/milestone-orchestrator/SKILL.md` e testes de estado existentes; prova da sessão nova pendente. |
+| T7 | Dois candidatos reais com evidência equivalente; sessão nova apresenta os dois, pede escolha e não escreve até a resposta. | Contrato de `skills/resume-workflow/SKILL.md`; prova da sessão nova pendente. |
+
+Antes de executar, confirmar descoberta do teste, ferramentas reais, isolamento do HOME/worktrees, fixture de GitHub/ledger e posse dos dados descartáveis; não tocar issues/PRs reais para simular interrupção. Rodar amostra focada de instalador e helpers, depois a suite exigida `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests` na revisão candidata final; resultados antigos ou de SHA diferente não aprovam o gate.

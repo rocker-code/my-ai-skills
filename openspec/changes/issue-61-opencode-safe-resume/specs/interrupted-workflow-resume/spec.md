@@ -4,7 +4,7 @@
 
 Safely recover a previously started issue or milestone from a new OpenCode session using persisted, verifiable evidence.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Recover from a new session without prior chat
 
