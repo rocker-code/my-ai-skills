@@ -204,6 +204,78 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual(call(str(launcher), "list", "--repository", str(self.source),
                               "--json", cwd=outside, env=env).returncode, 0)
 
+    def test_public_install_and_update_execute_pinned_installer_and_active_command(self):
+        """Use the public shell routes with local transport and a real installer."""
+        transport = self.root / "transport"
+        transport.mkdir()
+        pinned = call("git", "show",
+                      "fe00db86867de7ba9821a0c4e8e54d75c6e7a465:scripts/install-global",
+                      cwd=ROOT)
+        self.assertEqual(pinned.returncode, 0, pinned.stderr)
+        entry = transport / "install-global"
+        entry.write_text(pinned.stdout)
+        curl = transport / "curl"
+        curl.write_text(
+            '#!/bin/sh\n'
+            '[ "$1" = -fsSL ] && [ "$3" = -o ] || exit 2\n'
+            'case "$2" in\n'
+            '  */scripts/install.sh) cp "$PUBLIC_LAUNCHER" "$4" ;;\n'
+            '  */scripts/install-global) cp "$PUBLIC_ENTRY" "$4" ;;\n'
+            '  *) exit 2 ;;\n'
+            'esac\n')
+        curl.chmod(0o755)
+        git = transport / "git"
+        git.write_text(
+            '#!/bin/sh\n'
+            'if [ "$1" = ls-remote ]; then\n'
+            '  printf "%s\\trefs/heads/main\\n" "$PUBLIC_REVISION"\n'
+            'else\n'
+            '  exec "$REAL_GIT" "$@"\n'
+            'fi\n')
+        git.chmod(0o755)
+        python = transport / "python3"
+        python.write_text(
+            '#!/bin/sh\n'
+            'if [ "$1" = -c ] || [ "$1" = "$ACTIVE_HELPER" ]; then exec "$REAL_PYTHON" "$@"; fi\n'
+            'script=$1; shift\n'
+            'exec "$REAL_PYTHON" -c '
+            "'import importlib.machinery,sys; "
+            "m=importlib.machinery.SourceFileLoader(\"installer\",sys.argv[1]).load_module(); "
+            "source=sys.argv[2]; sys.argv=[sys.argv[1],*sys.argv[3:]]; "
+            "original=m.install; m.install=lambda args: original(args,source=source); "
+            "sys.exit(m.main())' "
+            '"$script" "$PUBLIC_SOURCE" "$@"\n')
+        python.chmod(0o755)
+        env = {**self.env, "PATH": str(transport) + os.pathsep + self.env["PATH"],
+               "PUBLIC_LAUNCHER": str(ROOT / "scripts/install.sh"),
+               "PUBLIC_ENTRY": str(entry), "PUBLIC_REVISION": self.revision,
+               "PUBLIC_SOURCE": str(self.source), "REAL_GIT": shutil.which("git"),
+               "REAL_PYTHON": shutil.which("python3"),
+               "ACTIVE_HELPER": str(self.data / "active/scripts/worktree-reservation")}
+        installed = call("sh", str(ROOT / "scripts/install.sh"), cwd=self.root, env=env)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        self.assertIn("global command", installed.stdout)
+        launcher = self.home / ".local/bin/worktree-reservation"
+        listed = call(str(launcher), "list", "--repository", str(self.source), "--json",
+                      cwd=self.root, env=env)
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        self.assertEqual(json.loads(listed.stdout)["entries"], [])
+        next_revision = self.next_revision()
+        updated = call("sh", str(ROOT / "scripts/update.sh"), cwd=self.root,
+                       env={**env, "PUBLIC_REVISION": next_revision})
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"],
+                         next_revision)
+        self.assertEqual(call(str(launcher), "list", "--repository", str(self.source),
+                              "--json", cwd=self.root, env=env).returncode, 0)
+        entry.write_text("tampered installer\n")
+        refused = call("sh", str(ROOT / "scripts/install.sh"), "--revision", next_revision,
+                       cwd=self.root, env=env)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("SHA-256 mismatch", refused.stderr)
+        self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"],
+                         next_revision)
+
     def test_fresh_launcher_fault_rolls_back_only_owned_file(self):
         failed = self.install(env={**self.env, "MY_AI_SKILLS_FAIL_AT": "launcher"})
         self.assertEqual(failed.returncode, 1)
@@ -471,13 +543,13 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "386469f852d059363b9148a97e99aecd72dda30f"
-        published = "a8be8a0f092f8b9550ef95019cd73f4f6b0cf226dd29b66e39d3102a33e4347f"
-        # The published launcher pins the immutable 2.x-gated installer,
-        # not this checkout's newer development entrypoint.
+        revision = "fe00db86867de7ba9821a0c4e8e54d75c6e7a465"
+        published = "37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3"
+        # The launcher pins immutable commit A with the finished 2.x installer.
         pinned_entry = subprocess.check_output(
             ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
         self.assertEqual(hashlib.sha256(pinned_entry).hexdigest(), published)
+        self.assertEqual(pinned_entry, ENTRY.read_bytes())
         self.assertIn(b"OpenSpec 2.x necess", pinned_entry.replace("á".encode(), b"a"))
         launcher = (ROOT / "scripts/install.sh").read_text()
         self.assertIn(f"entry_revision={revision}", launcher)
@@ -498,7 +570,7 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_in_disposable_home(self):
         # Transport is mocked, but README pipelines, launcher, digest check,
         # pinned installer and Git snapshot installation execute unchanged.
-        revision = "386469f852d059363b9148a97e99aecd72dda30f"
+        revision = "fe00db86867de7ba9821a0c4e8e54d75c6e7a465"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
                          "case \"$2\" in\n"
