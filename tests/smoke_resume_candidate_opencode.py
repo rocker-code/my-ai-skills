@@ -319,11 +319,12 @@ def main():
                              item["part"]["state"].get("status") == "completed" and
                              item["part"]["state"].get("input", {}).get("id") == "resume-workflow"]
         response = "\n".join(texts)
-        expected = {
-            "T1": (str(fixture["issue"]), fixture["run"], proposal_sha[:8], "Apply"),
-            "T5": ("12", fixture["pr_head"], "manual", "13"),
-            "T7": ("21", "22", "wf-disposable-a", "wf-disposable-b"),
-        }[case]
+        if case == "T1":
+            expected = (str(fixture["issue"]), fixture["run"], proposal_sha[:8], "Apply")
+        elif case == "T5":
+            expected = ("12", fixture["pr_head"], "manual", "13")
+        else:
+            expected = ("21", "22", "wf-disposable-a", "wf-disposable-b")
         outcome = all(term.lower() in response.lower() for term in expected)
         if case == "T7":
             outcome = outcome and "?" in response
