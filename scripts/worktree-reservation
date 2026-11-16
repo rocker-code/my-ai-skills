@@ -153,7 +153,9 @@ def render(result):
             lines.append(f"{key}: {result[key]}")
     owner = result.get("owner")
     lines.append("owner: " + (json.dumps(owner, sort_keys=True, ensure_ascii=True) if owner else "none"))
-    for key in ("head", "digest", "drift"):
+    for key in ("head", "digest", "drift", "last_verified_at", "execution_ref", "recorded_paths"):
+        if key in ("execution_ref", "recorded_paths") and key not in result:
+            continue
         value = result.get(key)
         lines.append(f"{key}: {json.dumps(value, sort_keys=True, ensure_ascii=True) if isinstance(value, (dict, list)) else value or 'none'}")
     if "inventory" in result and result["inventory"] is not None:
@@ -464,6 +466,12 @@ def main():
     current = None
     reg = None
     try:
+        if not args.path and args.command != "list":
+            # An implicit checkout must come from cwd, not an inherited Git
+            # redirection. Keep the sanitized environment for every subsequent
+            # identity, state and registry inspection in this invocation.
+            for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"):
+                os.environ.pop(name, None)
         checkout = checkout_path(args)
         args.path = checkout
         anchor = args.repository or checkout

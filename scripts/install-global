@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -379,7 +380,7 @@ def inspect_local(project, old_repo, new_repo, authorized):
 
 def launcher_text(data):
     return ("#!/bin/sh\n"
-            f'exec "{data}/active/scripts/worktree-reservation" "$@"\n')
+            f'exec {shlex.quote(str(data / "active/scripts/worktree-reservation"))} "$@"\n')
 
 
 def inspect_launcher(home, data, env):

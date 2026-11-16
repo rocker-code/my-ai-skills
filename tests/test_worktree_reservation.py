@@ -50,10 +50,10 @@ class ReservationTest(unittest.TestCase):
         self.assertNotIn("Traceback", result.stderr)
         return json.loads(result.stdout) if result.stdout.startswith("{") else result
 
-    def public(self, command, *options, cwd=None, json_mode=False, code=0):
+    def public(self, command, *options, cwd=None, json_mode=False, code=0, env=None):
         argv = [str(CLI), command, *options, *(["--json"] if json_mode else [])]
         result = subprocess.run(argv, cwd=cwd or self.path, capture_output=True, text=True,
-                                env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+                                 env={**os.environ, "GIT_OPTIONAL_LOCKS": "0", **(env or {})})
         self.assertEqual(result.returncode, code, (argv, result.stdout, result.stderr))
         self.assertNotIn("Traceback", result.stderr)
         return json.loads(result.stdout) if json_mode else result.stdout
@@ -94,6 +94,39 @@ class ReservationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["path"], str(self.path))
         self.assertIn("--no-optional-locks rev-parse --show-toplevel", log.read_text())
+
+    def test_implicit_checkout_ignores_inherited_git_redirection(self):
+        self.owned()
+        nested = self.path / "nested"
+        nested.mkdir()
+        redirected = {"GIT_DIR": str(self.primary / ".git"), "GIT_WORK_TREE": str(self.primary),
+                      "GIT_COMMON_DIR": str(self.primary / ".git")}
+        for cwd in (self.path, nested):
+            result = self.public("verify", "--session", "writer", cwd=cwd,
+                                 json_mode=True, env=redirected)
+            self.assertEqual(result["path"], str(self.path))
+            self.assertEqual(result["head"], self.git("rev-parse", "HEAD"))
+        outside = self.root / "outside"
+        outside.mkdir()
+        self.assertEqual(self.public("verify", "--session", "writer", cwd=outside,
+                                     json_mode=True, env=redirected, code=6)["exit_code"], 6)
+        explicit = self.public("verify", "--path", str(self.path), "--session", "writer",
+                               cwd=self.primary, json_mode=True)
+        self.assertEqual(explicit["path"], str(self.path))
+
+    def test_human_summary_keeps_generated_receipt_and_verification_time(self):
+        self.owned()
+        script = ("from pathlib import Path; import importlib.util; "
+                  "Path('new.pyc').write_bytes(importlib.util.MAGIC_NUMBER+b'0'*20)")
+        summary = self.public("track-generated", "--session", "writer", "--",
+                              sys.executable, "-c", script)
+        self.assertIn("execution_ref:", summary)
+        self.assertIn('recorded_paths: ["new.pyc"]', summary)
+        self.assertIn("last_verified_at:", summary)
+        self.assertNotIn("last_verified_at: none", summary)
+        verified = self.public("verify", "--session", "writer")
+        self.assertIn("last_verified_at:", verified)
+        self.assertNotIn("last_verified_at: none", verified)
 
     def test_implicit_path_usage_identity_and_no_impersonation(self):
         self.owned()

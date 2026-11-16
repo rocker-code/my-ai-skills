@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -145,7 +146,7 @@ class GlobalInstallTests(unittest.TestCase):
                       "--json", cwd=outside, env=self.env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["entries"], [])
-        self.assertEqual(launcher.read_text(), f'#!/bin/sh\nexec "{self.data}/active/scripts/worktree-reservation" "$@"\n')
+        self.assertEqual(launcher.read_text(), f'#!/bin/sh\nexec {shlex.quote(str(self.data / "active/scripts/worktree-reservation"))} "$@"\n')
         revision = self.next_revision()
         failed = self.install(revision=revision, env={**self.env, "MY_AI_SKILLS_FAIL_AT": "launcher"})
         self.assertEqual(failed.returncode, 1)
@@ -180,6 +181,28 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertIn("sem registro", result.stderr)
         self.assertEqual(launcher.read_text(), "# custom\n")
         self.assertFalse((self.data / "active").exists())
+
+    def test_launcher_treats_shell_metacharacters_in_data_path_as_literals(self):
+        outside = self.root / "outside"
+        outside.mkdir()
+        data_home = self.home / "data$(touch${IFS}pwned)'literal"
+        env = {**self.env, "XDG_DATA_HOME": str(data_home)}
+        installed = self.install(env=env)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        launcher = self.home / ".local/bin/worktree-reservation"
+        self.assertIn(shlex.quote(str(data_home / "my-ai-skills/active/scripts/worktree-reservation")),
+                      launcher.read_text())
+        result = call(str(launcher), "list", "--repository", str(self.source), "--json",
+                      cwd=outside, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["entries"], [])
+        self.assertFalse((outside / "pwned").exists())
+        revision = self.next_revision()
+        updated = self.install(revision=revision, env=env)
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertFalse((outside / "pwned").exists())
+        self.assertEqual(call(str(launcher), "list", "--repository", str(self.source),
+                              "--json", cwd=outside, env=env).returncode, 0)
 
     def test_fresh_launcher_fault_rolls_back_only_owned_file(self):
         failed = self.install(env={**self.env, "MY_AI_SKILLS_FAIL_AT": "launcher"})
