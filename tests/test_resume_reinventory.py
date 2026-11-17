@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               disposable_path, t7_phase1_proof,
-                                              t7_reinventory)
+                                              t7_reinventory, t7_visible_question)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -134,7 +134,29 @@ class T7VisibleQuestionTest(unittest.TestCase):
                                                     "input": {"id": "openspec-explore"},
                                                     "output": "invoked"}}}
         self.assertFalse(t7_phase1_proof([*cancelled, native], session, final,
-                                         before, before, resume))
+                                          before, before, resume))
+
+    def test_question_followed_by_selection_is_not_a_visible_pause(self):
+        session = "ses-ambiguous"
+        before = {"git": "unchanged"}
+        resume = [{"tool": "skill", "id": "resume"}]
+        question = ("Candidatos: issue #21 / wf-disposable-a e issue #22 / "
+                    "wf-disposable-b. Which issue and run do you choose?")
+        for response in (question + " I'll proceed with #21",
+                         question + "\nI will proceed with #21.",
+                         question + "\n```",
+                         question + "\nWhich issue and run do you choose?",
+                         question.replace("Which issue and run do you choose?",
+                                          "I will proceed with #21. Which issue and run do you choose?")):
+            with self.subTest(response=response):
+                self.assertFalse(t7_visible_question(response))
+                self.assertFalse(t7_phase1_proof([], session, response,
+                                                  before, before, resume))
+        self.assertTrue(t7_visible_question(question + " \n  "))
+        self.assertTrue(t7_phase1_proof([], session, question + " \n  ",
+                                        before, before, resume))
+        self.assertFalse(t7_phase1_proof([], session, "",
+                                          before, before, resume))
 
 
 class T7ReinventoryTest(unittest.TestCase):

@@ -261,10 +261,25 @@ def tool_events(events, session, *, tool=None, contains=None):
     return found
 
 
+def t7_visible_question(response):
+    """Require the visible turn to end with a choice, not a later action."""
+    text = response.strip()
+    candidates = ("wf-disposable-a", "wf-disposable-b")
+    last_line = text.splitlines()[-1] if text else ""
+    choice = re.search(r"\b(?:qual|which|escolh\w*|choos\w*|select\w*|"
+                       r"prefe\w*)\b", last_line, re.IGNORECASE)
+    selecting = re.search(r"\b(?:i(?:'ll| will) proceed|i (?:choose|select)|"
+                          r"vou (?:prosseguir|seguir|escolher)|seguirei)\b"
+                          r"[^?\n]*#?(?:21|22)\b", text, re.IGNORECASE)
+    return (all(term.lower() in text.lower() for term in candidates)
+            and all(re.search(rf"\b{issue}\b", text) for issue in (21, 22))
+            and bool(choice) and text.count("?") == 1 and last_line.endswith("?")
+            and not selecting)
+
+
 def t7_phase1_proof(events, session, response, before, after, resume_invocation):
     """A cancelled interactive form is not a user-visible disambiguation."""
-    expected = ("21", "22", "wf-disposable-a", "wf-disposable-b", "?")
-    visible_question = all(term.lower() in response.lower() for term in expected)
+    visible_question = t7_visible_question(response)
     all_native_invocations = [
         e for e in tool_events(events, session)
         if (e["tool"] == "skill" and
@@ -627,7 +642,8 @@ def main():
                 expected = ("21", "22", "wf-disposable-a", "wf-disposable-b", "?")
             else:
                 expected = ("21", "wf-disposable-a")
-            outcome = all(term.lower() in response.lower() for term in expected)
+            outcome = (t7_visible_question(response) if case == "T7" and phase == 1
+                       else all(term.lower() in response.lower() for term in expected))
             record = {"phase": phase, "prompt": message, "session_id": session,
                       "response": response, "events": transcript, "before": before,
                       "after": after, "unchanged": before == after,
