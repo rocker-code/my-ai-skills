@@ -1,9 +1,35 @@
 """Offline regression for the T7 same-session, pre-native reinventory gate."""
 import json
 from pathlib import Path
+import shutil
+import tempfile
 import unittest
 
-from smoke_resume_candidate_opencode import t7_reinventory
+from smoke_resume_candidate_opencode import disposable_path, t7_reinventory
+
+
+class DisposablePathTest(unittest.TestCase):
+    def test_launcher_precedes_system_path_without_operator_home(self):
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+            home = Path(root) / "home"
+            launcher = home / ".local/bin/worktree-reservation"
+            launcher.parent.mkdir(parents=True)
+            launcher.write_text("#!/bin/sh\nexit 0\n")
+            launcher.chmod(0o755)
+            path = disposable_path(home, "/home/operator/.local/bin:/usr/bin:"
+                                  "/home/operator/.opencode/bin:/bin",
+                                  "/home/operator")
+            self.assertEqual(path.split(":"), [str(launcher.parent),
+                                              "/usr/bin", "/bin"])
+            self.assertEqual(shutil.which("worktree-reservation", path=path),
+                             str(launcher))
+
+    def test_similarly_named_directory_is_not_operator_home(self):
+        home = Path("/tmp/opencode/fixture/home")
+        path = disposable_path(home, "/home/operator-backup/bin:/home/operator/bin",
+                              "/home/operator")
+        self.assertEqual(path.split(":"), [str(home / ".local/bin"),
+                                          "/home/operator-backup/bin"])
 
 
 class T7ReinventoryTest(unittest.TestCase):

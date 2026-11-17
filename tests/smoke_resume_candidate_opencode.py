@@ -161,6 +161,16 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def disposable_path(home, inherited_path, operator_home):
+    """Expose the fixture launcher, not executables from the operator's HOME."""
+    source_home = Path(operator_home).resolve()
+    system_paths = [
+        entry for entry in inherited_path.split(os.pathsep)
+        if entry and not Path(entry).resolve().is_relative_to(source_home)
+    ]
+    return os.pathsep.join([str(home / ".local/bin"), *system_paths])
+
+
 def snapshot(repo, worktrees, gh_root, reservation, env, openspec):
     statuses = {}
     for path in worktrees:
@@ -346,6 +356,8 @@ def main():
     home = base / "home"
     home.mkdir()
     env = {key: os.environ[key] for key in ("PATH", "LANG", "TERM") if key in os.environ}
+    env["PATH"] = disposable_path(home, os.environ.get("PATH", os.defpath),
+                                  os.environ["HOME"])
     env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
                XDG_DATA_HOME=str(home / ".local/share"),
                XDG_CACHE_HOME=str(home / ".cache"),
@@ -380,6 +392,8 @@ def main():
     workflow_event = active / "scripts/workflow-event"
     workflow_report = active / "scripts/workflow-report"
     assert all(p.is_file() for p in (reservation, workflow_event, workflow_report))
+    assert shutil.which("worktree-reservation", path=env["PATH"]) == str(
+        home / ".local/bin/worktree-reservation")
 
     # No external GitHub requests. Writes are permitted only while SEED is set;
     # the model's environment never receives that switch.
