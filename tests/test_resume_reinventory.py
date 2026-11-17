@@ -113,6 +113,50 @@ class DisposablePathTest(unittest.TestCase):
 
 
 class T7VisibleQuestionTest(unittest.TestCase):
+    def test_native_attempts_and_forbidden_pause_actions_fail_even_without_completion(self):
+        session = "ses-ambiguous"
+        before = {"git": "unchanged"}
+        resume = [{"tool": "skill", "id": "resume"}]
+        question = ("Qual issue e run você escolhe: issue #21 / wf-disposable-a "
+                    "ou issue #22 / wf-disposable-b?")
+
+        def event(tool, inp, status):
+            return {"type": "tool_use", "sessionID": session,
+                    "part": {"tool": tool, "state": {"status": status,
+                                                     "input": inp}}}
+
+        discovery = [
+            event("glob", {"pattern": ".agents/skills/openspec-*/SKILL.md"}, "completed"),
+            event("shell", {"command": "find .agents/skills -name SKILL.md"}, "completed"),
+        ]
+        self.assertTrue(t7_phase1_proof(discovery, session, question,
+                                        before, before, resume))
+        for status in ("completed", "error", "cancelled"):
+            for tool, inp in (
+                ("skill", {"id": "openspec-explore"}),
+                ("read", {"path": ".agents/skills/openspec-explore/SKILL.md"}),
+                ("read", {"path": "./.agents/skills/openspec-apply-change/SKILL.md"}),
+                ("read", {"path": "/tmp/opencode/fixture/T7/.agents/skills/"
+                                   "openspec-explore/SKILL.md"}),
+                ("shell", {"command": "cat .agents/skills/openspec-explore/SKILL.md"}),
+                ("shell", {"command": "sed -n '1,30p' /tmp/opencode/fixture/T7/"
+                                      ".agents/skills/openspec-explore/SKILL.md"}),
+                ("shell", {"command": "worktree-reservation reconcile --takeover"}),
+                ("shell", {"command": "workflow-event stage-start --stage apply"}),
+                ("write", {"path": "selection.txt", "content": "issue 21"}),
+            ):
+                with self.subTest(status=status, tool=tool, inp=inp):
+                    self.assertFalse(t7_phase1_proof(
+                        [*discovery, event(tool, inp, status)], session, question,
+                        before, before, resume))
+        self.assertTrue(t7_phase1_proof(
+            [*discovery, event("read", {"path": "recovery-evidence.json"}, "completed")],
+            session, question, before, before, resume))
+        self.assertFalse(t7_phase1_proof(
+            [*discovery, event("question", {"questions": ["#21 or #22?"]},
+                               "completed")],
+            session, question, before, before, resume))
+
     def test_cancelled_form_does_not_replace_visible_question_or_safe_pause(self):
         session = "ses-ambiguous"
         cancelled = [{"type": "tool_use", "sessionID": session,

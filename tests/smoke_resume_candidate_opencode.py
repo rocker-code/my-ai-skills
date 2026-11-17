@@ -247,14 +247,16 @@ def native_calls(events, session, native):
     return discovery, invocation, instructions
 
 
-def tool_events(events, session, *, tool=None, contains=None):
+def tool_events(events, session, *, tool=None, contains=None, completed_only=True):
     found = []
     for index, event in enumerate(events):
         if event.get("sessionID") != session or event.get("type") != "tool_use":
             continue
         part = event.get("part", {})
         state = part.get("state", {})
-        if state.get("status") != "completed" or (tool and part.get("tool") != tool):
+        if (completed_only and state.get("status") != "completed") or (
+            tool and part.get("tool") != tool
+        ):
             continue
         if contains and contains not in json.dumps(state.get("input", {})):
             continue
@@ -280,15 +282,51 @@ def t7_visible_question(response):
 def t7_phase1_proof(events, session, response, before, after, resume_invocation):
     """A cancelled interactive form is not a user-visible disambiguation."""
     visible_question = t7_visible_question(response)
+    attempts = tool_events(events, session, completed_only=False)
+    def native_skill_path(path):
+        return isinstance(path, str) and bool(re.search(
+            r"(?:^|/)\.agents/skills/openspec-[^/]+/SKILL\.md$",
+            os.path.normpath(path)))
+
+    def shell_native_read(event):
+        if event["tool"] != "shell":
+            return False
+        command = event["input"].get("command")
+        if not isinstance(command, str):
+            return False
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return False
+        return any(Path(token).name in ("cat", "sed", "head", "tail", "less", "more",
+                                        "grep") and
+                   any(native_skill_path(arg) for arg in tokens[index + 1:])
+                   for index, token in enumerate(tokens))
+
     all_native_invocations = [
-        e for e in tool_events(events, session)
+        e for e in attempts
         if (e["tool"] == "skill" and
             str(e["input"].get("id", "")).startswith("openspec-")) or
-           (e["tool"] == "read" and
-            "/.agents/skills/openspec-" in str(e["input"].get("path", "")))]
+            (e["tool"] == "read" and
+             native_skill_path(e["input"].get("path"))) or shell_native_read(e)]
+    # Snapshot equality proves no effects, not that a forbidden attempt was
+    # never made. Only actual tool calls count: listing or globbing skill paths
+    # is discovery, not reading their SKILL.md contents.
+    forbidden_attempts = [
+        e for e in attempts
+        if (e["tool"] == "question" and
+            events[e["index"]].get("part", {}).get("state", {}).get("status") ==
+            "completed") or
+        e["tool"] in ("write", "edit", "patch", "apply_patch") or
+        "reconcile" in json.dumps(e["input"]) or
+        (e["tool"] == "shell" and isinstance(e["input"].get("command"), str) and
+         re.search(r"\b(?:worktree-reservation\s+(?:reserve|handoff|release|checkpoint)"
+                   r"|workflow-event\s+(?:stage-start|dispatch|observe)"
+                   r"|git\s+(?:add|commit|push|checkout|switch|worktree\s+add))\b",
+                   e["input"]["command"]))]
     return (visible_question and before == after and bool(resume_invocation)
-            and not all_native_invocations
-            and not tool_events(events, session, contains="reconcile"))
+             and not all_native_invocations
+             and not forbidden_attempts)
 
 
 def t7_reinventory(events, session, first_native, repo, worktrees, reader, receipts):
