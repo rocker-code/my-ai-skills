@@ -49,4 +49,6 @@ Read [the CI performance protocol](references/CI_PERFORMANCE.md). Preserve the C
 
 Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Close out only verified eligible worktrees using non-forced Git operations.
 
+For M2T-backed PRs, hand the exact owned sandbox selections to the correction worker on the same checkout; neither review completion nor an open PR triggers `down`/`reset`. After verified merge and kaizen, reconcile owner/liveness and use WORKTREES' M2T-before-Git closeout; retain checkout and selection reference on any uncertain or failed cleanup. Do not alter merge authorization or shared caches to make cleanup succeed.
+
 When installed, use `worktree-reservation reserve`/`verify` before mutating, `checkpoint` after own writes and `handoff` between returned workers; drift suspends writes until recorded acceptance. Without the helper, coordinate manually under WORKTREES and report the gap.
