@@ -12,6 +12,8 @@
 
 ### Alterado
 
+- O workflow mantém os sandboxes M2T de integração e GraphQL vinculados à worktree entre planejamento, Apply e revisão; no encerramento após entrega e kaizen, limpa apenas seleções comprovadamente próprias antes de remover o checkout, preservando caches compartilhados e recursos de outros trabalhos. [#70](https://github.com/rocker-code/my-ai-skills/issues/70)
+
 - A preparação de PR registra mudanças relevantes em Não lançado; a preparação de release consolida apenas as entradas incluídas na versão antes da validação final.
 
 - A integração OpenSpec usa as skills nativas da versão 2.0 em vez de exigir comandos `/opsx-*` legados. Projetos existentes precisam de inventário e autorização específica antes da migração dos arquivos gerados; a instalação global não inicializa nem atualiza projetos automaticamente. [#71](https://github.com/rocker-code/my-ai-skills/issues/71)

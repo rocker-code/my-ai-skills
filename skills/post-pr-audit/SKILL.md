@@ -25,6 +25,8 @@ After this independent final review passes on the exact current head, all non-CI
 
 After a confirmed merge, verify the merge SHA and linked issue state. Check merge-commit CI when the repository requires it; a green PR head does not establish the result of a different merged tree. If GitHub queued auto-merge and the run ends before landing, do not claim verification of a future merge.
 
+For an M2T-backed issue, the final audit does not close the sandbox. After confirmed delivery and kaizen, the closeout owner follows WORKTREES' liveness/ownership checks and M2T-before-Git cleanup for exact owned selections; pending CI, open PR, active worker or uncertain ownership retains checkout and sandbox. Report partial cleanup rather than implying the merge alone authorized `down`.
+
 Report base/head SHA, trust gate, CI and review state, evidence matrix summary, reused/not-run validations with reasons, unresolved findings and accepted follow-ups. End with the precise state: `READY TO MERGE`, `AUTO-MERGE ENABLED`, `MERGED — <sha>`, `AWAITING CHECKS`, `CHANGES REQUIRED — <reason>` or `UNVERIFIED — <missing evidence>`. Do not merge or close issues in manual mode.
 
 ## Automatic CI performance routing
