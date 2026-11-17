@@ -417,6 +417,7 @@ def main():
     assert all(p.is_file() for p in (reservation, workflow_event, workflow_report))
     assert shutil.which("worktree-reservation", path=env["PATH"]) == str(
         home / ".local/bin/worktree-reservation")
+    assert os.access(home / ".local/bin/worktree-reservation", os.X_OK)
 
     # No external GitHub requests. Writes are permitted only while SEED is set;
     # the model's environment never receives that switch.
@@ -558,13 +559,23 @@ def main():
             selected = receipts[21]
             prompts.append(
                 "Escolho explicitamente a issue #21, run wf-disposable-a. Continue "
-                "NESTA MESMA sessão somente leitura: reinventarie ambos os checkouts, "
-                "reservas, ledgers via gh api, Git/OpenSpec/GitHub (execute "
-                "`openspec context --json` e `openspec list --json` antes da skill); "
-                "confirme o writer "
-                "anterior pelo runtime_receipt_command de recovery-evidence.json "
-                f"com execução {selected['execution_id']}, owner {selected['owner']} "
-                f"e run {selected['run']}. Sem prova terminal bloqueie. "
+                "NESTA MESMA sessão somente leitura. Antes da skill, faça chamadas "
+                "de ferramenta SEPARADAS, cada uma com um único comando, saída "
+                "integral não modificada e status de saída próprio; não use "
+                "echo, redirecionamento, `;`, `&&`, `||`, pipe nem agrupe probes. "
+                "Confira `git rev-parse --show-toplevel` na raiz principal e "
+                "`git -C <checkout> rev-parse --show-toplevel` separadamente "
+                "para CADA um dos dois checkouts; `worktree-reservation list "
+                "--repository <raiz>` (launcher no PATH desta fixture); "
+                "`gh api --paginate repos/disposable/recovery/issues/21/comments` "
+                "e `gh api --paginate repos/disposable/recovery/issues/22/comments` "
+                "em chamadas separadas; `openspec context --json` e "
+                "`openspec list --json` em chamadas separadas. Confirme o writer "
+                "anterior com um único comando independente `python3 <caminho de "
+                "runtime_receipt_command> <execution_id> <owner> <run>` usando "
+                f"{selected['execution_id']}, {selected['owner']}, {selected['run']}; "
+                "a variável de ambiente da fixture já está definida. Se qualquer "
+                "probe falhar ou faltar, bloqueie; não substitua por resposta textual. "
                 "Depois da escolha descubra .agents/skills e invoque explicitamente "
                 "openspec-explore nativa em modo somente leitura (arquivo canônico "
                 "ou ferramenta skill), depois execute openspec validate somente "

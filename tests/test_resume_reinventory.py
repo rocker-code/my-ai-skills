@@ -156,6 +156,12 @@ class T7ReinventoryTest(unittest.TestCase):
 
     def test_successful_same_session_reinventory_before_native(self):
         self.assertTrue(self.proof())
+        self.events.append({"type": "tool_use", "sessionID": self.session,
+                            "part": {"tool": "read", "id": "native",
+                                     "state": {"status": "completed",
+                                               "input": {"path": "openspec-explore/SKILL.md"},
+                                               "output": "native"}}})
+        self.assertTrue(self.proof(first_native=len(self.events) - 1))
 
     def test_failed_or_wrong_root_commands_do_not_count(self):
         for command in ("openspec context --json", "openspec list --json",
@@ -199,11 +205,17 @@ class T7ReinventoryTest(unittest.TestCase):
         self.assertFalse(self.proof())
 
     def test_chained_command_cannot_mask_failure(self):
-        context = next(e for e in self.events if
-                       e["part"]["state"]["input"]["command"] ==
-                       "openspec context --json")
-        context["part"]["state"]["input"]["command"] += "; true"
-        self.assertFalse(self.proof())
+        for prefix in ("openspec context --json",
+                       "gh api --paginate repos/disposable/recovery/issues/21/comments",
+                       "worktree-reservation list --repository " + str(self.repo),
+                       f"python3 {self.reader} writer-T7-21 seed-T7 wf-disposable-a"):
+            for suffix in ("; true", " && echo ok", " || true"):
+                with self.subTest(prefix=prefix, suffix=suffix):
+                    event = next(e for e in self.events if
+                                   e["part"]["state"]["input"]["command"] == prefix)
+                    event["part"]["state"]["input"]["command"] = prefix + suffix
+                    self.assertFalse(self.proof())
+                    event["part"]["state"]["input"]["command"] = prefix
 
 
 if __name__ == "__main__":
