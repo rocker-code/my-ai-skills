@@ -33,4 +33,6 @@ Read [the test strategy](references/TEST_STRATEGY.md). During proposal planning,
 
 Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Close out only verified eligible worktrees using non-forced Git operations.
 
+For M2T-backed tests, carry the checkout path, exact owned integration/GraphQL selections and execution references in the existing Apply handoff. Keep those sandboxes across planning → Apply → PR corrections; do not prescribe `down`/`reset` at a session boundary. Distinguish checkout writer reservation from the M2T execution lock and require current-code test evidence, not mere sandbox existence. Follow WORKTREES for failed/unknown work and eventual post-merge/kaizen closeout.
+
 When installed, use `worktree-reservation reserve`/`verify` before mutating, `checkpoint` after own writes and `handoff` between returned workers; drift suspends writes until recorded acceptance. Without the helper, coordinate manually under WORKTREES and report the gap.
