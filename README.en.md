@@ -14,6 +14,8 @@ The lifecycle moves through discovery, readiness, implementation, review and com
 
 In a **new OpenCode session**, from the relevant checkout, say **“continue where you left off”** or supply an explicit issue/milestone URL. The global `resume-workflow` skill reconciles Git/GitHub, OpenSpec, evidence and worktree ownership before handing off to the existing `milestone-orchestrator`. Ambiguous scope or ownership blocks writes rather than risking local changes; interrupted tests never count as passed without conclusive evidence. Local-only changes lost with a missing disk cannot be recovered automatically.
 
+After an updated global installation, `worktree-reservation verify --session <id>` verifies ownership from any checkout subdirectory; pass `--path <checkout>` to select another worktree and `--json` for automation. The caller must provide its own session. Before updating, use `~/.local/share/my-ai-skills/active/scripts/worktree-reservation` with an explicit `--path`.
+
 ![AI Engineering Workflow: from an idea to a Web-authored issue, then CLI planning, implementation, validation and merge.](docs/images/fluxo-my-ai-skills.en.svg)
 
 [See the full workflow in the wiki](https://github.com/rocker-code/my-ai-skills/wiki/Workflow-guide).
@@ -28,7 +30,7 @@ Run the installer directly from GitHub:
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh
 ```
 
-The script installs the latest `main` revision. It downloads the **installer** from immutable commit `386469f852d059363b9148a97e99aecd72dda30f`, verifies SHA-256 `a8be8a0f092f8b9550ef95019cd73f4f6b0cf226dd29b66e39d3102a33e4347f`, and then installs the current revision. That commit must remain an ancestor of `main`: integrate this PR with a **merge commit**, never squash/rebase, so the launcher and its pinned object are published together. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
+The script installs the latest `main` revision. It downloads the **installer** from immutable commit `fe00db86867de7ba9821a0c4e8e54d75c6e7a465`, verifies SHA-256 `37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3`, and then installs the current revision, including the global `worktree-reservation` command. That commit must remain an ancestor of `main`: integrate this PR with a **merge commit**, never squash/rebase, so the launcher and its pinned object are published together. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
 
 To **update to the latest `main` revision**, run this only when you want an update:
 

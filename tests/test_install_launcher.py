@@ -1,5 +1,6 @@
 """Offline checks for the public shell launcher (no user install or network)."""
 import os
+import hashlib
 from pathlib import Path
 import subprocess
 import sys
@@ -11,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "scripts/install.sh"
 UPDATER = ROOT / "scripts/update.sh"
 ENTRY = ROOT / "scripts/install-global"
-REVISION = "386469f852d059363b9148a97e99aecd72dda30f"
+REVISION = "fe00db86867de7ba9821a0c4e8e54d75c6e7a465"
 
 
 class LauncherTests(unittest.TestCase):
@@ -19,12 +20,15 @@ class LauncherTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="install-launcher-")
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
-        # The launcher fetches the immutable installer at commit A; commit B
-        # changes only the launcher/recipes, never those pinned installer bytes.
-        pinned_entry = root / "pinned-install-global"
-        pinned_entry.write_bytes(subprocess.check_output(
-            ["git", "show", f"{REVISION}:scripts/install-global"], cwd=ROOT))
         self.log = root / "execution.log"
+        # Fetch the immutable installer in ancestor commit A.
+        pinned = subprocess.run(["git", "show", f"{REVISION}:scripts/install-global"],
+                                cwd=ROOT, capture_output=True, check=True).stdout
+        self.assertEqual(hashlib.sha256(pinned).hexdigest(),
+                          "37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3")
+        self.assertEqual(pinned, ENTRY.read_bytes())
+        entry_source = root / "pinned-install-global"
+        entry_source.write_bytes(pinned)
         bin_dir = root / "bin"
         bin_dir.mkdir()
         curl = bin_dir / "curl"
@@ -67,13 +71,18 @@ class LauncherTests(unittest.TestCase):
         worktree = data / "scripts/worktree-reservation"
         worktree.write_text("#!/bin/sh\n")
         worktree.chmod(0o755)
+        global_bin = root / ".local/bin"
+        global_bin.mkdir(parents=True)
+        global_launcher = global_bin / "worktree-reservation"
+        global_launcher.write_text("#!/bin/sh\nexec \"${XDG_DATA_HOME}/my-ai-skills/active/scripts/worktree-reservation\" \"$@\"\n")
+        global_launcher.chmod(0o755)
         self.skill = root / "config/opencode/skills/apply-issue/SKILL.md"
         self.skill.parent.mkdir(parents=True)
         self.skill.write_text("test skill\n")
-        self.env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+        self.env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + str(global_bin) + os.pathsep + os.environ["PATH"],
                     "HOME": str(root), "XDG_DATA_HOME": str(root / "data"),
                     "XDG_CONFIG_HOME": str(root / "config"), "FAIL_OPENSPEC": "0",
-                    "ENTRY_SOURCE": str(pinned_entry), "LAUNCHER_SOURCE": str(LAUNCHER),
+                    "ENTRY_SOURCE": str(entry_source), "LAUNCHER_SOURCE": str(LAUNCHER),
                     "REAL_PYTHON": sys.executable, "FAKE_MAIN_REVISION": "a" * 40,
                     "GIT_FAIL": "0",
                     "EXECUTION_LOG": str(self.log), "CURL_LOG": str(root / "curl.log"),
