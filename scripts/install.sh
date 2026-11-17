@@ -3,8 +3,8 @@
 # This cannot verify the launcher itself when it is fetched and piped to sh.
 set -eu
 
-entry_revision=386469f852d059363b9148a97e99aecd72dda30f
-entry_sha256=a8be8a0f092f8b9550ef95019cd73f4f6b0cf226dd29b66e39d3102a33e4347f
+entry_revision=fe00db86867de7ba9821a0c4e8e54d75c6e7a465
+entry_sha256=37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3
 
 if [ "$#" -eq 0 ]; then
     ref=refs/heads/main
@@ -42,8 +42,11 @@ python3 "$tmp" --revision "$revision" --agent opencode
 data=${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active
 skills=${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills
 if ! test -f "$data/manifest.json" || ! test -x "$data/scripts/worktree-reservation" ||
-   ! test -f "$skills/apply-issue/SKILL.md" || ! openspec --version; then
+   ! test -f "$skills/apply-issue/SKILL.md" || ! openspec --version ||
+   ! test -x "$HOME/.local/bin/worktree-reservation" ||
+   [ "$(command -v worktree-reservation || :)" != "$HOME/.local/bin/worktree-reservation" ] ||
+   ! worktree-reservation --help >/dev/null; then
     echo 'Post-install verification failed; inspect the installer output and active installation.' >&2
     exit 1
 fi
-echo 'Post-install verification passed (package, skill and OpenSpec).'
+echo 'Post-install verification passed (package, skill, OpenSpec and global command).'

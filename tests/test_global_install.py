@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -36,7 +37,7 @@ class GlobalInstallTests(unittest.TestCase):
             path.chmod(0o755)
         self.env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_DATA_HOME": str(self.home / ".local/share"),
-                     "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
+                     "PATH": str(self.bin) + os.pathsep + str(self.home / ".local/bin") + os.pathsep + os.environ["PATH"],
                      "PYTHONDONTWRITEBYTECODE": "1"}
         self.source = self.root / "source with spaces"
         self.source.mkdir()
@@ -63,6 +64,20 @@ class GlobalInstallTests(unittest.TestCase):
         return call("python3", "-c", runner, str(ENTRY), str(self.source),
                     "--revision", revision or self.revision, "--agent", "opencode", *extra,
                     env=env or self.env, timeout=90)
+
+    def openspec_native_profile(self):
+        """Use a real 2.x CLI for the native skills-only first-use contract."""
+        selected = os.environ.get("MY_AI_SKILLS_TEST_OPENSPEC") or shutil.which("openspec")
+        self.assertIsNotNone(selected, "Provide a real OpenSpec 2.x CLI")
+        selected = Path(selected).resolve()
+        self.assertTrue(selected.is_file(), f"OpenSpec CLI missing: {selected}")
+        version = call(str(selected), "--version", env=self.env)
+        self.assertEqual(version.returncode, 0, version.stderr)
+        self.assertRegex(version.stdout.strip(), r"^(?:openspec(?: cli)?\s+)?v?2\.\d+\.\d+",
+                         "First-use native skills tests require OpenSpec 2.x; "
+                         "set MY_AI_SKILLS_TEST_OPENSPEC without changing the global CLI")
+        (self.bin / "openspec").unlink()
+        (self.bin / "openspec").symlink_to(selected)
 
     @property
     def data(self):
@@ -98,7 +113,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertIn("state=installed", first.stdout)
         revision = self.next_revision()
         before = (self.home / ".config/opencode/AGENTS.md").read_bytes()
-        for phase in ("skills", "guidance", "publish"):
+        for phase in ("skills", "guidance", "launcher", "publish"):
             failed = self.install(revision=revision, env={**self.env, "MY_AI_SKILLS_FAIL_AT": phase})
             self.assertEqual(failed.returncode, 1)
             self.assertIn(f"active={self.revision}", failed.stderr)
@@ -121,6 +136,153 @@ class GlobalInstallTests(unittest.TestCase):
         repeated = self.install(revision=revision)
         self.assertIn("state=already current", repeated.stdout)
         self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), before)
+
+    def test_launcher_executes_active_and_rejects_collisions_and_tampering(self):
+        self.assertEqual(self.install().returncode, 0)
+        launcher = self.home / ".local/bin/worktree-reservation"
+        outside = self.root / "outside"
+        outside.mkdir()
+        result = call("worktree-reservation", "list", "--repository", str(self.source),
+                      "--json", cwd=outside, env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["entries"], [])
+        self.assertEqual(launcher.read_text(), f'#!/bin/sh\nexec {shlex.quote(str(self.data / "active/scripts/worktree-reservation"))} "$@"\n')
+        revision = self.next_revision()
+        failed = self.install(revision=revision, env={**self.env, "MY_AI_SKILLS_FAIL_AT": "launcher"})
+        self.assertEqual(failed.returncode, 1)
+        self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"], self.revision)
+        self.assertEqual(call("worktree-reservation", "list", "--repository", str(self.source),
+                              "--json", cwd=outside, env=self.env).returncode, 0)
+        self.assertEqual(self.install(revision=revision).returncode, 0)
+        self.assertEqual(self.install(revision=revision).returncode, 0)
+        for replacement in ("#!/bin/sh\nexit 42\n", launcher.read_text()):
+            launcher.write_text(replacement)
+            if replacement.startswith("#!/bin/sh\nexit"):
+                self.assertIn("alterado", self.install(revision=revision).stderr)
+            else:
+                launcher.chmod(0o700)
+                self.assertIn("alterado", self.install(revision=revision).stderr)
+                launcher.chmod(0o755)
+        foreign = self.bin / "worktree-reservation"
+        foreign.write_text("#!/bin/sh\nexit 55\n")
+        foreign.chmod(0o755)
+        self.assertIn("outra origem", self.install(revision=revision).stderr)
+        foreign.unlink()
+
+    def test_launcher_path_absent_and_foreign_destination_fail_closed(self):
+        no_path = {**self.env, "PATH": str(self.bin) + os.pathsep + os.environ["PATH"]}
+        result = self.install(env=no_path)
+        self.assertIn("fora do PATH", result.stderr)
+        self.assertFalse((self.data / "active").exists())
+        launcher = self.home / ".local/bin/worktree-reservation"
+        launcher.parent.mkdir(parents=True)
+        launcher.write_text("# custom\n")
+        result = self.install()
+        self.assertIn("sem registro", result.stderr)
+        self.assertEqual(launcher.read_text(), "# custom\n")
+        self.assertFalse((self.data / "active").exists())
+
+    def test_launcher_treats_shell_metacharacters_in_data_path_as_literals(self):
+        outside = self.root / "outside"
+        outside.mkdir()
+        data_home = self.home / "data$(touch${IFS}pwned)'literal"
+        env = {**self.env, "XDG_DATA_HOME": str(data_home)}
+        installed = self.install(env=env)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        launcher = self.home / ".local/bin/worktree-reservation"
+        self.assertIn(shlex.quote(str(data_home / "my-ai-skills/active/scripts/worktree-reservation")),
+                      launcher.read_text())
+        result = call(str(launcher), "list", "--repository", str(self.source), "--json",
+                      cwd=outside, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["entries"], [])
+        self.assertFalse((outside / "pwned").exists())
+        revision = self.next_revision()
+        updated = self.install(revision=revision, env=env)
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertFalse((outside / "pwned").exists())
+        self.assertEqual(call(str(launcher), "list", "--repository", str(self.source),
+                              "--json", cwd=outside, env=env).returncode, 0)
+
+    def test_public_install_and_update_execute_pinned_installer_and_active_command(self):
+        """Use the public shell routes with local transport and a real installer."""
+        transport = self.root / "transport"
+        transport.mkdir()
+        pinned = call("git", "show",
+                      "fe00db86867de7ba9821a0c4e8e54d75c6e7a465:scripts/install-global",
+                      cwd=ROOT)
+        self.assertEqual(pinned.returncode, 0, pinned.stderr)
+        entry = transport / "install-global"
+        entry.write_text(pinned.stdout)
+        curl = transport / "curl"
+        curl.write_text(
+            '#!/bin/sh\n'
+            '[ "$1" = -fsSL ] && [ "$3" = -o ] || exit 2\n'
+            'case "$2" in\n'
+            '  */scripts/install.sh) cp "$PUBLIC_LAUNCHER" "$4" ;;\n'
+            '  */scripts/install-global) cp "$PUBLIC_ENTRY" "$4" ;;\n'
+            '  *) exit 2 ;;\n'
+            'esac\n')
+        curl.chmod(0o755)
+        git = transport / "git"
+        git.write_text(
+            '#!/bin/sh\n'
+            'if [ "$1" = ls-remote ]; then\n'
+            '  printf "%s\\trefs/heads/main\\n" "$PUBLIC_REVISION"\n'
+            'else\n'
+            '  exec "$REAL_GIT" "$@"\n'
+            'fi\n')
+        git.chmod(0o755)
+        python = transport / "python3"
+        python.write_text(
+            '#!/bin/sh\n'
+            'if [ "$1" = -c ] || [ "$1" = "$ACTIVE_HELPER" ]; then exec "$REAL_PYTHON" "$@"; fi\n'
+            'script=$1; shift\n'
+            'exec "$REAL_PYTHON" -c '
+            "'import importlib.machinery,sys; "
+            "m=importlib.machinery.SourceFileLoader(\"installer\",sys.argv[1]).load_module(); "
+            "source=sys.argv[2]; sys.argv=[sys.argv[1],*sys.argv[3:]]; "
+            "original=m.install; m.install=lambda args: original(args,source=source); "
+            "sys.exit(m.main())' "
+            '"$script" "$PUBLIC_SOURCE" "$@"\n')
+        python.chmod(0o755)
+        env = {**self.env, "PATH": str(transport) + os.pathsep + self.env["PATH"],
+               "PUBLIC_LAUNCHER": str(ROOT / "scripts/install.sh"),
+               "PUBLIC_ENTRY": str(entry), "PUBLIC_REVISION": self.revision,
+               "PUBLIC_SOURCE": str(self.source), "REAL_GIT": shutil.which("git"),
+               "REAL_PYTHON": shutil.which("python3"),
+               "ACTIVE_HELPER": str(self.data / "active/scripts/worktree-reservation")}
+        installed = call("sh", str(ROOT / "scripts/install.sh"), cwd=self.root, env=env)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        self.assertIn("global command", installed.stdout)
+        launcher = self.home / ".local/bin/worktree-reservation"
+        listed = call(str(launcher), "list", "--repository", str(self.source), "--json",
+                      cwd=self.root, env=env)
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        self.assertEqual(json.loads(listed.stdout)["entries"], [])
+        next_revision = self.next_revision()
+        updated = call("sh", str(ROOT / "scripts/update.sh"), cwd=self.root,
+                       env={**env, "PUBLIC_REVISION": next_revision})
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"],
+                         next_revision)
+        self.assertEqual(call(str(launcher), "list", "--repository", str(self.source),
+                              "--json", cwd=self.root, env=env).returncode, 0)
+        entry.write_text("tampered installer\n")
+        refused = call("sh", str(ROOT / "scripts/install.sh"), "--revision", next_revision,
+                       cwd=self.root, env=env)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("SHA-256 mismatch", refused.stderr)
+        self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"],
+                         next_revision)
+
+    def test_fresh_launcher_fault_rolls_back_only_owned_file(self):
+        failed = self.install(env={**self.env, "MY_AI_SKILLS_FAIL_AT": "launcher"})
+        self.assertEqual(failed.returncode, 1)
+        self.assertFalse((self.data / "active").exists())
+        self.assertFalse((self.data / "launcher.json").exists())
+        self.assertFalse((self.home / ".local/bin/worktree-reservation").exists())
+        self.assertEqual(self.install().returncode, 0)
 
     def test_legacy_global_lock_collision_and_authorized_migration(self):
         self.assertEqual(self.install().returncode, 0)
@@ -381,13 +543,13 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "386469f852d059363b9148a97e99aecd72dda30f"
-        published = "a8be8a0f092f8b9550ef95019cd73f4f6b0cf226dd29b66e39d3102a33e4347f"
-        # Commit A already includes the 2.x gate. Commit B must leave it intact.
+        revision = "fe00db86867de7ba9821a0c4e8e54d75c6e7a465"
+        published = "37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3"
+        # The launcher pins immutable commit A with the finished 2.x installer.
         pinned_entry = subprocess.check_output(
             ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
         self.assertEqual(hashlib.sha256(pinned_entry).hexdigest(), published)
-        self.assertEqual(ENTRY.read_bytes(), pinned_entry)
+        self.assertEqual(pinned_entry, ENTRY.read_bytes())
         self.assertIn(b"OpenSpec 2.x necess", pinned_entry.replace("á".encode(), b"a"))
         launcher = (ROOT / "scripts/install.sh").read_text()
         self.assertIn(f"entry_revision={revision}", launcher)
@@ -408,7 +570,7 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_in_disposable_home(self):
         # Transport is mocked, but README pipelines, launcher, digest check,
         # pinned installer and Git snapshot installation execute unchanged.
-        revision = "386469f852d059363b9148a97e99aecd72dda30f"
+        revision = "fe00db86867de7ba9821a0c4e8e54d75c6e7a465"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
                          "case \"$2\" in\n"
@@ -756,11 +918,8 @@ class GlobalInstallTests(unittest.TestCase):
             if name == "two":
                 self.assertFalse((Path(common) / "ai-workflow/evidence" / receipt["evidence_id"]).exists())
 
-    @unittest.skipUnless(shutil.which("openspec"), "official OpenSpec CLI unavailable")
     def test_openspec_first_use_new_and_existing_preserves_artifacts(self):
-        official = shutil.which("openspec")
-        (self.bin / "openspec").unlink()
-        (self.bin / "openspec").symlink_to(official)
+        self.openspec_native_profile()
         env = {**self.env, "OPENSPEC_TELEMETRY": "0"}
         for case in ("new", "existing"):
             repo = self.root / case
@@ -801,10 +960,8 @@ class GlobalInstallTests(unittest.TestCase):
                 dry = call(str(self.bin / "openspec"), "update", "--dry-run", "--json", str(repo), env=env)
                 self.assertEqual(dry.returncode, 0, dry.stderr)
 
-    @unittest.skipUnless(shutil.which("openspec"), "official OpenSpec CLI unavailable")
     def test_existing_other_tool_requires_explicit_union_on_first_use(self):
-        (self.bin / "openspec").unlink()
-        (self.bin / "openspec").symlink_to(shutil.which("openspec"))
+        self.openspec_native_profile()
         env = {**self.env, "OPENSPEC_TELEMETRY": "0"}
         repo = self.root / "existing-other-tool"
         repo.mkdir()
