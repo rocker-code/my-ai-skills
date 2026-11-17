@@ -52,8 +52,11 @@ PROMPTS = {
         "em .agents/skills, mas NÃO invoque nenhuma skill OpenSpec antes da escolha. "
         "Não selecione candidato nem faça takeover ou dispatch. Respeite o gate de "
         "desambiguação. Se ambíguo, identifique os dois candidatos por issue e run "
-        "obtidos da evidência, e faça UMA pergunta explícita e inequívoca terminada "
-        "em '?' na resposta comum visível ao usuário; depois pause. Se a ferramenta "
+        "obtidos da evidência, e responda SOMENTE com uma pergunta de escolha "
+        "sem preâmbulo, no formato 'Qual issue e run você escolhe: issue "
+        "#<primeira> / <run> ou issue #<segunda> / <run>?' Use os identificadores "
+        "confirmados pela evidência, não escolha por conta própria. Depois pause. "
+        "Se a ferramenta "
         "interativa de pergunta estiver indisponível ou for cancelada neste run, "
         "faça a mesma pergunta na resposta comum visível ao usuário, sem tratar "
         "o cancelamento como uma escolha. "
@@ -262,19 +265,16 @@ def tool_events(events, session, *, tool=None, contains=None):
 
 
 def t7_visible_question(response):
-    """Require the visible turn to end with a choice, not a later action."""
+    """Accept only a single neutral choice question with both issue/run pairs."""
     text = response.strip()
-    candidates = ("wf-disposable-a", "wf-disposable-b")
-    last_line = text.splitlines()[-1] if text else ""
-    choice = re.search(r"\b(?:qual|which|escolh\w*|choos\w*|select\w*|"
-                       r"prefe\w*)\b", last_line, re.IGNORECASE)
-    selecting = re.search(r"\b(?:i(?:'ll| will) proceed|i (?:choose|select)|"
-                          r"vou (?:prosseguir|seguir|escolher)|seguirei)\b"
-                          r"[^?\n]*#?(?:21|22)\b", text, re.IGNORECASE)
-    return (all(term.lower() in text.lower() for term in candidates)
-            and all(re.search(rf"\b{issue}\b", text) for issue in (21, 22))
-            and bool(choice) and text.count("?") == 1 and last_line.endswith("?")
-            and not selecting)
+    # Full-match a bounded interrogative shape rather than searching for
+    # selection verbs: declarative choices anywhere in the turn fail closed.
+    return bool(re.fullmatch(
+        r"(?:Qual\s+issue\s+e\s+run\s+você\s+escolhe|"
+        r"Which\s+issue\s+and\s+run\s+do\s+you\s+choose)"
+        r"\s*:\s*issue\s+#21\s*/\s*wf-disposable-a"
+        r"\s+(?:ou|or)\s+issue\s+#22\s*/\s*wf-disposable-b\s*\?",
+        text, re.IGNORECASE))
 
 
 def t7_phase1_proof(events, session, response, before, after, resume_invocation):

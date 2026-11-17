@@ -121,8 +121,8 @@ class T7VisibleQuestionTest(unittest.TestCase):
                           "input": {"questions": ["#21 ou #22?"]}}}}]
         resume = [{"tool": "skill", "id": "resume"}]
         before = {"git": "unchanged"}
-        final = ("Candidatos: issue #21 / wf-disposable-a e issue #22 / "
-                 "wf-disposable-b. Qual issue e run você escolhe?")
+        final = ("Qual issue e run você escolhe: issue #21 / wf-disposable-a "
+                 "ou issue #22 / wf-disposable-b?")
         self.assertFalse(t7_phase1_proof(cancelled, session, final[:-1],
                                          before, before, resume))
         self.assertTrue(t7_phase1_proof(cancelled, session, final,
@@ -140,19 +140,31 @@ class T7VisibleQuestionTest(unittest.TestCase):
         session = "ses-ambiguous"
         before = {"git": "unchanged"}
         resume = [{"tool": "skill", "id": "resume"}]
-        question = ("Candidatos: issue #21 / wf-disposable-a e issue #22 / "
-                    "wf-disposable-b. Which issue and run do you choose?")
+        question = ("Which issue and run do you choose: issue #21 / "
+                    "wf-disposable-a or issue #22 / wf-disposable-b?")
         for response in (question + " I'll proceed with #21",
                          question + "\nI will proceed with #21.",
+                         "I choose #21; which do you prefer, issue #21 / "
+                         "wf-disposable-a or issue #22 / wf-disposable-b?",
+                         "I will continue with #21.\n" + question,
+                         question + "\nI will continue with #21.",
+                         "Candidates: issue #21 / wf-disposable-a and issue #22 / "
+                         "wf-disposable-b.\nWhich issue and run do you choose?",
+                         "Candidates: issue #21 / wf-disposable-a and issue #22 / "
+                         "wf-disposable-b. " + question,
+                         "Issue #21 / wf-disposable-a or issue #22 / "
+                         "wf-disposable-b? What is next?",
                          question + "\n```",
                          question + "\nWhich issue and run do you choose?",
-                         question.replace("Which issue and run do you choose?",
-                                          "I will proceed with #21. Which issue and run do you choose?")):
+                         "I will proceed with #21. " + question):
             with self.subTest(response=response):
                 self.assertFalse(t7_visible_question(response))
                 self.assertFalse(t7_phase1_proof([], session, response,
                                                   before, before, resume))
         self.assertTrue(t7_visible_question(question + " \n  "))
+        self.assertTrue(t7_visible_question(
+            "Qual issue e run você escolhe:\nissue #21 / wf-disposable-a "
+            "ou issue #22 / wf-disposable-b?"))
         self.assertTrue(t7_phase1_proof([], session, question + " \n  ",
                                         before, before, resume))
         self.assertFalse(t7_phase1_proof([], session, "",
