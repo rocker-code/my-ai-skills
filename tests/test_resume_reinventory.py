@@ -1,14 +1,49 @@
 """Offline regression for the T7 same-session, pre-native reinventory gate."""
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import json
+import os
 from pathlib import Path
+import runpy
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from smoke_resume_candidate_opencode import (disposable_opencode_shim,
-                                             disposable_path, t7_reinventory)
+                                              disposable_path, t7_reinventory)
+
+
+class SmokeArgvSafetyTest(unittest.TestCase):
+    def test_help_and_unknown_option_exit_before_discovery_fixture_or_model(self):
+        script = Path(__file__).with_name("smoke_resume_candidate_opencode.py")
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+            home = Path(root) / "home"
+            home.mkdir()
+            for argument, code in (("--help", 0), ("--unexpected", 2)):
+                with self.subTest(argument=argument):
+                    stdout, stderr = StringIO(), StringIO()
+                    with (patch.object(sys, "argv", [str(script), argument]),
+                          patch.dict(os.environ, {"HOME": str(home),
+                                                   "PATH": str(home),
+                                                   "PYTHONDONTWRITEBYTECODE": "1"},
+                                     clear=True),
+                          patch("shutil.which", side_effect=AssertionError("discovery")),
+                          patch("tempfile.mkdtemp", side_effect=AssertionError("fixture")),
+                          patch("subprocess.run", side_effect=AssertionError("model")),
+                          patch("subprocess.Popen", side_effect=AssertionError("model")),
+                          redirect_stdout(stdout), redirect_stderr(stderr)):
+                        with self.assertRaises(SystemExit) as exit:
+                            runpy.run_path(str(script), run_name="__main__")
+                    self.assertEqual(exit.exception.code, code)
+                    output = stdout.getvalue() if code == 0 else stderr.getvalue()
+                    self.assertIn("usage:", output)
+                    if code:
+                        self.assertIn("unrecognized arguments: --unexpected", output)
+                    self.assertEqual(list(home.iterdir()), [])
 
 
 class DisposablePathTest(unittest.TestCase):

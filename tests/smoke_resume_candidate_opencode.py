@@ -6,6 +6,7 @@ This is a separate check from smoke_global_opencode.py (published-revision disco
 It never uses real GitHub resources or the operator's OpenCode configuration.
 Only an exact clean candidate HEAD is eligible; retained results are audited evidence.
 """
+import argparse
 import hashlib
 import json
 import os
@@ -656,4 +657,5 @@ def main():
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(description=__doc__).parse_args()
     main()
