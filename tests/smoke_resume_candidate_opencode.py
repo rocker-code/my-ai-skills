@@ -51,7 +51,12 @@ PROMPTS = {
         "leitura); pode descobrir arquivos das skills OpenSpec nativas "
         "em .agents/skills, mas NÃO invoque nenhuma skill OpenSpec antes da escolha. "
         "Não selecione candidato nem faça takeover ou dispatch. Respeite o gate de "
-        "desambiguação. Se ambíguo, faça só a pergunta necessária. "
+        "desambiguação. Se ambíguo, identifique os dois candidatos por issue e run "
+        "obtidos da evidência, e faça UMA pergunta explícita e inequívoca terminada "
+        "em '?' na resposta comum visível ao usuário; depois pause. Se a ferramenta "
+        "interativa de pergunta estiver indisponível ou for cancelada neste run, "
+        "faça a mesma pergunta na resposta comum visível ao usuário, sem tratar "
+        "o cancelamento como uma escolha. "
         "Prova somente leitura, sem escolher pela recência."
     ),
 }
@@ -254,6 +259,21 @@ def tool_events(events, session, *, tool=None, contains=None):
                       "output": state.get("output", ""), "tool": part.get("tool"),
                       "id": part.get("id")})
     return found
+
+
+def t7_phase1_proof(events, session, response, before, after, resume_invocation):
+    """A cancelled interactive form is not a user-visible disambiguation."""
+    expected = ("21", "22", "wf-disposable-a", "wf-disposable-b", "?")
+    visible_question = all(term.lower() in response.lower() for term in expected)
+    all_native_invocations = [
+        e for e in tool_events(events, session)
+        if (e["tool"] == "skill" and
+            str(e["input"].get("id", "")).startswith("openspec-")) or
+           (e["tool"] == "read" and
+            "/.agents/skills/openspec-" in str(e["input"].get("path", "")))]
+    return (visible_question and before == after and bool(resume_invocation)
+            and not all_native_invocations
+            and not tool_events(events, session, contains="reconcile"))
 
 
 def t7_reinventory(events, session, first_native, repo, worktrees, reader, receipts):
@@ -624,14 +644,8 @@ def main():
             required &= any(args[:1] == ["api"] for args in new_calls)
             if case == "T7" and phase == 1:
                 # Any native invocation before explicit user choice fails closed.
-                all_native_invocations = [
-                    e for e in tool_events(events, session)
-                    if (e["tool"] == "skill" and
-                        str(e["input"].get("id", "")).startswith("openspec-")) or
-                       (e["tool"] == "read" and
-                        "/.agents/skills/openspec-" in str(e["input"].get("path", "")))]
-                required &= bool(resume_invocation) and not all_native_invocations
-                required &= not tool_events(events, session, contains="reconcile")
+                required &= t7_phase1_proof(events, session, response, before, after,
+                                            resume_invocation)
             else:
                 # Discovery may occur in the ambiguity turn, but invocation
                 # must happen only after explicit choice in this same session.

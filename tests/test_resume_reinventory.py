@@ -14,7 +14,8 @@ import unittest
 from unittest.mock import patch
 
 from smoke_resume_candidate_opencode import (disposable_opencode_shim,
-                                              disposable_path, t7_reinventory)
+                                              disposable_path, t7_phase1_proof,
+                                              t7_reinventory)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -109,6 +110,31 @@ class DisposablePathTest(unittest.TestCase):
                                             text=True, check=True)
                     self.assertEqual(result.stdout, expected)
             self.assertFalse((sandbox / "INJECTED").exists())
+
+
+class T7VisibleQuestionTest(unittest.TestCase):
+    def test_cancelled_form_does_not_replace_visible_question_or_safe_pause(self):
+        session = "ses-ambiguous"
+        cancelled = [{"type": "tool_use", "sessionID": session,
+                      "part": {"tool": "question", "state": {
+                          "status": "cancelled",
+                          "input": {"questions": ["#21 ou #22?"]}}}}]
+        resume = [{"tool": "skill", "id": "resume"}]
+        before = {"git": "unchanged"}
+        final = ("Candidatos: issue #21 / wf-disposable-a e issue #22 / "
+                 "wf-disposable-b. Qual issue e run você escolhe?")
+        self.assertFalse(t7_phase1_proof(cancelled, session, final[:-1],
+                                         before, before, resume))
+        self.assertTrue(t7_phase1_proof(cancelled, session, final,
+                                        before, before, resume))
+        self.assertFalse(t7_phase1_proof(cancelled, session, final,
+                                         before, {"git": "changed"}, resume))
+        native = {"type": "tool_use", "sessionID": session,
+                  "part": {"tool": "skill", "state": {"status": "completed",
+                                                    "input": {"id": "openspec-explore"},
+                                                    "output": "invoked"}}}
+        self.assertFalse(t7_phase1_proof([*cancelled, native], session, final,
+                                         before, before, resume))
 
 
 class T7ReinventoryTest(unittest.TestCase):
