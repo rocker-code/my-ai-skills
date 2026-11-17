@@ -1,6 +1,6 @@
 ---
 name: resume-workflow
-description: Recover a previously interrupted my-ai-skills issue or milestone in a new OpenCode session. Use for "continue de onde parou", "retome o desenvolvimento", "resume", or recovery after a reboot/crash. Reconcile durable evidence before scheduling work; never infer completion from the old chat.
+description: Recover a previously interrupted my-ai-skills issue or milestone in a new OpenCode session. For natural requests like "continue de onde parou", "retome o desenvolvimento", or "resume" after a reboot/crash, load this skill with the skill tool first, before inventory or native OpenSpec work. Reconcile durable evidence before scheduling work; never infer completion from the old chat.
 metadata:
   category: workflow
   stage: recovery

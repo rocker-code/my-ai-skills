@@ -86,6 +86,11 @@ class GlobalInstallTests(unittest.TestCase):
     def next_revision(self):
         (self.source / "skills/new-feature").mkdir()
         (self.source / "skills/new-feature/SKILL.md").write_text("---\nname: new-feature\n---\n")
+        recovery = self.source / "skills/resume-workflow/SKILL.md"
+        recovery.write_text(recovery.read_text().replace(
+            "load this skill with the skill tool first, before inventory or native OpenSpec work",
+            "load this skill with the skill tool first, before inventory or native OpenSpec work (updated revision)",
+            1))
         (self.source / "skills/apply-issue/references/TEST_STRATEGY.md").write_text("updated reference\n")
         (self.source / "scripts/workflow-event").write_text("#!/usr/bin/env python3\nprint('updated helper')\n")
         self.git("add", "-A")
@@ -206,6 +211,8 @@ class GlobalInstallTests(unittest.TestCase):
 
     def test_public_install_and_update_execute_pinned_installer_and_active_command(self):
         """Use the public shell routes with local transport and a real installer."""
+        recovery_path = "skills/resume-workflow/SKILL.md"
+        skill_link = self.home / ".config/opencode/skills/resume-workflow/SKILL.md"
         transport = self.root / "transport"
         transport.mkdir()
         pinned = call("git", "show",
@@ -255,6 +262,11 @@ class GlobalInstallTests(unittest.TestCase):
         installed = call("sh", str(ROOT / "scripts/install.sh"), cwd=self.root, env=env)
         self.assertEqual(installed.returncode, 0, installed.stderr)
         self.assertIn("global command", installed.stdout)
+        guidance = (self.home / ".config/opencode/AGENTS.md").read_bytes()
+        self.assertIn(b"resume-workflow", guidance)
+        self.assertEqual(skill_link.read_bytes(),
+                         self.git("show", f"{self.revision}:{recovery_path}").stdout.encode())
+        self.assertTrue(skill_link.parent.is_symlink())
         launcher = self.home / ".local/bin/worktree-reservation"
         listed = call(str(launcher), "list", "--repository", str(self.source), "--json",
                       cwd=self.root, env=env)
@@ -266,6 +278,11 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual(updated.returncode, 0, updated.stderr)
         self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"],
                          next_revision)
+        expected = self.git("show", f"{next_revision}:{recovery_path}").stdout.encode()
+        self.assertNotEqual(expected, self.git("show", f"{self.revision}:{recovery_path}").stdout.encode())
+        self.assertEqual(skill_link.read_bytes(), expected)
+        self.assertEqual((self.data / "active" / recovery_path).read_bytes(), expected)
+        self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), guidance)
         self.assertEqual(call(str(launcher), "list", "--repository", str(self.source),
                               "--json", cwd=self.root, env=env).returncode, 0)
         entry.write_text("tampered installer\n")
