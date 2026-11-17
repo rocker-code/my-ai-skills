@@ -1,11 +1,14 @@
 """Offline regression for the T7 same-session, pre-native reinventory gate."""
 import json
 from pathlib import Path
+import shlex
 import shutil
+import subprocess
 import tempfile
 import unittest
 
-from smoke_resume_candidate_opencode import disposable_path, t7_reinventory
+from smoke_resume_candidate_opencode import (disposable_opencode_shim,
+                                             disposable_path, t7_reinventory)
 
 
 class DisposablePathTest(unittest.TestCase):
@@ -30,6 +33,47 @@ class DisposablePathTest(unittest.TestCase):
                               "/home/operator")
         self.assertEqual(path.split(":"), [str(home / ".local/bin"),
                                           "/home/operator-backup/bin"])
+
+    def test_opencode_shim_quotes_resolved_binary_and_keeps_launcher_first(self):
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+            sandbox = Path(root)
+            home = sandbox / "home"
+            launcher = home / ".local/bin/worktree-reservation"
+            launcher.parent.mkdir(parents=True)
+            launcher.write_text("#!/bin/sh\nexit 0\n")
+            launcher.chmod(0o700)
+            binary = sandbox / "opencode ' $(touch INJECTED)"
+            binary.write_text("#!/bin/sh\ncase \"$1\" in\n"
+                              "  --version) printf 'opencode v2.1.0\\n';;\n"
+                              "  --help) printf 'api\\nrun\\nservice\\n';;\n"
+                              "  *) exit 4;;\nesac\n")
+            binary.chmod(0o700)
+            bin_dir = sandbox / "bin"
+            alias = sandbox / "opencode-link"
+            alias.symlink_to(binary)
+            filtered = disposable_path(home, "/home/operator/.opencode/bin:/usr/bin",
+                                       "/home/operator")
+            no_shim_path = str(launcher.parent)
+            self.assertIsNone(shutil.which("opencode", path=no_shim_path))
+            with self.assertRaises(FileNotFoundError):
+                subprocess.run(["opencode", "--version"],
+                               env={"PATH": no_shim_path}, check=True)
+            shim = disposable_opencode_shim(bin_dir, alias)
+            self.assertIn(shlex.quote(str(binary)), shim.read_text())
+            self.assertNotIn(str(alias), shim.read_text())
+            path = str(launcher.parent) + ":" + str(bin_dir) + ":" + filtered.split(":", 1)[1]
+            self.assertNotIn("/home/operator/.opencode/bin", path)
+            self.assertEqual(shutil.which("worktree-reservation", path=path),
+                             str(launcher))
+            self.assertEqual(shutil.which("opencode", path=path), str(shim))
+            for arg, expected in (("--version", "opencode v2.1.0\n"),
+                                  ("--help", "api\nrun\nservice\n")):
+                with self.subTest(arg=arg):
+                    result = subprocess.run(["opencode", arg], env={"PATH": path},
+                                            cwd=sandbox, capture_output=True,
+                                            text=True, check=True)
+                    self.assertEqual(result.stdout, expected)
+            self.assertFalse((sandbox / "INJECTED").exists())
 
 
 class T7ReinventoryTest(unittest.TestCase):

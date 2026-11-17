@@ -171,6 +171,20 @@ def disposable_path(home, inherited_path, operator_home):
     return os.pathsep.join([str(home / ".local/bin"), *system_paths])
 
 
+def disposable_opencode_shim(bin_dir, cli):
+    """Expose only the discovered executable, not the operator's HOME."""
+    if not Path(cli).is_absolute():
+        raise RuntimeError("OpenCode executable must be an absolute executable file")
+    binary = Path(cli).resolve()
+    if not binary.is_file() or not os.access(binary, os.X_OK):
+        raise RuntimeError("OpenCode executable must be an absolute executable file")
+    bin_dir.mkdir()
+    shim = bin_dir / "opencode"
+    shim.write_text("#!/bin/sh\nexec " + shlex.quote(str(binary)) + ' "$@"\n')
+    shim.chmod(0o700)
+    return shim
+
+
 def snapshot(repo, worktrees, gh_root, reservation, env, openspec):
     statuses = {}
     for path in worktrees:
@@ -355,9 +369,12 @@ def main():
     base = Path(tempfile.mkdtemp(prefix="resume-candidate-", dir="/tmp/opencode"))
     home = base / "home"
     home.mkdir()
+    bin_dir = base / "bin"
+    opencode_shim = disposable_opencode_shim(bin_dir, cli)
     env = {key: os.environ[key] for key in ("PATH", "LANG", "TERM") if key in os.environ}
-    env["PATH"] = disposable_path(home, os.environ.get("PATH", os.defpath),
-                                  os.environ["HOME"])
+    path_entries = disposable_path(home, os.environ.get("PATH", os.defpath),
+                                   os.environ["HOME"]).split(os.pathsep)
+    env["PATH"] = os.pathsep.join([path_entries[0], str(bin_dir), *path_entries[1:]])
     env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
                XDG_DATA_HOME=str(home / ".local/share"),
                XDG_CACHE_HOME=str(home / ".cache"),
@@ -365,6 +382,11 @@ def main():
                OPENCODE_DB=str(base / "opencode.db"),
                OPENCODE_PASSWORD=secrets.token_hex(24),
                OPENSPEC_TELEMETRY="0", PYTHONDONTWRITEBYTECODE="1")
+    assert shutil.which("opencode", path=env["PATH"]) == str(opencode_shim)
+    assert run(["opencode", "--version"], cwd=ROOT, env=env) == run(
+        [cli, "--version"], cwd=ROOT, env=env)
+    assert run(["opencode", "--help"], cwd=ROOT, env=env) == run(
+        [cli, "--help"], cwd=ROOT, env=env)
     assert run([openspec, "--version"], cwd=ROOT, env=env).startswith("2.")
     results = {"started_at": datetime.now(timezone.utc).isoformat(),
                "candidate": revision, "model": MODEL,
@@ -397,12 +419,9 @@ def main():
 
     # No external GitHub requests. Writes are permitted only while SEED is set;
     # the model's environment never receives that switch.
-    bin_dir = base / "bin"
-    bin_dir.mkdir()
     shim = bin_dir / "gh"
     shutil.copy2(ROOT / "tests/fixtures/resume_gh.py", shim)
     shim.chmod(0o755)
-    env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
 
     for case, prompt in PROMPTS.items():
         repo = base / case
