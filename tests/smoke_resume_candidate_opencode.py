@@ -288,6 +288,12 @@ def t7_phase1_proof(events, session, response, before, after, resume_invocation)
             r"(?:^|/)\.agents/skills/openspec-[^/]+/SKILL\.md$",
             os.path.normpath(path)))
 
+    def native_content_target(path):
+        """Content searches on a skill directory can expose SKILL.md too."""
+        return isinstance(path, str) and bool(re.search(
+            r"(?:^|/)\.agents/skills(?:/openspec-[^/]+(?:/SKILL\.md)?)?$",
+            os.path.normpath(path)))
+
     def shell_native_read(event):
         if event["tool"] != "shell":
             return False
@@ -301,18 +307,21 @@ def t7_phase1_proof(events, session, response, before, after, resume_invocation)
         return any(
             (Path(token).name in ("cat", "sed", "head", "tail", "less", "more",
                                   "grep", "rg") and
-             # `rg --files` lists paths; a content search targeting SKILL.md
-             # attempts to read the native skill even if the tool later errors.
-             not (Path(token).name == "rg" and "--files" in tokens[index + 1:]) and
-             any(native_skill_path(arg) for arg in tokens[index + 1:]))
+              # `rg --files` lists paths, but grep/rg content-mode can read
+              # SKILL.md via a directory target, including on failed calls.
+              not (Path(token).name == "rg" and "--files" in tokens[index + 1:]) and
+              any((native_content_target(arg) if Path(token).name in ("grep", "rg")
+                   else native_skill_path(arg)) for arg in tokens[index + 1:]))
             for index, token in enumerate(tokens))
 
     all_native_invocations = [
         e for e in attempts
         if (e["tool"] == "skill" and
             str(e["input"].get("id", "")).startswith("openspec-")) or
-            (e["tool"] in ("read", "grep") and
-             native_skill_path(e["input"].get("path"))) or shell_native_read(e)]
+             (e["tool"] == "read" and
+              native_skill_path(e["input"].get("path"))) or
+             (e["tool"] == "grep" and
+              native_content_target(e["input"].get("path"))) or shell_native_read(e)]
     # Snapshot equality proves no effects, not that a forbidden attempt was
     # never made. Only actual tool calls count: listing or globbing skill paths
     # is discovery, not reading their SKILL.md contents.
