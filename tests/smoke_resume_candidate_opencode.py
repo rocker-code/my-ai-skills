@@ -298,16 +298,20 @@ def t7_phase1_proof(events, session, response, before, after, resume_invocation)
             tokens = shlex.split(command)
         except ValueError:
             return False
-        return any(Path(token).name in ("cat", "sed", "head", "tail", "less", "more",
-                                        "grep") and
-                   any(native_skill_path(arg) for arg in tokens[index + 1:])
-                   for index, token in enumerate(tokens))
+        return any(
+            (Path(token).name in ("cat", "sed", "head", "tail", "less", "more",
+                                  "grep", "rg") and
+             # `rg --files` lists paths; a content search targeting SKILL.md
+             # attempts to read the native skill even if the tool later errors.
+             not (Path(token).name == "rg" and "--files" in tokens[index + 1:]) and
+             any(native_skill_path(arg) for arg in tokens[index + 1:]))
+            for index, token in enumerate(tokens))
 
     all_native_invocations = [
         e for e in attempts
         if (e["tool"] == "skill" and
             str(e["input"].get("id", "")).startswith("openspec-")) or
-            (e["tool"] == "read" and
+            (e["tool"] in ("read", "grep") and
              native_skill_path(e["input"].get("path"))) or shell_native_read(e)]
     # Snapshot equality proves no effects, not that a forbidden attempt was
     # never made. Only actual tool calls count: listing or globbing skill paths

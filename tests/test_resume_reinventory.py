@@ -128,6 +128,11 @@ class T7VisibleQuestionTest(unittest.TestCase):
         discovery = [
             event("glob", {"pattern": ".agents/skills/openspec-*/SKILL.md"}, "completed"),
             event("shell", {"command": "find .agents/skills -name SKILL.md"}, "completed"),
+            event("grep", {"pattern": "openspec", "path": ".agents/skills"}, "completed"),
+            event("shell", {"command": "rg --files .agents/skills/openspec-explore/SKILL.md"},
+                  "completed"),
+            event("shell", {"command": "ls .agents/skills/openspec-explore/SKILL.md"},
+                  "completed"),
         ]
         self.assertTrue(t7_phase1_proof(discovery, session, question,
                                         before, before, resume))
@@ -138,8 +143,16 @@ class T7VisibleQuestionTest(unittest.TestCase):
                 ("read", {"path": "./.agents/skills/openspec-apply-change/SKILL.md"}),
                 ("read", {"path": "/tmp/opencode/fixture/T7/.agents/skills/"
                                    "openspec-explore/SKILL.md"}),
+                ("grep", {"pattern": "name", "path":
+                          ".agents/skills/openspec-explore/SKILL.md"}),
+                ("grep", {"pattern": "name", "path":
+                          "/tmp/opencode/fixture/T7/.agents/skills/"
+                          "openspec-explore/SKILL.md"}),
                 ("shell", {"command": "cat .agents/skills/openspec-explore/SKILL.md"}),
                 ("shell", {"command": "sed -n '1,30p' /tmp/opencode/fixture/T7/"
+                                      ".agents/skills/openspec-explore/SKILL.md"}),
+                ("shell", {"command": "rg -n . .agents/skills/openspec-explore/SKILL.md"}),
+                ("shell", {"command": "rg -n . /tmp/opencode/fixture/T7/"
                                       ".agents/skills/openspec-explore/SKILL.md"}),
                 ("shell", {"command": "worktree-reservation reconcile --takeover"}),
                 ("shell", {"command": "workflow-event stage-start --stage apply"}),
