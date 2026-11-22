@@ -47,3 +47,5 @@ Usar este formato, preenchendo apenas com evidências reais:
 ## Limites
 
 A consulta apenas lê e recomenda. Não iniciar `milestone-orchestrator`, implementar, rodar testes, limpar worktrees, editar issues/roadmap, fechar itens, fazer merge, release, deploy ou agendar tarefas. Um pedido posterior explícito de execução segue a skill correspondente e as autorizações existentes. Não prometer monitoramento em segundo plano. Não manter um roadmap paralelo baseado apenas na memória do agente.
+
+Use current GitHub/OpenSpec/PR/check evidence, never legacy workflow event/timing comments. No workflow analytics or duration columns; status queries remain read-only.

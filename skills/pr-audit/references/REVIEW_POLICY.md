@@ -17,7 +17,7 @@ Do not review the diff in isolation and do not treat every reviewer suggestion a
 | `[BLOCKER]` | Security, data loss, broken core behavior, invalid architecture boundary or unrecoverable migration risk. | Must be resolved. |
 | `[MUST FIX]` | Acceptance criterion, correctness, contract, authorization, concurrency or required test defect. | Must be resolved. |
 | `[SHOULD FIX]` | Material maintainability, resilience or coverage issue within scope. | Normally resolve; may become a follow-up only with explicit rationale. |
-| `[NICE TO HAVE]` | Non-blocking improvement or polish. | Never hold the PR; prefer a follow-up issue. |
+| `[NICE TO HAVE]` | Non-blocking improvement or polish. | Never hold the PR; record a follow-up only if independently valuable, actionable, untracked and qualified by the evolution policy. |
 
 Every finding should include evidence, impact and the smallest acceptable correction. Avoid speculative or style-only findings without project policy support.
 
@@ -51,3 +51,7 @@ FINAL REVIEW: CHANGES REQUIRED
 ```
 
 Once approved, further non-blocking improvements become separate issues.
+
+## One review per immutable candidate
+
+One genuinely independent final-HEAD review satisfies the review gate. Merge eligibility reuses it; no second full audit of unchanged code. After HEAD, base or relevant context changes, independently review invalidated surfaces and rerun affected proofs; keep the final required suite bound to exact clean HEAD. Contributor-controlled policy changes do not approve their own review.

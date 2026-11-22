@@ -12,6 +12,8 @@
 
 ### Alterado
 
+- Ciclo nativo OpenSpec com Verify, simplify opcional e revisão reutilizável por HEAD; retirados gates duplicados, comentários operacionais e Kaizen obrigatório. [#75](https://github.com/rocker-code/my-ai-skills/issues/75)
+
 - O workflow mantém os sandboxes M2T de integração e GraphQL vinculados à worktree entre planejamento, Apply e revisão; no encerramento após entrega e kaizen, limpa apenas seleções comprovadamente próprias antes de remover o checkout, preservando caches compartilhados e recursos de outros trabalhos. [#70](https://github.com/rocker-code/my-ai-skills/issues/70)
 
 - A preparação de PR registra mudanças relevantes em Não lançado; a preparação de release consolida apenas as entradas incluídas na versão antes da validação final.

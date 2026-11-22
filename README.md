@@ -138,6 +138,12 @@ Aceite pedidos naturais como:
 Não exija que o usuário repita estas instruções.
 ```
 
+## Ciclo simplificado
+
+OpenSpec é o único ciclo: Explore → Propose → Apply → Verify → Archive. O pacote integra GitHub, testes/M2T e entrega, sem audit/ready separados. Uma issue é executada por vez, inclusive planejamento; subagentes atuam apenas na issue ativa. Revisão independente válida do HEAD final é reutilizada. Kaizen fica sob demanda e não bloqueia a próxima issue. Não há comentários operacionais automáticos. `simplify` é opcional para problema concreto de manutenção, preservando comportamento.
+
+Prioridades: código claro com arquitetura existente, verificação efetiva e melhorias relevantes ainda não rastreadas. Verify oficial é padrão quando suportado e não substitui testes/CI/reviews. Skill ausente não comprova incompatibilidade: inspecione `openspec config list`, preserve a união dos workflows atuais com `verify` no perfil `custom` (`openspec config set workflows '[...]'` e `openspec config set profile custom`) e confira efeitos globais e `openspec update --dry-run --json` antes do update autorizado. Preserve personalizações e reporte limitações reais sem verificador customizado. Este repositório inclui Verify gerado oficialmente.
+
 ## Usar
 
 O instalador e o atualizador conferem ao final o pacote, uma skill e o OpenSpec. Abra uma nova sessão OpenCode. No primeiro uso em um projeto, o agente confere a integração OpenSpec 2.0 e pede autorização específica antes de inicializar ou atualizar; a instalação global não modifica projetos. Confira a descoberta e invocação das skills oficiais `openspec-explore`, `openspec-propose`, `openspec-apply-change` e `openspec-archive-change` antes de implementar; comandos `/opsx-*` legados não são exigidos. Preserve ferramentas já configuradas, arquivos personalizados e config/specs/changes; bloqueie conflitos sem forçar.

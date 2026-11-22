@@ -1,6 +1,6 @@
 ---
 name: ci-performance-audit
-description: Diagnose CI and test execution bottlenecks or independently verify optimization PRs without weakening their required behavior. Invoked automatically by issue-audit, pr-audit, prepare-pr and kaizen for relevant performance, workflow, test-infrastructure or test-selection changes; manual invocation is optional.
+description: Diagnose CI and test execution bottlenecks or independently verify optimization PRs without weakening their required behavior. Invoked automatically by native OpenSpec Explore, pr-audit, prepare-pr and kaizen for relevant performance, workflow, test-infrastructure or test-selection changes; manual invocation is optional.
 ---
 
 # CI Performance Audit
@@ -16,7 +16,7 @@ Read [the shared CI performance protocol](references/CI_PERFORMANCE.md). Use thi
 
 For Adobe Commerce/Magento, read [the Magento reference](references/magento.md); otherwise follow the repository's actual stack.
 
-Return: pinned evidence, obligations, timing table, facts/hypotheses, ranked experiments, dependencies and DIAGNOSED or INSUFFICIENT EVIDENCE. Feed the report into issue-audit and optimize-ci; diagnosis never proves OpenSpec readiness.
+Return: pinned evidence, obligations, timing table, facts/hypotheses, ranked experiments, dependencies and DIAGNOSED or INSUFFICIENT EVIDENCE. Feed the report into native OpenSpec Explore and optimize-ci; diagnosis never proves OpenSpec readiness.
 
 ## Review
 Use a reviewer independent from implementation when invoked by pr-audit. prepare-pr may use the same checklist for self-review but cannot claim independence.

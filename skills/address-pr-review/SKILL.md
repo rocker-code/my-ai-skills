@@ -38,7 +38,7 @@ Implementation defects that preserve the contract change only code/tests. Behavi
 
 Trace the full affected path, use existing/native mechanisms, implement the smallest coherent correction, remove code made obsolete by the fix and add/update relevant tests. Run targeted checks first, then broader permitted validation.
 
-Perform the executor's final self-review of the resulting full diff against every finding, issue, decisions, archived/live OpenSpec, tests and CI. Check introduced dead code, weakened assertions, secrets, debug output and unrelated churn. Do not expand the PR into unrelated improvements or reopen accepted trade-offs. This self-review is not the independent `post-pr-audit` approval.
+Perform the executor's final self-review of the resulting full diff against every finding, issue, decisions, archived/live OpenSpec, tests and CI. Check introduced dead code, weakened assertions, secrets, debug output and unrelated churn. Do not expand the PR into unrelated improvements or reopen accepted trade-offs. This self-review is not the independent `pr-audit` approval.
 
 ## Push and respond
 
@@ -46,7 +46,7 @@ When authorized by the workflow, commit/push to the same branch without force. R
 
 ## Completion
 
-Report counts by classification, changes, OpenSpec impact, actual checks, remaining material items and branch/push state. End with `READY FOR INDEPENDENT POST PR AUDIT` or `NOT READY — <reason>`.
+Report counts by classification, changes, OpenSpec impact, actual checks, remaining material items and branch/push state. End with `READY FOR AFFECTED INDEPENDENT REVIEW` or `NOT READY — <reason>`.
 
 ## Proportionate test coverage
 

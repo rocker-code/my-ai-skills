@@ -30,4 +30,4 @@ When the requested change spans independently deliverable user outcomes or mater
 
 ## Boundary
 
-Stop at backlog authoring. Do not implement code, initialize/update the workflow, create OpenSpec artifacts or start Apply merely because the request came through a CLI. Subsequent execution retains independent issue-audit, readiness and OpenSpec gates. Do not claim checks ran or evidence was inspected unless verified.
+Stop at backlog authoring. Do not implement code, initialize/update the workflow, create OpenSpec artifacts or start Apply merely because the request came through a CLI. Subsequent execution retains independent native OpenSpec Explore, readiness and OpenSpec gates. Do not claim checks ran or evidence was inspected unless verified.
