@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "scripts/install.sh"
 UPDATER = ROOT / "scripts/update.sh"
 ENTRY = ROOT / "scripts/install-global"
-REVISION = "fe00db86867de7ba9821a0c4e8e54d75c6e7a465"
+REVISION = "96864599e1d7b1ec06239aa8f8f6e757043d7212"
 
 
 class LauncherTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class LauncherTests(unittest.TestCase):
         pinned = subprocess.run(["git", "show", f"{REVISION}:scripts/install-global"],
                                 cwd=ROOT, capture_output=True, check=True).stdout
         self.assertEqual(hashlib.sha256(pinned).hexdigest(),
-                          "37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3")
+                          "2a655bd499c94dcc0330313abfffa93642ed719500847f41b2275adf0712cbc3")
         self.assertEqual(pinned, ENTRY.read_bytes())
         entry_source = root / "pinned-install-global"
         entry_source.write_bytes(pinned)
