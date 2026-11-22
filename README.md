@@ -30,7 +30,7 @@ Execute o instalador diretamente do GitHub:
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh
 ```
 
-O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `fe00db86867de7ba9821a0c4e8e54d75c6e7a465`, confere seu SHA-256 `37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`. Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use o [comando com entrada verificada](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global) para maior garantia.
+O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `96864599e1d7b1ec06239aa8f8f6e757043d7212`, confere seu SHA-256 `2a655bd499c94dcc0330313abfffa93642ed719500847f41b2275adf0712cbc3` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`. Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use o [comando com entrada verificada](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global) para maior garantia.
 
 Para **atualizar para a versão mais recente da `main`**, execute (somente quando quiser atualizar):
 
@@ -143,6 +143,10 @@ Não exija que o usuário repita estas instruções.
 OpenSpec é o único ciclo: Explore → Propose → Apply → Verify → Archive. O pacote integra GitHub, testes/M2T e entrega, sem audit/ready separados. Uma issue é executada por vez, inclusive planejamento; subagentes atuam apenas na issue ativa. Revisão independente válida do HEAD final é reutilizada. Kaizen fica sob demanda e não bloqueia a próxima issue. Não há comentários operacionais automáticos. `simplify` é opcional para problema concreto de manutenção, preservando comportamento.
 
 Prioridades: código claro com arquitetura existente, verificação efetiva e melhorias relevantes ainda não rastreadas. Verify oficial é padrão quando suportado e não substitui testes/CI/reviews. Skill ausente não comprova incompatibilidade: inspecione `openspec config list`, preserve a união dos workflows atuais com `verify` no perfil `custom` (`openspec config set workflows '[...]'` e `openspec config set profile custom`) e confira efeitos globais e `openspec update --dry-run --json` antes do update autorizado. Preserve personalizações e reporte limitações reais sem verificador customizado. Este repositório inclui Verify gerado oficialmente.
+
+## Métricas legadas
+
+Os comandos `workflow-event` e `workflow-report` foram removidos. Não há coleta de tempos, analytics nem comentários operacionais automáticos. Comentários e arquivos arquivados antigos permanecem como histórico, sem servir de fonte ativa. Progresso e retomada usam Git/GitHub/OpenSpec, runtime suportado, posse do checkout e provas de testes existentes.
 
 ## Usar
 

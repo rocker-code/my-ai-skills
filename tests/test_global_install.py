@@ -94,7 +94,7 @@ class GlobalInstallTests(unittest.TestCase):
         (self.source / "skills/new-feature").mkdir()
         (self.source / "skills/new-feature/SKILL.md").write_text("---\nname: new-feature\n---\n")
         (self.source / "skills/apply-issue/references/TEST_STRATEGY.md").write_text("updated reference\n")
-        (self.source / "scripts/workflow-event").write_text("#!/usr/bin/env python3\nprint('updated helper')\n")
+        (self.source / "scripts/issue-context").write_text("#!/usr/bin/env python3\nprint('updated helper')\n")
         self.git("add", "-A")
         self.git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-qm", "next")
         return self.git("rev-parse", "HEAD").stdout.strip()
@@ -137,12 +137,40 @@ class GlobalInstallTests(unittest.TestCase):
             self.assertEqual((self.home / ".config/opencode/skills/new-feature/SKILL.md").read_bytes(),
                              (self.source / "skills/new-feature/SKILL.md").read_bytes())
             self.assertEqual((self.data / "active/skills/apply-issue/references/TEST_STRATEGY.md").read_text(), "updated reference\n")
-            self.assertEqual((self.data / "active/scripts/workflow-event").read_bytes(),
-                             (self.source / "scripts/workflow-event").read_bytes())
+            self.assertEqual((self.data / "active/scripts/issue-context").read_bytes(),
+                             (self.source / "scripts/issue-context").read_bytes())
             self.assertFalse((consumer / ".ai-workflow").exists())
         repeated = self.install(revision=revision)
         self.assertIn("state=already current", repeated.stdout)
         self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), before)
+
+    def test_update_removes_retired_helpers_without_touching_personal_files(self):
+        retired = ("workflow-event", "workflow-report", "workflow_events.py", "workflow_metrics.py")
+        for name in retired:
+            (self.source / "scripts" / name).write_text("# legacy managed helper\n")
+        self.git("add", "scripts")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-qm", "legacy helpers")
+        legacy_revision = self.git("rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(self.install(revision=legacy_revision).returncode, 0)
+        personal = self.home / ".config/opencode/skills/personal/SKILL.md"
+        personal.parent.mkdir(parents=True)
+        personal.write_text("personal skill\n")
+        guidance = self.home / ".config/opencode/AGENTS.md"
+        guidance.write_text(guidance.read_text() + "\n# Personal guidance\n")
+        for name in retired:
+            (self.source / "scripts" / name).unlink()
+        self.git("add", "-u", "scripts")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-qm", "remove retired helpers")
+        revision = self.git("rev-parse", "HEAD").stdout.strip()
+        updated = self.install(revision=revision)
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        manifest = json.loads((self.data / "active/manifest.json").read_text())
+        for name in retired:
+            self.assertFalse((self.data / "active/scripts" / name).exists())
+            self.assertNotIn("scripts/" + name, manifest["files"])
+            self.assertTrue((self.data / "versions" / legacy_revision / "scripts" / name).exists())
+        self.assertEqual(personal.read_text(), "personal skill\n")
+        self.assertIn("# Personal guidance", guidance.read_text())
 
     def test_launcher_executes_active_and_rejects_collisions_and_tampering(self):
         self.assertEqual(self.install().returncode, 0)
@@ -216,7 +244,7 @@ class GlobalInstallTests(unittest.TestCase):
         transport = self.root / "transport"
         transport.mkdir()
         pinned = call("git", "show",
-                      "fe00db86867de7ba9821a0c4e8e54d75c6e7a465:scripts/install-global",
+                      "96864599e1d7b1ec06239aa8f8f6e757043d7212:scripts/install-global",
                       cwd=ROOT)
         self.assertEqual(pinned.returncode, 0, pinned.stderr)
         entry = transport / "install-global"
@@ -550,8 +578,8 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "fe00db86867de7ba9821a0c4e8e54d75c6e7a465"
-        published = "37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3"
+        revision = "96864599e1d7b1ec06239aa8f8f6e757043d7212"
+        published = "2a655bd499c94dcc0330313abfffa93642ed719500847f41b2275adf0712cbc3"
         # The launcher pins immutable commit A with the finished 2.x installer.
         pinned_entry = subprocess.check_output(
             ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
@@ -577,7 +605,7 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_in_disposable_home(self):
         # Transport is mocked, but README pipelines, launcher, digest check,
         # pinned installer and Git snapshot installation execute unchanged.
-        revision = "fe00db86867de7ba9821a0c4e8e54d75c6e7a465"
+        revision = "96864599e1d7b1ec06239aa8f8f6e757043d7212"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
                          "case \"$2\" in\n"

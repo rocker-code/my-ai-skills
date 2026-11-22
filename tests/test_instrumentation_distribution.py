@@ -79,9 +79,18 @@ class DistributionTests(unittest.TestCase):
             self.assertIn("protocol/CHATGPT_WEB_ISSUES.md", result.stderr)
             self.assertNotIn("Synchronized skill references", result.stdout)
 
+    def test_distribution_has_no_retired_workflow_collector(self):
+        for name in ("workflow-event", "workflow-report", "workflow_events.py", "workflow_metrics.py"):
+            with self.subTest(helper=name):
+                self.assertFalse((ROOT / "scripts" / name).exists())
+        for module in ("workflow_evidence.py", "worktree_registry.py"):
+            source = (ROOT / "scripts" / module).read_text()
+            self.assertNotIn("import workflow_events", source)
+            self.assertNotIn("import workflow_metrics", source)
+
     def test_official_workflow_commands(self):
         with tempfile.TemporaryDirectory() as directory:
-            for command in (("workflow-event", "new-run-id"), ("workflow-report", "--help")):
+            for command in (("workflow-evidence", "--help"), ("worktree-reservation", "--help")):
                 result = subprocess.run([str(ROOT / "scripts" / command[0]), *command[1:]],
                                         capture_output=True, text=True, timeout=10, cwd=directory)
                 self.assertEqual(result.returncode, 0, result.stderr)

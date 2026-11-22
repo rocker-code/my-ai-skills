@@ -3,8 +3,8 @@
 # This cannot verify the launcher itself when it is fetched and piped to sh.
 set -eu
 
-entry_revision=fe00db86867de7ba9821a0c4e8e54d75c6e7a465
-entry_sha256=37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3
+entry_revision=96864599e1d7b1ec06239aa8f8f6e757043d7212
+entry_sha256=2a655bd499c94dcc0330313abfffa93642ed719500847f41b2275adf0712cbc3
 
 if [ "$#" -eq 0 ]; then
     ref=refs/heads/main

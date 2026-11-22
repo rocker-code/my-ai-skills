@@ -30,7 +30,7 @@ Run the installer directly from GitHub:
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh
 ```
 
-The script installs the latest `main` revision. It downloads the **installer** from immutable commit `fe00db86867de7ba9821a0c4e8e54d75c6e7a465`, verifies SHA-256 `37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3`, and then installs the current revision, including the global `worktree-reservation` command. That commit must remain an ancestor of `main`: integrate this PR with a **merge commit**, never squash/rebase, so the launcher and its pinned object are published together. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
+The script installs the latest `main` revision. It downloads the **installer** from immutable commit `96864599e1d7b1ec06239aa8f8f6e757043d7212`, verifies SHA-256 `2a655bd499c94dcc0330313abfffa93642ed719500847f41b2275adf0712cbc3`, and then installs the current revision, including the global `worktree-reservation` command. That commit must remain an ancestor of `main`: integrate this PR with a **merge commit**, never squash/rebase, so the launcher and its pinned object are published together. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
 
 To **update to the latest `main` revision**, run this only when you want an update:
 
@@ -143,6 +143,10 @@ Do not require the user to repeat these instructions.
 OpenSpec is the sole lifecycle: Explore → Propose → Apply → Verify → Archive. The package integrates GitHub, project/M2T tests and delivery without separate audit/ready gates. Execute one issue at a time, including planning; subagents stay within the active issue. Reuse valid independent review of the final HEAD. Kaizen is on demand and never blocks the next issue. No routine GitHub execution comments are posted. Optional `simplify` addresses concrete maintainability problems while preserving behavior.
 
 Priorities: clear code using existing architecture, effective verification and meaningful untracked improvements. Official Verify is the default when supported and never replaces tests/CI/reviews. A missing skill does not prove incompatibility: inspect `openspec config list`, preserve the union of current workflows plus `verify` in the `custom` profile (`openspec config set workflows '[...]'` and `openspec config set profile custom`), inspect global effects and `openspec update --dry-run --json` before an authorized update. Preserve customization and report real limitations without a custom verifier. This repository includes officially generated Verify.
+
+## Legacy metrics
+
+The `workflow-event` and `workflow-report` commands were removed. There is no workflow timing collection, analytics or automatic operational commentary. Old comments and archived files remain historical and are not active sources. Progress and recovery use Git/GitHub/OpenSpec, supported runtime, checkout ownership and existing test proofs.
 
 ## Use
 

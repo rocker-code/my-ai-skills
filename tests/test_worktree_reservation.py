@@ -840,8 +840,7 @@ class ReservationTest(unittest.TestCase):
     def test_helpers_do_not_write_bytecode(self):
         copied = self.root / "helpers"
         shutil.copytree(ROOT / "scripts", copied, ignore=shutil.ignore_patterns("__pycache__"))
-        helpers = ("issue-context", "pr-context", "workflow-status", "workflow-event",
-                   "workflow-report", "worktree-reservation", "workflow-evidence",
+        helpers = ("issue-context", "pr-context", "workflow-status", "worktree-reservation", "workflow-evidence",
                    "preflight-check", "attempt-log")
         env = os.environ.copy()
         env.pop("PYTHONDONTWRITEBYTECODE", None)
