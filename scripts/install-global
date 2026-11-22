@@ -147,7 +147,7 @@ def manifest_for(root, revision, agents):
                 entries[relative] = {"sha256": digest(path), "mode": stat.S_IMODE(path.stat().st_mode)}
             elif path.is_dir():
                 directories[path.relative_to(root).as_posix()] = stat.S_IMODE(path.stat().st_mode)
-    for name in ("worktree-reservation", "workflow-evidence", "workflow-event"):
+    for name in ("worktree-reservation", "workflow-evidence"):
         if f"scripts/{name}" not in entries:
             raise InstallError(f"Helper ausente: {name}")
     return {"schema": 1, "origin": ORIGIN, "revision": revision,
