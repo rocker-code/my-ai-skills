@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "protocol/TEST_STRATEGY.md"
 SKILLS = ("implement-issue", "openspec-workflow", "apply-issue", "prepare-pr",
           "pr-audit", "post-pr-audit", "address-pr-review", "milestone-orchestrator")
-INTEGRATED = ("issue-explore", "implement-issue", "apply-issue", "pr-audit", "magento-review")
+INTEGRATED = ("openspec-workflow", "implement-issue", "apply-issue", "pr-audit", "magento-review")
 FIXTURES = ROOT / "tests/fixtures/preflight/planning"
 
 

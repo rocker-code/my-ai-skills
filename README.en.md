@@ -138,6 +138,12 @@ Accept natural requests such as:
 Do not require the user to repeat these instructions.
 ```
 
+## Simplified lifecycle
+
+OpenSpec is the sole lifecycle: Explore → Propose → Apply → Verify → Archive. The package integrates GitHub, project/M2T tests and delivery without separate audit/ready gates. Execute one issue at a time, including planning; subagents stay within the active issue. Reuse valid independent review of the final HEAD. Kaizen is on demand and never blocks the next issue. No routine GitHub execution comments are posted. Optional `simplify` addresses concrete maintainability problems while preserving behavior.
+
+Priorities: clear code using existing architecture, effective verification and meaningful untracked improvements. Official Verify is the default when supported and never replaces tests/CI/reviews. A missing skill does not prove incompatibility: inspect `openspec config list`, preserve the union of current workflows plus `verify` in the `custom` profile (`openspec config set workflows '[...]'` and `openspec config set profile custom`), inspect global effects and `openspec update --dry-run --json` before an authorized update. Preserve customization and report real limitations without a custom verifier. This repository includes officially generated Verify.
+
 ## Use
 
 The installer and updater verify the package, a skill, and OpenSpec at the end. Open a new OpenCode session. On first use in a project, the agent checks OpenSpec 2.0 integration and asks for specific authorization before initialization or update; global installation does not modify projects. Check discovery and invocation of the official `openspec-explore`, `openspec-propose`, `openspec-apply-change`, and `openspec-archive-change` skills before implementing; legacy `/opsx-*` commands are not required. Preserve configured tools, customized files and config/specs/changes; block conflicts without forcing.

@@ -20,6 +20,6 @@ For each question:
 
 Do not disguise uncertainty as a decision. If owner input is required, narrow the question and present a recommendation.
 
-Record each approved answer using `[DECISION]` and [the decision template](references/decision.md). When authorized, comment on GitHub; otherwise provide exact copy-ready comments. Do not edit code, run apply or close the issue.
+Record each approved answer using `[DECISION]` and [the decision template](references/decision.md). Update the existing issue body when authorized, preserving unrelated decisions. A concise comment is reserved for a material question not adequately represented there or owner-action blocker. Otherwise provide copy-ready canonical content. Do not edit code, run apply or close the issue.
 
-End with `ALL BLOCKING QUESTIONS RESOLVED` or `OWNER DECISION REQUIRED — <items>`. The executor must then refresh GitHub and invoke the official `openspec-explore` skill again, applying the `issue-explore` protocol, before `issue-ready`.
+End with `ALL BLOCKING QUESTIONS RESOLVED` or `OWNER DECISION REQUIRED — <items>`. Refresh canonical issue/OpenSpec decisions and re-explore only material changes; do not require a second exploration for unchanged context.

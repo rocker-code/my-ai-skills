@@ -11,7 +11,7 @@ metadata:
 
 **Audience:** ChatGPT, Claude or another web agent with project instructions and access to the required GitHub sources/actions, acting as backlog/product/architecture supervisor, not Codex CLI, Claude Code or OpenCode. It does not implement code, create OpenSpec changes or open implementation PRs.
 
-Read [the Web issue authoring protocol](references/CHATGPT_WEB_ISSUES.md) and apply its default issue standard. For UI work also read [the visual artifact protocol](references/VISUAL_ARTIFACTS.md). Reuse the existing `refine-issue` conventions for requirements and `resolve-questions` for approved decision records; do not replace execution-side issue-audit or OpenSpec.
+Read [the Web issue authoring protocol](references/CHATGPT_WEB_ISSUES.md) and apply its default issue standard. For UI work also read [the visual artifact protocol](references/VISUAL_ARTIFACTS.md). Reuse the existing `refine-issue` conventions for requirements and `resolve-questions` for approved decision records; do not replace execution-side native OpenSpec Explore or OpenSpec.
 
 Keep the existing `chatgpt-web-*` names for compatibility. These are portable Markdown instructions, not a guarantee of native skill installation in any provider. Report missing read/write capabilities instead of claiming success.
 

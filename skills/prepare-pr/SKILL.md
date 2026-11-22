@@ -56,7 +56,7 @@ This authorization does not include merging, releasing, deploying, force-pushing
 
 ## Evolution handoff
 
-Apply [the incremental delivery policy](references/INCREMENTAL_DELIVERY.md). Verify the output of [capture-evolutions](capture-evolutions) from planning/Apply and reconcile any late candidates through one final checkpoint batch, without routine owner approval. Do not perform per-candidate GitHub operations inline in active implementation. Persist remaining qualified future work as linked GitHub issues **assigned to a new or reused future evolution milestone** in the owning repository. Verify the milestone assignment and parent links. Do not automatically move work to the current milestone, create a milestone per minor item or claim completion when the integration cannot write/verify. Add a compact `Evolutions identified` section to the PR with links and milestone names, or a precise `EVOLUTION BACKLOG BLOCKED` status. This is not a reason to expand or delay the safe main behavior during Apply.
+Apply [the incremental delivery policy](references/INCREMENTAL_DELIVERY.md). Verify the output of [capture-evolutions](../capture-evolutions/SKILL.md) from planning/Apply and reconcile any late candidates through one final checkpoint batch, without routine owner approval. Do not perform per-candidate GitHub operations inline in active implementation. Persist remaining qualified future work as linked GitHub issues **assigned to a new or reused future evolution milestone** in the owning repository. Verify the milestone assignment and parent links. Do not automatically move work to the current milestone, create a milestone per minor item or claim completion when the integration cannot write/verify. Add a compact `Evolutions identified` section to the PR with links and milestone names, or a precise `EVOLUTION BACKLOG BLOCKED` status. This is not a reason to expand or delay the safe main behavior during Apply.
 
 ## PR body
 
@@ -70,7 +70,7 @@ Return exactly one readiness state: `READY FOR PR`, `PR CREATED`, `PR ALREADY EX
 
 ## Automatic CI performance routing
 
-Read [the CI performance protocol](references/CI_PERFORMANCE.md). For performance or material workflow/test-infrastructure changes, automatically use `ci-performance-audit` in review mode as self-review. Include baseline/candidate inputs, measured versus provisional benefit, runner-minute cost, retained obligations and rollback in the PR. Ordinary test additions need only a lightweight check; self-review does not replace independent `pr-audit`.
+Read [the CI performance protocol](references/CI_PERFORMANCE.md). For project CI/test-performance optimization or material changes to project test selection/setup, automatically use `ci-performance-audit` in review mode as self-review. For an explicitly scoped project CI optimization, include baseline/candidate inputs, measured versus provisional benefit, runner-minute cost, retained obligations and rollback in the PR. Refactoring my-ai-skills instructions does not require workflow timing or a performance baseline. Ordinary test additions need only a lightweight check; self-review does not replace independent `pr-audit`.
 
 ## Proportionate test coverage
 
@@ -82,6 +82,6 @@ Inspect existing tests for the affected behavior for redundant cases or obsolete
 
 Follow [the worktree protocol](references/WORKTREES.md) before checkout writes or worker dispatch. Inventory and reuse the verified issue checkout; transfer its single writer reservation across fresh sessions. Preserve partial work, isolate test resources and retain manual-merge work. Close out only verified eligible worktrees using non-forced Git operations.
 
-For M2T-backed work, pass the existing handoff's exact owned selections and current-code evidence to PR review/correction. PR creation is not M2T closeout: retain integration/GraphQL sandboxes until WORKTREES' verified post-merge/kaizen gate, and do not substitute an M2T run ID, private log or instance status for the required final-head suite.
+For M2T-backed work, pass the existing handoff's exact owned selections and current-code evidence to PR review/correction. PR creation is not M2T closeout: retain integration/GraphQL sandboxes until WORKTREES' verified post-merge gate, and do not substitute an M2T run ID, private log or instance status for the required final-head suite.
 
 When installed, use `worktree-reservation reserve`/`verify` before mutating, `checkpoint` after own writes and `handoff` between returned workers; drift suspends writes until recorded acceptance. Without the helper, coordinate manually under WORKTREES and report the gap.

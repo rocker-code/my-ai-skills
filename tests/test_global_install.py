@@ -79,6 +79,13 @@ class GlobalInstallTests(unittest.TestCase):
         (self.bin / "openspec").unlink()
         (self.bin / "openspec").symlink_to(selected)
 
+    def native_scope(self):
+        # OpenSpec 2.1 defaults to global scope; these fixtures prove project
+        # preservation and must never write to the machine's real skill tree.
+        help_result = call(str(self.bin / "openspec"), "init", "--help", env=self.env)
+        self.assertEqual(help_result.returncode, 0, help_result.stderr)
+        return ["--scope", "project"] if "--scope" in help_result.stdout else []
+
     @property
     def data(self):
         return self.home / ".local/share/my-ai-skills"
@@ -946,13 +953,13 @@ class GlobalInstallTests(unittest.TestCase):
                 self.assertEqual(listing.returncode, 0, listing.stderr)
                 self.assertEqual((spec.read_bytes(), config.read_bytes()), before)
             # Authorized first-use setup in this disposable repo only.
-            initialized = call(str(self.bin / "openspec"), "init", "--tools", "opencode", str(repo), env=env)
+            initialized = call(str(self.bin / "openspec"), "init", "--tools", "opencode", *self.native_scope(), str(repo), env=env)
             self.assertEqual(initialized.returncode, 0, initialized.stderr)
             for skill in ("openspec-explore", "openspec-propose",
                           "openspec-apply-change", "openspec-archive-change"):
                 generated = repo / ".agents/skills" / skill / "SKILL.md"
                 self.assertTrue(generated.is_file(), generated)
-                self.assertIn("generatedBy: \"2.0.0\"", generated.read_text())
+                self.assertIn(f"name: {skill}", generated.read_text())
             self.assertFalse((repo / ".opencode/commands/opsx-apply.md").exists())
             if case == "existing":
                 self.assertEqual(spec.read_bytes(), before[0])
@@ -965,7 +972,7 @@ class GlobalInstallTests(unittest.TestCase):
         env = {**self.env, "OPENSPEC_TELEMETRY": "0"}
         repo = self.root / "existing-other-tool"
         repo.mkdir()
-        initial = call(str(self.bin / "openspec"), "init", "--tools", "codex", str(repo), env=env)
+        initial = call(str(self.bin / "openspec"), "init", "--tools", "codex", *self.native_scope(), str(repo), env=env)
         self.assertEqual(initial.returncode, 0, initial.stderr)
         config = repo / "openspec/config.yaml"
         before = config.read_bytes()
@@ -976,7 +983,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual(dry.returncode, 0, dry.stderr)
         self.assertTrue((repo / ".agents/skills/openspec-explore/SKILL.md").exists())
         # Explicitly authorized union, never 'init --tools opencode' alone.
-        union = call(str(self.bin / "openspec"), "init", "--tools", "codex,opencode", str(repo), env=env)
+        union = call(str(self.bin / "openspec"), "init", "--tools", "codex,opencode", *self.native_scope(), str(repo), env=env)
         self.assertEqual(union.returncode, 0, union.stderr)
         self.assertTrue((repo / ".agents/skills/openspec-explore/SKILL.md").exists())
         self.assertTrue((repo / ".agents/skills/openspec-apply-change/SKILL.md").exists())
@@ -992,7 +999,7 @@ class GlobalInstallTests(unittest.TestCase):
         repo = self.root / "custom-profile"
         repo.mkdir()
         initialized = call(str(self.bin / "openspec"), "init", "--tools",
-                           "claude,codex,opencode", str(repo), env=env)
+                           "claude,codex,opencode", *self.native_scope(), str(repo), env=env)
         self.assertEqual(initialized.returncode, 0, initialized.stderr)
         custom = repo / ".agents/skills/openspec-explore/SKILL.md"
         custom.write_text(custom.read_text() + "\n# locally customized\n")

@@ -8,8 +8,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCES = {
+    "resume-workflow": ("protocol/WORKTREES.md", "protocol/TEST_STRATEGY.md", "protocol/INCREMENTAL_DELIVERY.md"),
     "contract-handoff": ("templates/github/integration-contract.md",),
-    "issue-explore": ("templates/github/question.md",),
     "milestone-orchestrator": ("protocol/AI_WORKFLOW.md", "protocol/WORKTREES.md", "protocol/CI_PERFORMANCE.md", "protocol/TEST_STRATEGY.md"),
     "milestone-progress": ("protocol/AI_WORKFLOW.md", "protocol/WORKTREES.md"),
     "implement-issue": ("protocol/WORKTREES.md", "protocol/CI_PERFORMANCE.md", "protocol/TEST_STRATEGY.md"),
@@ -24,11 +24,10 @@ REFERENCES = {
     "chatgpt-web-refine-issue": ("protocol/CHATGPT_WEB_ISSUES.md", "protocol/VISUAL_ARTIFACTS.md"),
     "create-issue": ("protocol/CHATGPT_WEB_ISSUES.md", "protocol/VISUAL_ARTIFACTS.md"),
     "refine-issue": ("protocol/CHATGPT_WEB_ISSUES.md", "protocol/VISUAL_ARTIFACTS.md"),
-    "issue-audit": ("protocol/CI_PERFORMANCE.md",),
     "kaizen": ("protocol/CI_PERFORMANCE.md",),
     "ci-performance-audit": ("protocol/CI_PERFORMANCE.md",),
     "optimize-ci": ("protocol/CI_PERFORMANCE.md", "skills/ci-performance-audit/references/magento.md"),
-    "openspec-workflow": ("protocol/TEST_STRATEGY.md",),
+    "openspec-workflow": ("protocol/TEST_STRATEGY.md", "protocol/AI_WORKFLOW.md", "protocol/WORKTREES.md"),
 }
 
 
