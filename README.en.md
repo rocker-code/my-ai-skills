@@ -8,7 +8,7 @@ Skills and tools for issue-driven AI development. GitHub records decisions and d
 
 The workflow starts with the Web agent: describe your need, and the skills inspect context and create/refine the GitHub issue. The CLI agent then receives the issue or milestone and handles planning, implementation and review.
 
-The lifecycle moves through discovery, readiness, implementation, review and completion. OpenSpec is required; `openspec-workflow` governs exploration, proposals, exact-revision validation, implementation verification and archive.
+OpenSpec is the required lifecycle: Explore → Propose → Apply → Verify → Archive. `openspec-workflow` integrates GitHub requirements, exact-revision validation, ownership, tests and delivery, without parallel audit/ready gates.
 
 ### Resume after an interruption
 
@@ -30,7 +30,7 @@ Run the installer directly from GitHub:
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh -s -- --agent opencode
 ```
 
-The script installs the latest `main` revision. It downloads the **installer** from immutable commit `06139455da07e336d6969b66f90194afeb9302b8`, verifies SHA-256 `c8d4a9cc367fc40b754374c2fa7e774bd288db1a3806d645835eb65922d195f7`, and then installs the current revision, including the global `worktree-reservation` command.
+The script installs the latest `main` revision. It downloads the **installer** from immutable commit `e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d`, verifies SHA-256 `0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de`, and then installs the current revision, including the global `worktree-reservation` command.
 That commit must remain an ancestor of `main`: integrate this PR with a **merge commit**, never squash/rebase, so the launcher and its pinned object are published together. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
 
 To **update to the latest `main` revision**, run this only when you want an update:
@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scrip
 
 For a fresh installation, use `--agent codex` instead of `--agent opencode` for Codex only; repeat `--agent opencode --agent codex` for both. There is no autodetection or implicit default. Updates without flags preserve the verified selection; later explicit selection is **additive**, including at the same revision. Omitting an agent never removes it; a missing retained runtime blocks with a diagnostic.
 
-One canonical snapshot lives at `${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/versions/<SHA>`, with shared `active`. Schema 2 manifests record **available** integrations, files/modes/origin; schema 2 `guidance.json` records **installed** agents, paths and managed-block hashes. Legacy OpenCode schema 1 installations are verified against trusted Git before migration, without rewriting old versions. OpenCode links live at `${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills`; Codex links at `$HOME/.agents/skills` (not relocated by CODEX_HOME), with guidance at `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. Both point to the same `active/skills`.
+One canonical snapshot lives at `${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/versions/<SHA>`, with shared `active`. Schema 2 manifests record **available** integrations, files/modes/origin; schema 2 `guidance.json` binds the active revision to **installed** agents, paths and managed-block hashes. Legacy OpenCode schema 1 installations are verified against trusted Git before migration, without rewriting old versions. OpenCode links live at `${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills`; Codex links at `$HOME/.agents/skills` (not relocated by CODEX_HOME), with guidance at `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. Both point to the same `active/skills`. Inconsistent partial state after interruption blocks the next publication; orphan links aren't adopted merely because they look managed.
 
 Config/auth/hooks stay untouched. Changed CODEX_HOME/XDG, symlink ancestors, uncertain origins, duplicate/disabled skills or `AGENTS.override.md` shadowing guidance require explicit reconciliation. A collision in either agent prevents publication to both; failures roll back only proven own effects. Local diagnosis with `--project` does not authorize edits; `--baseline-revision` and `--reconcile-path` authorize only baseline-identical paths, with backups. See `update-ai-workflow` for the boundaries.
 

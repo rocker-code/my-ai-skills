@@ -11,6 +11,25 @@ spec.loader.exec_module(smoke)
 
 
 class NativeCodexSmokeTests(unittest.TestCase):
+    def test_interrupted_shell_requires_own_terminal_signal_not_missing_exit(self):
+        receipt = {"id": "sh_fixture", "cwd": "/fixture", "status": "exited", "signal": "SIGINT"}
+        smoke.require_interrupted_shell(receipt, "sh_fixture", Path("/fixture"))
+        smoke.require_interrupted_shell({**receipt, "signal": None, "exit": 130}, "sh_fixture", Path("/fixture"))
+        for wrong in ({**receipt, "signal": None}, {**receipt, "status": "running"},
+                      {**receipt, "id": "sh_other"}, {**receipt, "cwd": "/other"},
+                      {**receipt, "signal": None, "exit": 1}):
+            with self.subTest(receipt=wrong):
+                with self.assertRaisesRegex(RuntimeError, "BLOCKED"):
+                    smoke.require_interrupted_shell(wrong, "sh_fixture", Path("/fixture"))
+
+    def test_native_schema_graph_cannot_hide_unfinished_design(self):
+        smoke.require_planning_complete({"artifacts": [{"status": "done"}, {"status": "skipped"}]})
+        for status in ({}, {"artifacts": []}, {"artifacts": [{"status": "ready"}]},
+                       {"artifacts": [{"status": "done"}, {"status": "blocked"}]}):
+            with self.subTest(status=status):
+                with self.assertRaisesRegex(RuntimeError, "unfinished schema artifacts"):
+                    smoke.require_planning_complete(status)
+
     def test_native_compact_roots_are_resolved_not_assumed(self):
         text = ("### Skill roots\n- `r7` = `/tmp/project with spaces/.agents/skills`\n"
                 "### Available skills\n- openspec-explore: Explore things. "

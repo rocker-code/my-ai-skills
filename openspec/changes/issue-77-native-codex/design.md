@@ -183,13 +183,19 @@ Esses resultados validam **planejamento**, não implementação. Suite Python e 
 ### Estado atual (substitui pendências iniciais abaixo)
 
 - Auth isolada resolvida pelo [fallback oficial de cache headless](https://developers.openai.com/codex/auth.md?surface=cli): somente auth.json explícito copiado com permissão restrita e removido ao finalizar; config real intocada. Probe nativo Codex exit 0, thread `01a205d7-9681-7f81-b853-a83d5ce40a6c`, sem ferramentas; prova privada em `/tmp/opencode/issue77-native-probe-mbw28l2_`.
-- Instalador A atual: `06139455da07e336d6969b66f90194afeb9302b8`, digest `c8d4a9cc367fc40b754374c2fa7e774bd288db1a3806d645835eb65922d195f7`. As âncoras anteriores `d8dd884...`, `d06b4dc...` e `acc97c8...` não foram emendadas: novas revisões A incorporaram endurecimento de seleção, preservação CRLF/modos/rechecks de publicação e diagnóstico de skill desabilitada por nome. O launcher posterior fixa A atual literalmente; refs finais de B/HEAD ficam fora deste commit. Merge commit permanece obrigatório; API viva confirmou `allow_merge_commit=true`.
+- Instalador A atual: `e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d`, digest `0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de`. As âncoras anteriores `d8dd884...`, `d06b4dc...`, `acc97c8...`, `0613945...` e `1b6f01f...` não foram emendadas: novas revisões A incorporaram endurecimento de seleção, preservação CRLF/modos/rechecks, diagnóstico de skill desabilitada por nome, migração simultânea de aliases e recusa de estados parciais inconsistentes. O launcher posterior fixa A atual literalmente; refs finais de B/HEAD ficam fora deste commit. Merge commit permanece obrigatório; API viva confirmou `allow_merge_commit=true`.
 - Grupos de desenvolvimento: instalador completo 48 testes/exit 0 (`ev-20261123T005353Z-aa800272`), launcher 8/exit 0 (`ev-20261123T005203Z-8157c284`), distribuição 4/exit 0 (`ev-20261123T005212Z-f3f326d8`). Suite ampla no B limpo: 232 testes/exit 0 (`ev-20261123T005710Z-6660bf45`), **não é gate final pós-archive**. Novas alterações posteriores exigem novas provas.
 - Smoke OpenCode nativo: `ev-20261123T004648Z-5123e676`, exit 0, cinco skills oficiais carregadas/invocadas por API em dois projetos/worktree; `/tmp/opencode/smoke-global-opencode-5jzx8baq/results.json`. Não houve execução de modelo nesse smoke; não certifica lifecycle completo/independência Codex.
 - Smoke Codex ainda **BLOCKED/pendente**, não aprovado: primeira tentativa (`ev-20261123T004648Z-acaea6be`) tinha asserção de path incompatível com raízes compactas nativas rN; corrigida por resolver tabela real, sem aceitar paths presumidos. Segunda (`ev-20261123T005353Z-887e90e2`) comprovou cinco skills em três locais, contextos distintos e sete execuções nativas terminadas, mas parou após commit de proposta por checkpoint sem reverify. Diagnóstico: fixture/controlador escreveu depois de checkpoint sem abrir novo intervalo verificado; a recusa do helper estava correta. Corrigido o smoke, não a proteção. Ainda faltam execução completa, retomada/consulta cross-agent e provas finais.
 - Uma falha focada do baseline schema 1 usava modos de diretórios do working tree copiado (ex. 0664) em vez do checkout Git normalizado; corrigida a fixture para reconstruir manifesto do snapshot Git confiável. Grupo completo também revelou fixture de fallback OpenSpec sem launcher no PATH após mudança da ordem segura de preflight; foi corrigido somente o PATH, preservada a asserção de digest adulterado recusado.
 - Terceira execução nativa (`ev-20261123T010347Z-334e49f9`) passou por descoberta, fresh context, proposta e revisão independente (oito threads terminadas) e transferência Codex→sessão OpenCode real. Parou corretamente por shell OpenCode ainda `running` no primeiro GET: API é assíncrona. Smoke agora espera o resultado terminal do comando exato, com prazo finito, antes de avaliar exit; nunca converte dispatch em aprovação.
 - Inspeção dos eventos também revelou apps ChatGPT habilitados por default apesar de HOME vazio: a revisão tentou consultas reais somente leitura ao repo fixture (404). Nenhuma mutação real foi observada. Próximas execuções desabilitam apps, busca/browser/computer-use/remote-plugin e subagentes por opções oficialmente suportadas, além de recusar eventos MCP/web; todo backend GitHub deve passar pelo `gh` fixture capturado. Isso restringe somente o smoke, não o usuário.
+- Quarta execução (`ev-20261123T011722Z-6ae30314`): retomada passou com Codex planner `01a205fc-682f-7c41-9784-f0ce1b36b32f` → OpenCode `ses_dfa0274f5ffeGyhVDeJWLA5b60` → status Codex novo `01a205fd-91ab-76b1-b97f-386a90f19694` → fresh Apply `01a205fe-214f-72f3-87ed-f951e5768105`. Mesmo checkout/change/PR draft fixture; writer desconhecido recusado; shell interrompido não aprovado; snapshots de arquivos Git e HEAD inalterados nas consultas. OpenCode aqui executa sessão/skills/shell, não modelo; sem portabilidade de chat.
+- Nessa execução, Apply e teste real (1/1) passaram e Verify oficial em thread `01a205fe-be27-7710-a044-91d7e0cb3d76` retornou VERIFY_CLEAN. Archive em `01a205ff-6820-7ae1-ae08-a9e6e26641df` corretamente pediu confirmação: a proposta fixture havia omitido design.md, mas o CLI ainda o marcava ready. Smoke continua falho (não houve archive/PR/segunda issue). Correção: exigir explicitamente todos os artefatos do schema na proposta fixture e validar grafo antes de review/Apply, não dispensar a confirmação nem criar design durante Archive. Também fixar main como branch inicial da fixture, coerente com o backend, e python3 nos comandos planejados.
+- Novo B limpo `687a18064362f6d18a085e30c4d017c43167af26`: suite ampla de desenvolvimento 234 testes/exit 0 (`ev-20261123T011722Z-fc123b4d`), smoke OpenCode exit 0 (`ev-20261123T011722Z-660f5359`). Ainda não é gate final pós-closeout.
+- Self-review encontrou o caso real de skills.sh com diretório universal Codex e alias OpenCode do mesmo nome. Teste novo inicialmente recusou baseline no segundo agente porque o fetch repetia o mesmo diretório temporário. A atual compartilha o baseline confiável por nome e migra aliases antes do diretório, revertendo em ordem inversa. Prova focada com rollback dos dois caminhos: 7 testes/exit 0, `ev-20261123T013419Z-39a81adf`; sem enfraquecer origem/bytes/EXDEV/backup.
+- A fixture de lifecycle agora usa Git real com origin bare local e main coerente, permitindo commit/push não forçado de preparação sem acesso a GitHub real; somente o backend gh é simulado. Isso não comprova publicação/CI/review hospedados.
+- Para cumprir a transação coerente de D4, o ownership schema 2 (novo, ainda não publicado) vincula explicitamente a revisão ativa e aceita links anteriores somente quando inventariados no pacote anterior comprovado. Estado interrompido com revisão divergente, links órfãos ou skill anterior ausente bloqueia sem reparo/adopção implícitos. É detalhe de integridade do registro operacional existente, não store/lifecycle novo nem redução do contrato aprovado; schema 1 publicado permanece compatível. Prova focada: 13 testes/exit 0 (`ev-20261123T015259Z-ae54d69f`). Uma edição intermediária de indentação falhou antes da execução (`ev-20261123T015211Z-8f4ca06b`); corrigida no próprio código e refeito o grupo sem mudar asserções.
 
 ### Registro inicial histórico (não é o status atual)
 
@@ -333,6 +339,30 @@ As duas falhas históricas abaixo foram observadas no transcript nativo da sess�
       "simplest_alternative": "Esperar status terminal do comando exato por leitura nativa delimitada",
       "choice_rationale": "Preservar a asserção de término/exit; não usar sleep fixo nem aceitar running como sucesso",
       "next_hypothesis": "Resultado terminal real permite distinguir consulta bem-sucedida e teste interrompido sem aprovar este último"
+    },
+    {
+      "kind": "attempt", "seq": 12, "obligation": "codex-smoke",
+      "signature": "AssertionError: native archive awaited confirmation for unfinished design artifact",
+      "target": "smoke_global_codex.py --cross-agent-opencode", "class": "fixture/isolation",
+      "hypothesis": "Esperar shell terminal permite avançar retomada e lifecycle",
+      "change": "Wait nativo delimitado e restrição de conectores externos", "change_target": "test",
+      "observed_effect": "Retomada, fresh Apply, teste real e Verify passaram; Archive manteve change ativa por design.md ready",
+      "result": "fail", "evidence": ["evidence:ev-20261123T011722Z-6ae30314"]
+    },
+    {
+      "kind": "diagnosis", "seq": 13,
+      "group": {"obligation": "codex-smoke", "signature": "AssertionError: native archive awaited confirmation for unfinished design artifact"},
+      "class": "fixture/isolation",
+      "checked": {
+        "phase": "Archive oficial após Apply/teste/Verify concluídos",
+        "scope": "proposta fixture mínima, artefato design.md ausente",
+        "lifecycle": "CLI status mantém design ready e skill exige confirmação de artefato pendente",
+        "consumers": "contrato schema planning → Archive; a recusa nativa é correta"
+      },
+      "runtime_proof": ["evidence:ev-20261123T011722Z-6ae30314"],
+      "simplest_alternative": "Exigir design e demais artefatos do schema no Propose antes de review/Apply",
+      "choice_rationale": "Não simular confirmação nem reduzir gate; manter Archive e validação oficiais intactos",
+      "next_hypothesis": "Grafo de planejamento completo permite sync/archive sem aprovação excepcional"
     }
   ]
 }

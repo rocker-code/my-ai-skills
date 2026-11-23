@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "scripts/install.sh"
 UPDATER = ROOT / "scripts/update.sh"
 ENTRY = ROOT / "scripts/install-global"
-REVISION = "06139455da07e336d6969b66f90194afeb9302b8"
+REVISION = "e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d"
 
 
 class LauncherTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class LauncherTests(unittest.TestCase):
         pinned = subprocess.run(["git", "show", f"{REVISION}:scripts/install-global"],
                                 cwd=ROOT, capture_output=True, check=True).stdout
         self.assertEqual(hashlib.sha256(pinned).hexdigest(),
-                          "c8d4a9cc367fc40b754374c2fa7e774bd288db1a3806d645835eb65922d195f7")
+                          "0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de")
         self.assertEqual(pinned, ENTRY.read_bytes())
         self.assertEqual(subprocess.run(["git", "merge-base", "--is-ancestor", REVISION, "HEAD"],
                                         cwd=ROOT).returncode, 0)
@@ -53,6 +53,12 @@ class LauncherTests(unittest.TestCase):
             "#!/bin/sh\n"
             "if [ \"$1\" = -c ]; then exec \"$REAL_PYTHON\" \"$@\"; fi\n"
             "printf '%s\\n' \"$@\" > \"$EXECUTION_LOG\"\n"
+            '"$REAL_PYTHON" -c \'import json,os,sys;from pathlib import Path;'
+            'a=sys.argv[1:];r=a[a.index("--revision")+1];p=Path(os.environ["XDG_DATA_HOME"])/"my-ai-skills";'
+            'm=json.loads((p/"active/manifest.json").read_text());m["revision"]=r;'
+            '(p/"active/manifest.json").write_text(json.dumps(m));'
+            'g=json.loads((p/"guidance.json").read_text());g["revision"]=r;'
+            '(p/"guidance.json").write_text(json.dumps(g))\' "$@"\n'
         )
         python.chmod(0o755)
         git = bin_dir / "git"
@@ -88,7 +94,7 @@ class LauncherTests(unittest.TestCase):
         instructions = root / "config/opencode/AGENTS.md"
         instructions.write_text("fixture instructions")
         (data.parent / "guidance.json").write_text(json.dumps({
-            "schema": 2, "agents": {"opencode": {"skills": str(link.parent),
+            "schema": 2, "revision": "a" * 40, "agents": {"opencode": {"skills": str(link.parent),
                                                 "instructions": str(instructions)}}}))
         self.env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + str(global_bin) + os.pathsep + os.environ["PATH"],
                     "HOME": str(root), "XDG_DATA_HOME": str(root / "data"),

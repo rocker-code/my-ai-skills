@@ -8,7 +8,7 @@ Skills e ferramentas para desenvolvimento com IA orientado por issues. O GitHub 
 
 O fluxo começa no agente Web: você descreve a necessidade, as skills consultam o contexto e criam/refinam a issue no GitHub. Depois, o agente CLI recebe a issue ou milestone e conduz o planejamento, a implementação e a revisão.
 
-O ciclo passa por descoberta, prontidão, implementação, revisão e conclusão. OpenSpec é obrigatório; `openspec-workflow` rege exploração, propostas, validação da revisão exata, verificação da implementação e arquivamento.
+OpenSpec é o ciclo obrigatório: Explore → Propose → Apply → Verify → Archive. `openspec-workflow` integra requisitos GitHub, validação da revisão exata, posse, testes e entrega, sem gates audit/ready paralelos.
 
 ### Retomar após interrupção
 
@@ -30,7 +30,7 @@ Execute o instalador diretamente do GitHub:
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh -s -- --agent opencode
 ```
 
-O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `06139455da07e336d6969b66f90194afeb9302b8`, confere seu SHA-256 `c8d4a9cc367fc40b754374c2fa7e774bd288db1a3806d645835eb65922d195f7` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`.
+O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d`, confere seu SHA-256 `0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`.
 Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use o [comando com entrada verificada](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global) para maior garantia.
 
 Para **atualizar para a versão mais recente da `main`**, execute (somente quando quiser atualizar):
@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scrip
 
 Na primeira instalação, escolha `--agent codex` em vez de `--agent opencode` para usar somente Codex; repita `--agent opencode --agent codex` para ambos. Não há autodetecção nem default implícito. Update sem flags preserva a seleção comprovada; seleção explícita posterior é **aditiva**, inclusive na mesma revisão. Não remove agentes por omissão; runtime mantido ausente bloqueia com diagnóstico.
 
-Um snapshot canônico fica em `${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/versions/<SHA>`, com `active` compartilhado. Manifesto schema 2 registra integrações **disponíveis**, arquivos/modos/origem; `guidance.json` schema 2 registra agentes **instalados**, caminhos e hashes dos blocos gerenciados. Instalações OpenCode schema 1 são verificadas contra Git confiável antes da migração, sem regravar versões antigas. Links OpenCode ficam em `${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills`; links Codex em `$HOME/.agents/skills` (não relocados por CODEX_HOME), com orientação em `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. Ambos apontam para o mesmo `active/skills`.
+Um snapshot canônico fica em `${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/versions/<SHA>`, com `active` compartilhado. Manifesto schema 2 registra integrações **disponíveis**, arquivos/modos/origem; `guidance.json` schema 2 vincula a revisão ativa aos agentes **instalados**, caminhos e hashes dos blocos gerenciados. Instalações OpenCode schema 1 são verificadas contra Git confiável antes da migração, sem regravar versões antigas. Links OpenCode ficam em `${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills`; links Codex em `$HOME/.agents/skills` (não relocados por CODEX_HOME), com orientação em `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. Ambos apontam para o mesmo `active/skills`. Estado parcial inconsistente após interrupção bloqueia a próxima publicação; links órfãos não são adotados por parecerem gerenciados.
 
 Config/auth/hooks permanecem intocados. CODEX_HOME/XDG alterados, symlinks ancestrais, origem incerta, skills homônimas/desabilitadas ou `AGENTS.override.md` sombreando orientação exigem reconciliação explícita. Colisão em um agente impede publicação nos dois; falha reverte somente efeitos comprovadamente próprios. Diagnóstico local com `--project` não autoriza edição; `--baseline-revision` e `--reconcile-path` autorizam somente paths idênticos ao baseline, com backup. Consulte a skill `update-ai-workflow` para os limites.
 

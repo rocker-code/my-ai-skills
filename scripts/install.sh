@@ -3,8 +3,8 @@
 # This cannot verify the launcher itself when it is fetched and piped to sh.
 set -eu
 
-entry_revision=06139455da07e336d6969b66f90194afeb9302b8
-entry_sha256=c8d4a9cc367fc40b754374c2fa7e774bd288db1a3806d645835eb65922d195f7
+entry_revision=e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d
+entry_sha256=0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de
 
 resolve_main() (
     ref=refs/heads/main
@@ -70,12 +70,13 @@ import json,pathlib,sys
 active=pathlib.Path(sys.argv[1])
 record=json.loads((active.parent/"guidance.json").read_text())
 assert record["schema"] == 2 and record["agents"]
+assert record["revision"] == json.loads((active/"manifest.json").read_text())["revision"] == sys.argv[2]
 for agent,entry in record["agents"].items():
     assert agent in ("opencode","codex")
     skill=pathlib.Path(entry["skills"])/"apply-issue"
     assert skill.is_symlink() and skill.resolve() == (active/"skills/apply-issue").resolve()
     assert (skill/"SKILL.md").is_file() and pathlib.Path(entry["instructions"]).is_file()
-' "$data" || ! openspec --version ||
+' "$data" "$revision" || ! openspec --version ||
    ! test -x "$HOME/.local/bin/worktree-reservation" ||
    [ "$(command -v worktree-reservation || :)" != "$HOME/.local/bin/worktree-reservation" ] ||
    ! worktree-reservation --help >/dev/null; then

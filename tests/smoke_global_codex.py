@@ -63,6 +63,20 @@ def discovered_paths(visible):
     return paths
 
 
+def require_planning_complete(status):
+    artifacts = status.get("artifacts")
+    if (not isinstance(artifacts, list) or not artifacts
+            or any(item.get("status") not in ("done", "skipped") for item in artifacts)):
+        raise RuntimeError("BLOCKED: native proposal has unfinished schema artifacts")
+
+
+def require_interrupted_shell(detail, shell_id, cwd):
+    if (detail.get("id") != shell_id or detail.get("cwd") != str(cwd)
+            or detail.get("status") not in ("exited", "killed")
+            or not (detail.get("signal") == "SIGINT" or detail.get("exit") in (-2, 130))):
+        raise RuntimeError("BLOCKED: native interrupted shell receipt is missing or belongs to another execution")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--auth-cache", type=Path, help="Explicit regular auth.json; never config.toml")
@@ -149,9 +163,12 @@ def main():
         (base / f"input-{index}.json").write_text(visible)
         command = [cli, "exec", *native_config, "--json", "--ephemeral", "--ignore-user-config",
                    "--ignore-rules", "--sandbox", "workspace-write" if writable else "read-only",
-                   "--cd", str(repo), "--add-dir", str(base / "project-one" / ".git")]
+                   "--cd", str(repo), "--add-dir", str(base / "project-one" / ".git"),
+                   "--add-dir", str(base / "github-origin.git")]
         full_prompt = prompt + ("\nAll GitHub access MUST use the local gh fixture only; "
                                 "no apps/connectors/web/network access or real GitHub mutations. "
+                                "This is the explicitly authorized fixture/native-smoke namespace; "
+                                "Git origin is a disposable local bare fixture representing it. "
                                 "Do not read credentials/auth files. No subagents in this controlled smoke.")
         if writable:
             full_prompt += (
@@ -271,7 +288,7 @@ def main():
         for name in ("project-one", "project-two"):
             repo = base / name
             repo.mkdir()
-            run(["git", "init", "-q", repo])
+            run(["git", "init", "-q", "--initial-branch", "main", repo])
             run(["git", "config", "user.name", "Smoke"], cwd=repo)
             run(["git", "config", "user.email", "smoke@example.org"], cwd=repo)
             (repo / "README.md").write_text("Disposable Codex native smoke\n")
@@ -290,11 +307,15 @@ def main():
             projects.append(repo)
         worktree = base / "worktree with spaces"
         current_issue = "https://github.com/fixture/native-smoke/issues/1"
-        run(["git", "remote", "add", "origin", "https://github.com/fixture/native-smoke.git"], cwd=projects[0])
+        remote = base / "github-origin.git"
+        run(["git", "init", "--bare", "-q", "--initial-branch", "main", remote])
+        run(["git", "remote", "add", "origin", remote], cwd=projects[0])
+        run(["git", "push", "-qu", "origin", "main"], cwd=projects[0])
         run([helper, "reserve", "--planned", "--path", worktree, "--repository", projects[0],
              "--issue", current_issue, "--branch", "smoke-issue", "--session", args.controller_session,
              "--run", "codex-native-smoke", "--json"])
         run(["git", "worktree", "add", "-qb", "smoke-issue", worktree], cwd=projects[0])
+        run(["git", "push", "-q", "origin", "smoke-issue"], cwd=projects[0])
         reservation("reserve", worktree, args.controller_session, "--issue", current_issue,
                     "--branch", "smoke-issue", "--run", "codex-native-smoke")
         owners[str(worktree)] = args.controller_session
@@ -349,20 +370,36 @@ def main():
         backend = tools / "gh"
         backend.unlink()  # Only our disposable symlink.
         backend.write_text("#!/usr/bin/env python3\n"
-                           "import json,os,sys\nfrom pathlib import Path\n"
+                           "import json,os,sys,subprocess\nfrom pathlib import Path\n"
                            "p=Path(os.environ['SMOKE_GH_STATE']);s=json.loads(p.read_text());a=sys.argv[1:]\n"
                            "with open(os.environ['SMOKE_GH_CALLS'],'a') as f:f.write(json.dumps(a)+'\\n')\n"
+                           "def target_pr():\n"
+                           " target=a[2].split('/')[-1] if len(a)>2 and not a[2].startswith('-') else None\n"
+                           " return next(x for x in s['prs'] if (str(x['number'])==target if target else x.get('issue_number')==int(os.environ['SMOKE_ISSUE_NUMBER'])))\n"
+                           "def fields(out):\n"
+                           " for option,key in (('--title','title'),('--body','body')):\n"
+                           "  if option in a:out[key]=a[a.index(option)+1]\n"
+                           " if '--body-file' in a:\n"
+                           "  file=a[a.index('--body-file')+1];out['body']=sys.stdin.read() if file=='-' else Path(file).read_text()\n"
+                           "for pr in s['prs']:\n"
+                           " ref=pr.get('headRefName','');g=subprocess.run(['git','--git-dir',os.environ['SMOKE_GIT_REMOTE'],'rev-parse','--verify','refs/heads/'+ref],capture_output=True,text=True)\n"
+                           " if g.returncode==0:pr['headRefOid']=g.stdout.strip()\n"
                            "if a[:2]==['issue','list']:out=s['issues']\n"
                            "elif a[:2]==['issue','view']:out=next(x for x in s['issues'] if str(x['number'])==a[2].split('/')[-1])\n"
                            "elif a[:2]==['pr','list']:out=[x for x in s['prs'] if x.get('issue_number')==int(os.environ['SMOKE_ISSUE_NUMBER'])]\n"
-                           "elif a[:2]==['pr','view']:out=next(x for x in s['prs'] if str(x['number'])==a[2].split('/')[-1])\n"
+                           "elif a[:2]==['pr','view']:out=target_pr()\n"
                            "elif a[:2]==['pr','create']:\n"
-                           " n=len(s['prs'])+1;out={'number':n,'url':f'https://github.com/fixture/native-smoke/pull/{n}','state':'OPEN','issue_number':int(os.environ['SMOKE_ISSUE_NUMBER'])};s['prs'].append(out);p.write_text(json.dumps(s))\n"
+                           " n=len(s['prs'])+1;head=a[a.index('--head')+1] if '--head' in a else subprocess.check_output(['git','branch','--show-current'],text=True).strip()\n"
+                           " out={'number':n,'url':f'https://github.com/fixture/native-smoke/pull/{n}','state':'OPEN','isDraft':'--draft' in a,'headRefName':head,'baseRefName':'main','issue_number':int(os.environ['SMOKE_ISSUE_NUMBER'])};fields(out);s['prs'].append(out);p.write_text(json.dumps(s))\n"
+                           "elif a[:2] in (['pr','edit'],['pr','ready']):\n"
+                           " out=target_pr()\n"
+                           " if a[1]=='ready':out['isDraft']=False\n"
+                           " fields(out);p.write_text(json.dumps(s))\n"
                            "elif a[:2]==['repo','view']:out={'nameWithOwner':'fixture/native-smoke','defaultBranchRef':{'name':'main'}}\n"
                            "else:raise SystemExit('Fixture unsupported: '+repr(a))\n"
                            "print(json.dumps(out))\n")
         backend.chmod(0o755)
-        env.update(SMOKE_GH_STATE=str(fixture), SMOKE_GH_CALLS=str(calls))
+        env.update(SMOKE_GH_STATE=str(fixture), SMOKE_GH_CALLS=str(calls), SMOKE_GIT_REMOTE=str(remote))
         for number in (1, 2):
             env["SMOKE_ISSUE_NUMBER"] = str(number)
             change = f"fixture-value-{number}"
@@ -387,9 +424,14 @@ def main():
             native(f"propose-{number}", worktree,
                    f"$openspec-propose\nCreate change {change} ONLY for {current_issue}; "
                    "read gh issue view. Minimal Python constant module and unittest; inspect source. "
+                   "For this fixture explicitly create ALL schema planning artifacts, including design.md "
+                   "even though the implementation is simple; do not leave any CLI artifact ready/blocked. "
+                   "Use python3 (not python) in all documented fixture test commands. "
                    "Use official CLI artifact instructions and strict validation. Planning ONLY. "
                    "Do not implement, do not touch the other issue, no comments. Keep artifacts concise.",
                    writable=True)
+            require_planning_complete(json.loads(run(
+                [openspec, "status", "--change", change, "--json"], cwd=worktree)))
             run([openspec, "validate", change, "--strict", "--no-interactive"], cwd=worktree)
             run(["git", "add", f"openspec/changes/{change}"], cwd=worktree)
             run(["git", "commit", "-qm", f"proposal {number}"], cwd=worktree)
@@ -400,7 +442,7 @@ def main():
                                   f"Read-only independent planning review of exact HEAD {plan}, "
                                   f"change {change}, live fixture issue {current_issue}. "
                                   "Inspect the immutable artifacts and source. If materially sound reply "
-                                  "PLAN_APPROVED; otherwise list blockers. No writes/comments.")
+                                  "with the standalone line PLAN_APPROVED (no formatting); otherwise list blockers. No writes/comments.")
             assert re.search(r"(?m)^PLAN_APPROVED\s*$", review), review
             if number == 1 and args.cross_agent_opencode:
                 # Supported native session tools suffice for identity and shell
@@ -459,12 +501,14 @@ def main():
                     assert snapshot(worktree) == before_status
                     interrupted, messages = native_shell(
                         session_id, "python3 -c 'import os,signal; os.kill(os.getpid(),signal.SIGINT)'")
-                    assert interrupted["status"] != "running" and interrupted.get("exit") != 0
+                    detail = api("get", f"/api/shell/{interrupted['shellID']}")["data"]
+                    require_interrupted_shell(detail, interrupted["shellID"], worktree)
                     (base / "opencode-recovery-messages.json").write_text(json.dumps(messages, indent=2))
                     recovery = {"opencode_session": session_id, "previous_codex_thread": previous,
                                 "checkout": str(worktree), "change": change,
                                 "pr": "https://github.com/fixture/native-smoke/pull/1",
                                 "test_result": "incomplete/interrupted; NOT PASSED",
+                                "interrupted_shell": {key: detail.get(key) for key in ("id", "status", "exit", "signal")},
                                 "history_portable": False, "status_readonly": True,
                                 "opencode_model_execution": False}
                     (base / "recovery.json").write_text(json.dumps(recovery, indent=2))
@@ -495,8 +539,9 @@ def main():
             test_output = test.stdout + test.stderr
             (base / f"tests-{number}.log").write_text(test_output)
             count = re.search(r"Ran (\d+) tests?", test_output)
-            assert test.returncode == 0 and count and int(count[1]) > 0, test_output
-            run(["python3", "-c", f"import value_{number}; assert value_{number}.VALUE == {number}"],
+            assert (test.returncode == 0 and count and int(count[1]) > 0
+                    and not re.search(r"(?:skipped|expected failures|unexpected successes)\s*=", test_output)), test_output
+            run(["python3", "-c", f"import value_{number}; assert type(value_{number}.VALUE) is int and value_{number}.VALUE == {number}"],
                 cwd=worktree)
             report, _, _ = native(f"verify-{number}", worktree,
                    f"$openspec-verify-change\nVerify change {change}, actual code and tests. "
@@ -516,12 +561,20 @@ def main():
             assert len(archives) == 1 and not (worktree / f"openspec/changes/{change}").exists()
             pr_response, _, _ = native(f"pr-park-{number}", worktree,
                    f"$prepare-pr\nPrepare the fixture-only PR for issue {current_issue}; use gh pr list before gh pr create. "
-                   "No real push or merge: the GitHub backend is an explicitly disposable fixture. "
+                   "Git origin is the disposable local bare fixture, not GitHub: scoped commit and "
+                   "non-force push ONLY to that local origin are authorized. No external push or merge. "
                    "Create at most one fixture PR, then explicitly park this issue awaiting independent review. "
                    "No stage/status/hidden comments. No trivial/duplicate evolution issues. "
-                   "Return PARKED_FOR_REVIEW; do not start the next issue.", writable=True)
+                   f"Keep any temporary PR body under {base}, outside the checkout. "
+                   "Finish with clean Git source and current HEAD pushed to the local bare origin. "
+                   "Return the standalone line PARKED_FOR_REVIEW exactly (no formatting); do not start the next issue.",
+                   writable=True)
             assert re.search(r"(?m)^PARKED_FOR_REVIEW\s*$", pr_response), pr_response
             assert len(json.loads(fixture.read_text())["prs"]) == number
+            assert not run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=worktree)
+            assert run(["git", "rev-parse", "HEAD"], cwd=worktree).strip() == run([
+                "git", "--git-dir", remote, "rev-parse",
+                "refs/heads/" + ("smoke-issue" if number == 1 else "smoke-issue-2")]).strip()
             if number == 1:
                 assert not (worktree / "value_2.py").exists()
                 assert not (worktree / "openspec/changes/fixture-value-2").exists()
