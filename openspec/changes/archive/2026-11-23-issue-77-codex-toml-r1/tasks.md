@@ -16,8 +16,8 @@ Follow-up material R1 da mesma #77/PR81. Iniciar somente após revisão independ
 
 ## 3. Verificação integrada pré-archive
 
-- [ ] 3.1 Executar grupos focados `test_global_install.py`, `test_install_launcher.py` e `test_instrumentation_distribution.py` com bytecode desabilitado e smokes nativos afetados; preencher R1.1–R1.8 com provas acessíveis/SHA/resultados e preservar T1–T11/P1/P2 sem reclassificar reprodução ou prova histórica como gate novo.
-- [ ] 3.2 Invocar Verify oficial desta follow-up, tratar findings conforme política e executar `openspec validate issue-77-codex-toml-r1 --strict --no-interactive --json`; verificar coerência de parser/dependência/spec/tasks e preservar testes/revisão independente obrigatórios.
+- [x] 3.1 Executar grupos focados `test_global_install.py`, `test_install_launcher.py` e `test_instrumentation_distribution.py` com bytecode desabilitado e smokes nativos afetados; preencher R1.1–R1.8 com provas acessíveis/SHA/resultados e preservar T1–T11/P1/P2 sem reclassificar reprodução ou prova histórica como gate novo.
+- [x] 3.2 Invocar Verify oficial desta follow-up, tratar findings conforme política e executar `openspec validate issue-77-codex-toml-r1 --strict --no-interactive --json`; verificar coerência de parser/dependência/spec/tasks e preservar testes/revisão independente obrigatórios.
 
 ## Workflow follow-up
 

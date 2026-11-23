@@ -124,18 +124,18 @@ O payload está dentro do instalador: não há grafo novo de downloads/arquivos 
 
 ## Requirement → Test Risk Matrix
 
-Todos os testes de **correção** abaixo estão PENDING/NOT RUN neste planejamento. `ev-20261123T031826Z-1962e5f7` é reprodução histórica, não aprova nenhuma linha.
+No planejamento todos os testes de correção estavam PENDING/NOT RUN. A tabela abaixo registra a execução Apply; `ev-20261123T031826Z-1962e5f7` permanece reprodução histórica, não aprova nenhuma linha.
 
 | ID | Requisito/risco e consumidor | Menor prova planejada | Estado |
 |---|---|---|---|
-| R1.1 / T8 | `inspect_codex` ignora 3 formas válidas; seletor nome/path decodificado | ampliar `test_global_install.py`: literal, indentado, dotted key espaçada e array inline; amostra de chaves quoted/escapes com ambos seletores; todos bloqueiam quando canônicos false | Pendente |
-| R1.2 / T8 | regex confundia texto com estrutura ou runtime config não relacionado | controles config ausente, skills ausentes, enabled true, outra skill false e comentário/string com falso TOML; nenhum falso bloqueio textual | Pendente |
-| R1.3 / T7/T8 | parse/leitura/schema falha, segredo/efeito parcial | negativos TOML truncado/chave duplicada, UTF-8 inválido, `skills.config` com tipo errado e enabled string; preservar bytes/modos/auth/active/ownership/links/launcher em update com ambos; segredo sentinela ausente nas saídas | Pendente |
-| R1.4 / T1/T2/T3 | standalone e Python mínimo sem dependência ambiente | executar parser/guard e instalação pública isolada num Python **3.10 real**, sem tomllib/tomli externo e sem rede para parser; repetir casos em Python atual; cwd/PYTHONPATH com `tomli` sentinela não executa; OpenCode-only independe do carregamento | Pendente |
-| R1.5 / P1/P2 | dependência/license/proveniência não cobertas | ampliar testes distribuição/launcher: decodificar offline sdist, conferir hash/membros/licença e código intacto; corrupção do payload não carrega módulo; corrupção da entrada externa não executa; documentação completa/paridade pt/en | Pendente |
-| R1.6 / T3/T8 | bytes de versão ativa/novo material fora do ownership/rollback | testes existentes de manifesto/adulteração/failpoints com novo instalador e docs, update de versão anterior e três seleções; sem schema novo ou versões apagadas | Pendente |
-| R1.7 / P1 | nova implementação não publicada no pin | novo A_R1 ancestral de B_R1; digest literal igual aos bytes completos; fluxos públicos do instalador correto e update preservam seleção; âncoras antigas não emendadas e merge commit obrigatório | Pendente |
-| R1.8 / T1–T11/P1/P2 | regressão em distribuição ou restante do contrato | grupos focados existentes, smokes nativos afetados e suite completa final com provas por SHA; manter todas as obrigações originais sem novo lifecycle | Pendente |
+| R1.1 / T8 | `inspect_codex` ignora 3 formas válidas; seletor nome/path decodificado | `test_codex_semantic_spellings_and_non_rule_controls`: quatro grafias + quoted, nome/path e escapes; bloqueio e bytes/modos | PASS focados `ev-20261123T034454Z-873758bb` |
+| R1.2 / T8 | falso positivo textual | mesmo teste: ausente, skills ausentes, true, enabled ausente, outra skill false, comentário/string | PASS mesmos focados |
+| R1.3 / T7/T8 | parse/leitura/schema/limites, segredo/efeito parcial | `test_codex_invalid_config_preserves_multiagent_update_and_secrets` + erro IO mockado: UTF-8, duplicata/truncamento, tipos/subconjunto, 1 MiB/aninhamento; snapshot de bytes/modos/active/ownership/links/launcher/auth | PASS mesmos focados |
+| R1.4 / T1/T2/T3 | standalone/Python mínimo/shadowing | grupos completos em Python **3.10.22 real**, sem tomli/tomllib ambiente; standalone/cwd/PYTHONPATH sentinelas e OpenCode-only | PASS 71/71 `ev-20261123T034502Z-ce423f52`; atual 71/71 |
+| R1.5 / P1/P2 | proveniência/licença/integridade | distribuição decodifica sdist offline, seis membros intactos e licença; corrupção rejeitada antes de archive/import; standalone/limpeza; pin externo cobre payload | PASS nos dois grupos completos |
+| R1.6 / T3/T8 | inventário/rollback/update | casos existentes preservados; missing/modified ampliado para instalador/docs novos; manifesto, failpoints, migração anterior, três seleções | PASS nos dois grupos completos |
+| R1.7 / P1 | novo par imutável | A_R1 `7c4cfb4…`, B_R1 `a080649…`, digest literal/bytes/ancestralidade; fluxos públicos e receitas pt/en | PASS nos focados; disponibilidade pública pós-merge ainda não declarada |
+| R1.8 / T1–T11/P1/P2 | regressão restante | focados 71/71; novo smoke OpenCode 15 sessões `ev-20261123T034740Z-944cc10c`; novo diagnóstico nativo Codex 3 locais `ev-20261123T034748Z-e6f908ea`; gate completo somente no HEAD final pós-archive | PASS focados/superfícies afetadas; gate final registrado fora do commit/na PR |
 
 ### Commands and evidence
 
@@ -181,3 +181,35 @@ Pesquisa da dependência foi somente leitura/verificação de bytes em memória.
 - Preflight: descoberta/fixtures `unittest`, ferramentas Git/gh/jq/curl/OpenSpec disponíveis; HOME/CODEX_HOME/XDG/PATH isolados por teste, transporte Git fixture; sem serviços, manifests de dependências ou DB compartilhados. Nenhum modelo/credencial nos testes focados.
 - Um desenvolvimento falhou (`ev-20261123T033858Z-13f4eda9`): cauda de teste existente deslocada por inserção, corrigida sem remover asserts; o teste de receita ainda apontava A antigo antes da criação obrigatória de A_R1/B_R1. Não foi atribuído ao base nem aprovado; focados posteriores passaram. Não houve episódio de falha repetida. O wrapper rejeitou um identificador `--tool` com path antes de executar teste; corrigido para versão não secreta, não é execução de teste.
 - Provas de desenvolvimento ficam históricas após commits; `no_required_gate` dá exit 3 no verifier mesmo para `verified/passed`. Nenhuma delas substitui a suite local obrigatória no HEAD final limpo após archive/commits.
+- B_R1: `a0806493280d062ae477a608ccdcc67a3ca337e5`, posterior a A_R1. Os bytes do instalador não mudam após A_R1; arquivo `update.sh` permanece byte-idêntico ao head anterior.
+- Smokes no B_R1: OpenCode `ev-20261123T034740Z-944cc10c`, `verified/passed`, cinco skills oficiais invocadas por API em 15 sessões/3 locais, sem modelo; Codex `ev-20261123T034748Z-e6f908ea`, `verified/passed`, instalação nova com config existente e `codex debug prompt-input` comprova paths nativos/canônicos em dois projetos + worktree com espaços. O probe issue-local, inputs JSON e relatório estão checksum-bound. **Não** executou modelo nem repetiu lifecycle Codex.
+- Reuso limitado: o smoke Codex completo `ev-20261123T024546Z-fe334d2b` (20 threads/duas issues) e OpenCode anterior `ev-20261123T030740Z-e416dfdf` são históricos, não gates atuais. Comparação de bytes contra `87543a49a4302017cbe558cfeacbcbf57e521ee3` confirmou **todos** os arquivos `skills/`, `protocol/`, `templates/`, os dois `tests/smoke_global_*.py`, `scripts/worktree-reservation` e `scripts/worktree_registry.py` idênticos. Assim somente semântica de workflow/lifecycle/recovery inalterada retém prova histórica; instalação/parser/discovery afetados receberam novas provas. Não alega novo modelo, delegação, CI ou merge hospedados.
+
+## Verification Report: issue-77-codex-toml-r1
+
+Skill oficial nativa `.agents/skills/openspec-verify-change/SKILL.md` invocada nesta sessão Apply, não uma revisão independente. `status`/`instructions apply` oficiais consultados no root correto; quatro artefatos legíveis e completos. Tarefa 3.2 encerrada após conferência/strict, seguida de nova leitura de progresso.
+
+| Dimension | Status |
+|---|---|
+| Completeness | 8/8 tarefas; 4/4 requisitos ADDED, sem REMOVED/RENAMED |
+| Correctness | 4/4 requisitos mapeados; 12/12 cenários com código/testes; nenhum check aplicável omitido |
+| Coherence | D1–D5 seguidas; stdlib 3.10, parser upstream intacto, publicação A_R1/B_R1 literal; padrões existentes preservados |
+
+| Requisito | Implementação e prova |
+|---|---|
+| Inspeção semântica | `scripts/install-global:369–402,737–753`: estrutura Tomli decodificada/seletores; grafias/escapes/controles em `test_codex_semantic_spellings_and_non_rule_controls` |
+| Erro sem perda/vazamento | `scripts/install-global:358–402,993` antes da publicação; teste multiagente negativo e fluxos públicos, IO/limites/segredos, mesmos bytes/modos/links/active/ownership |
+| Parser portátil/rastreável | `scripts/install-global:43–355`, `scripts/vendor/TOMLI.md`, READMEs; payload/hash/membros/licença/standalone/limpeza; 71 testes em Python 3.10.22 real e atual |
+| Pin completo | `scripts/install.sh:6–7,59–64`, testes launcher/receitas e corrupção interna/externa; inventário missing/modified ampliado para instalador/docs; A_R1 ancestral de B_R1, ambas âncoras antigas preservadas |
+
+**CRITICAL: 0. WARNING: 0. SUGGESTION: 0.** Todos os checks da skill passaram; pronto para Archive com sincronização solicitada. Strict oficial da change: 1/1, `issues=[]`, exit 0. Não substitui suite final pós-commit, revisão independente ou guardas vivos/merge. Disponibilidade pública após integração continua pendente por definição; nada declara a correção publicada em main.
+
+### Archive e preparação do candidato final
+
+Sync oficial executado inline após `instructions specs`: dois requisitos adicionados em cada uma das duas specs. Comparação exata confirmou `main_anterior + blocos_ADDED`, com título/Purpose/todos os requisitos anteriores intactos e sem headings delta. `openspec validate --specs --strict --no-interactive --json`: **12/12**.
+
+Depois da sincronização já verificada, `openspec archive issue-77-codex-toml-r1 --yes --skip-specs --json` moveu a change para este diretório com **8/8** tarefas. O flag evita aplicar novamente deltas **já sincronizados**, não dispensa sync/validação. `openspec validate --archived --strict --no-interactive --json`: **16/16**. Archive original `2026-11-23-issue-77-native-codex/` byte-idêntico ao head de implementação anterior.
+
+Self-review de Prepare PR/address-pr-review: R1 MUST FIX classificado VALID e corrigido; nenhuma finding independente adicional conhecida. Sem alteração da semântica de workflow, runtime, seleção, ownership ou schema; parser/guard e sua distribuição seguem o plano revisado. Changelog corrigido em Não lançado, README pt/en em paridade, sem segredos/debug/arquivos locais no commit. Nenhuma evolução independente nova qualificada. A PR81 existente será atualizada sem comentários operacionais e sem merge; revisão independente do novo HEAD permanece responsabilidade do coordenador.
+
+Suite local obrigatória final e IDs atuais serão registrados **fora deste commit**, após todos os commits/archive/pins, no HEAD limpo exato. Qualquer novo commit exige novo gate. Provas de desenvolvimento/smokes históricos não são promovidas a final; `Proof` hospedado SKIPPED não é PASS nem gate obrigatório comprovado.
