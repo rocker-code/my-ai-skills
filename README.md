@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scrip
 ```
 
 O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d`, confere seu SHA-256 `0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`.
-Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use o [comando com entrada verificada](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global) para maior garantia.
+Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use a [entrada verificada](#entrada-verificada) abaixo para maior garantia.
 
 Para **atualizar para a versão mais recente da `main`**, execute (somente quando quiser atualizar):
 
@@ -39,7 +39,7 @@ Para **atualizar para a versão mais recente da `main`**, execute (somente quand
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/update.sh | sh
 ```
 
-**Os dois comandos instalam a revisão mais recente ao serem executados.** `update.sh` apenas deixa explícita a intenção de atualizar; ele confia na `main` atual e chama o mesmo instalador verificado. Nenhuma atualização roda em segundo plano. Não use `npx skills update` nem execute o instalador da instalação ativa para atualizar o pacote. [Detalhes, conflitos e migração](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global).
+**Os dois comandos instalam a revisão mais recente ao serem executados.** `update.sh` apenas deixa explícita a intenção de atualizar; ele confia na `main` atual e chama o mesmo instalador verificado. Nenhuma atualização roda em segundo plano. Não use `npx skills update` nem execute o instalador da instalação ativa para atualizar o pacote. Os detalhes atuais de seleção/conflitos/migração estão abaixo e na [skill de atualização](skills/update-ai-workflow/SKILL.md); a wiki histórica não documenta suporte Codex.
 
 Na primeira instalação, escolha `--agent codex` em vez de `--agent opencode` para usar somente Codex; repita `--agent opencode --agent codex` para ambos. Não há autodetecção nem default implícito. Update sem flags preserva a seleção comprovada; seleção explícita posterior é **aditiva**, inclusive na mesma revisão. Não remove agentes por omissão; runtime mantido ausente bloqueia com diagnóstico.
 
@@ -50,6 +50,17 @@ Config/auth/hooks permanecem intocados. CODEX_HOME/XDG alterados, symlinks ances
 Provas reais isoladas: `PYTHONDONTWRITEBYTECODE=1 python3 tests/smoke_global_opencode.py` e `PYTHONDONTWRITEBYTECODE=1 python3 tests/smoke_global_codex.py --controller-session <ID-nativo-do-chamador> --auth-cache <auth.json-explícito>`. Codex também aceita token suportado via ambiente/stdin. Para o cenário adicional de retomada entre agentes, acrescente `--cross-agent-opencode` (exige OpenCode explicitamente; o cenário Codex-only não o exige). Esse cenário usa sessões/skills/shell nativos OpenCode, não execução de modelo OpenCode. O cache é copiado com permissão restrita e removido ao finalizar; nenhuma configuração real é copiada. Sem credencial/capacidade/término, o smoke **bloqueia**, não passa por skip. Os relatórios privados distinguem descoberta/invocação, contextos novos, lifecycle/testes reais e backend GitHub fixture; não comprovam checks/review/merge hospedados.
 
 Caches Python (`__pycache__`, `.pyc`, `.pyo`) não bloqueiam a atualização. Arquivos e diretórios extras comuns são preservados na versão anterior, com aviso, ao trocar de revisão; não são migrados. Arquivos oficiais alterados ou ausentes e links simbólicos inesperados continuam bloqueando. A versão de destino mantém a validação estrita de entradas extras desconhecidas.
+
+### Entrada verificada
+
+Para não executar um launcher mutável, confira a origem do SHA/digest literal acima e use o comando abaixo após sua publicação. Ele instala a **revisão pinada**, não a `main` mais recente. Troque somente `--revision` por outro SHA completo previamente revisado para escolher outro pacote; escolha o agente ou ambos conforme explicado acima. Não derive o digest dos próprios bytes baixados.
+
+```bash
+( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de' &&
+  python3 "$tmp" --revision e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d --agent codex )
+```
 
 ## Configurar o projeto no agente Web
 

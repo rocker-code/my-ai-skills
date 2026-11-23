@@ -196,6 +196,7 @@ Esses resultados validam **planejamento**, não implementação. Suite Python e 
 - Self-review encontrou o caso real de skills.sh com diretório universal Codex e alias OpenCode do mesmo nome. Teste novo inicialmente recusou baseline no segundo agente porque o fetch repetia o mesmo diretório temporário. A atual compartilha o baseline confiável por nome e migra aliases antes do diretório, revertendo em ordem inversa. Prova focada com rollback dos dois caminhos: 7 testes/exit 0, `ev-20261123T013419Z-39a81adf`; sem enfraquecer origem/bytes/EXDEV/backup.
 - A fixture de lifecycle agora usa Git real com origin bare local e main coerente, permitindo commit/push não forçado de preparação sem acesso a GitHub real; somente o backend gh é simulado. Isso não comprova publicação/CI/review hospedados.
 - Para cumprir a transação coerente de D4, o ownership schema 2 (novo, ainda não publicado) vincula explicitamente a revisão ativa e aceita links anteriores somente quando inventariados no pacote anterior comprovado. Estado interrompido com revisão divergente, links órfãos ou skill anterior ausente bloqueia sem reparo/adopção implícitos. É detalhe de integridade do registro operacional existente, não store/lifecycle novo nem redução do contrato aprovado; schema 1 publicado permanece compatível. Prova focada: 13 testes/exit 0 (`ev-20261123T015259Z-ae54d69f`). Uma edição intermediária de indentação falhou antes da execução (`ev-20261123T015211Z-8f4ca06b`); corrigida no próprio código e refeito o grupo sem mudar asserções.
+- B `651af7167d5800fe5a5378731d8b24be3e3be1d8`: 65 testes focados/exit 0 (`ev-20261123T020151Z-74c6fdd7`), suite preliminar 239/exit 0 (`ev-20261123T020234Z-e7c349ce`), OpenCode cinco skills/exit 0 (`ev-20261123T020359Z-a9e561c8`). A quinta execução Codex (`ev-20261123T020348Z-61960379`) passou discovery/contexto/recovery/Apply, mas Verify não retornou aprovação: alegou lock negado sem executar verify. Eventos mostram também `SMOKE_GH_CALLS=/dev/null` para contornar escrita do backend em sandbox read-only. Não é prova de capacidade faltante do produto nem smoke aprovado. Correção da fixture: sandbox workspace-write limitado à raiz descartável, proibição explícita de fontes/posse nos leitores, snapshots antes/depois inalteráveis e log gh em path literal não redirecionável por ambiente. Não há novo adapter ou redução das asserções de fontes/HEAD; independência continua execução distinta com escopo de leitura, não promessa de sandbox imutável.
 
 ### Registro inicial histórico (não é o status atual)
 
@@ -363,6 +364,30 @@ As duas falhas históricas abaixo foram observadas no transcript nativo da sess�
       "simplest_alternative": "Exigir design e demais artefatos do schema no Propose antes de review/Apply",
       "choice_rationale": "Não simular confirmação nem reduzir gate; manter Archive e validação oficiais intactos",
       "next_hypothesis": "Grafo de planejamento completo permite sync/archive sem aprovação excepcional"
+    },
+    {
+      "kind": "attempt", "seq": 14, "obligation": "codex-smoke",
+      "signature": "AssertionError: native verifier withheld approval for unattempted reservation lock",
+      "target": "smoke_global_codex.py --cross-agent-opencode", "class": "fixture/isolation",
+      "hypothesis": "Grafo completo permite lifecycle até Archive",
+      "change": "Design obrigatório, origin bare real e recibo SIGINT exato", "change_target": "test",
+      "observed_effect": "Onze threads terminaram e recovery passou; Verify conferiu código/teste mas alegou lock negado sem tentativa e precisou redirecionar log gh",
+      "result": "fail", "evidence": ["evidence:ev-20261123T020348Z-61960379"]
+    },
+    {
+      "kind": "diagnosis", "seq": 15,
+      "group": {"obligation": "codex-smoke", "signature": "AssertionError: native verifier withheld approval for unattempted reservation lock"},
+      "class": "fixture/isolation",
+      "checked": {
+        "phase": "Verify nativo de leitura após Apply/teste",
+        "scope": "sandbox read-only impedia até append do backend gh fora do checkout",
+        "lifecycle": "reviewer não é writer; não deve verificar reserva usando identidade do owner",
+        "consumers": "gh fixture escreve captura; snapshots já verificam imutabilidade real de fontes/modes/HEAD"
+      },
+      "runtime_proof": ["evidence:ev-20261123T020348Z-61960379"],
+      "simplest_alternative": "Permitir metadados no diretório descartável com escopo de fontes read-only explícito e snapshot obrigatório",
+      "choice_rationale": "Não aprovar relatório incompleto, não remover lock/asserções e não interpretar alegação sem comando como runtime proof",
+      "next_hypothesis": "Leitores podem consultar backend capturado sem alterar fontes nem tentar assumir posse"
     }
   ]
 }

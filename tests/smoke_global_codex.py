@@ -161,23 +161,35 @@ def main():
         # Native discovery is inspected, not reconstructed from skill bodies.
         visible = run([cli, *native_config, "--cd", repo, "debug", "prompt-input", prompt], cwd=repo)
         (base / f"input-{index}.json").write_text(visible)
+        # Even source-read-only reviews call the captured gh backend, which
+        # appends its audit receipt outside the checkout. Source immutability
+        # is checked independently below, not inferred from a sandbox label.
         command = [cli, "exec", *native_config, "--json", "--ephemeral", "--ignore-user-config",
-                   "--ignore-rules", "--sandbox", "workspace-write" if writable else "read-only",
-                   "--cd", str(repo), "--add-dir", str(base / "project-one" / ".git"),
-                   "--add-dir", str(base / "github-origin.git")]
+                   "--ignore-rules", "--sandbox", "workspace-write",
+                   "--cd", str(repo), "--add-dir", str(base)]
         full_prompt = prompt + ("\nAll GitHub access MUST use the local gh fixture only; "
                                 "no apps/connectors/web/network access or real GitHub mutations. "
-                                "This is the explicitly authorized fixture/native-smoke namespace; "
-                                "Git origin is a disposable local bare fixture representing it. "
-                                "Do not read credentials/auth files. No subagents in this controlled smoke.")
+                                 "This is the explicitly authorized fixture/native-smoke namespace; "
+                                 "Git origin is a disposable local bare fixture representing it. "
+                                 "The gh backend must append its captured call receipt; do not redirect "
+                                 "or override that capture. Temporary metadata may live under the fixture root. "
+                                 "Do not read credentials/auth files. No subagents in this controlled smoke.")
         if writable:
             full_prompt += (
                 f"\nBefore ANY write, read {context}. This is the real native thread.started ID "
                 f"observed by the controller, not an invented identity. Verify your reservation "
                 f"using {helper} verify --path {json.dumps(str(repo))} --session <that ID> --json. "
                 "Checkpoint your own writes AND verify again after checkpoint before finishing. "
-                "Do not infer the old owner's ID. "
-                "Do not create other worktrees or processes/agents.")
+                 "Do not infer the old owner's ID. "
+                 "Do not create other worktrees or processes/agents.")
+        else:
+            full_prompt += (
+                "\nThis execution has SOURCE-READ-ONLY scope: no source/Git/OpenSpec changes, "
+                "ownership transfer, checkpoint or reservation verify as another writer. "
+                "The controller retains the writer reservation; you are not its owner. "
+                "Only the gh fixture may append its call metadata. The controller checks exact "
+                "source bytes/modes/HEAD before and after you return. Do not claim a sandbox "
+                "denial unless an actual command attempted it and returned that denial.")
         events = []
         stderr = (base / f"stderr-{index}.log").open("w")
         process = subprocess.Popen(command, cwd=repo, env=env, stdin=subprocess.PIPE,
@@ -372,7 +384,7 @@ def main():
         backend.write_text("#!/usr/bin/env python3\n"
                            "import json,os,sys,subprocess\nfrom pathlib import Path\n"
                            "p=Path(os.environ['SMOKE_GH_STATE']);s=json.loads(p.read_text());a=sys.argv[1:]\n"
-                           "with open(os.environ['SMOKE_GH_CALLS'],'a') as f:f.write(json.dumps(a)+'\\n')\n"
+                           f"with open({str(calls)!r},'a') as f:f.write(json.dumps(a)+'\\n')\n"
                            "def target_pr():\n"
                            " target=a[2].split('/')[-1] if len(a)>2 and not a[2].startswith('-') else None\n"
                            " return next(x for x in s['prs'] if (str(x['number'])==target if target else x.get('issue_number')==int(os.environ['SMOKE_ISSUE_NUMBER'])))\n"

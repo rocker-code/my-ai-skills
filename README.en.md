@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scrip
 ```
 
 The script installs the latest `main` revision. It downloads the **installer** from immutable commit `e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d`, verifies SHA-256 `0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de`, and then installs the current revision, including the global `worktree-reservation` command.
-That commit must remain an ancestor of `main`: integrate this PR with a **merge commit**, never squash/rebase, so the launcher and its pinned object are published together. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified-entrypoint command](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation) for stronger assurance.
+That commit must remain an ancestor of `main`: integrate this PR with a **merge commit**, never squash/rebase, so the launcher and its pinned object are published together. If `curl` fails, it reports the error, but the pipeline may still report success without installing anything. **This check does not verify the launcher itself when fetched from `main`**: review [its code](scripts/install.sh) before running it, or use the [verified entrypoint](#verified-entrypoint) below for stronger assurance.
 
 To **update to the latest `main` revision**, run this only when you want an update:
 
@@ -39,7 +39,7 @@ To **update to the latest `main` revision**, run this only when you want an upda
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/update.sh | sh
 ```
 
-**Both commands install the latest revision when run.** `update.sh` simply makes the intent to update explicit; it trusts current `main` and invokes the same verified installer. Neither updates in the background. Do not use `npx skills update` or the active installation's installer to update the bundle. [Details, conflicts and migration](https://github.com/rocker-code/my-ai-skills/wiki/Global-installation).
+**Both commands install the latest revision when run.** `update.sh` simply makes the intent to update explicit; it trusts current `main` and invokes the same verified installer. Neither updates in the background. Do not use `npx skills update` or the active installation's installer to update the bundle. Current selection/conflict/migration details are below and in the [update skill](skills/update-ai-workflow/SKILL.md); the historical wiki does not document Codex support.
 
 For a fresh installation, use `--agent codex` instead of `--agent opencode` for Codex only; repeat `--agent opencode --agent codex` for both. There is no autodetection or implicit default. Updates without flags preserve the verified selection; later explicit selection is **additive**, including at the same revision. Omitting an agent never removes it; a missing retained runtime blocks with a diagnostic.
 
@@ -50,6 +50,17 @@ Config/auth/hooks stay untouched. Changed CODEX_HOME/XDG, symlink ancestors, unc
 Real isolated proofs: `PYTHONDONTWRITEBYTECODE=1 python3 tests/smoke_global_opencode.py` and `PYTHONDONTWRITEBYTECODE=1 python3 tests/smoke_global_codex.py --controller-session <callers-native-ID> --auth-cache <explicit-auth.json>`. Codex also accepts supported tokens through environment/stdin. Add `--cross-agent-opencode` for the additional cross-agent recovery scenario (explicitly requires OpenCode; the Codex-only scenario does not). That scenario uses native OpenCode sessions/skills/shell, not OpenCode model execution. The cache is copied with restricted permissions and removed on exit; no real configuration is copied. Missing credentials/capability/completion **block** the smoke, never pass through a skip. Private reports distinguish discovery/invocation, fresh contexts, real lifecycle/tests and the fixture GitHub backend; they do not prove hosted checks/review/merge.
 
 Python caches (`__pycache__`, `.pyc`, `.pyo`) do not block updates. Extra regular files and directories are preserved in the previous version, with a notice, when switching revisions; they are not migrated. Modified or missing managed files and unexpected symlinks still block updates. The target version retains strict validation of unknown extra entries.
+
+### Verified entrypoint
+
+To avoid executing a mutable launcher, check the provenance of the literal SHA/digest above and use this command after publication. It installs the **pinned revision**, not the latest `main`. Change only `--revision` to another previously reviewed full SHA to select another package; select the agent or both as explained above. Never derive the digest from the downloaded bytes themselves.
+
+```bash
+( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de' &&
+  python3 "$tmp" --revision e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d --agent codex )
+```
 
 ## Configure the Web agent project
 
