@@ -20,7 +20,7 @@ Execução somente em contexto Apply novo, após revisão independente da propos
 - [x] 3.2 Criar `tests/smoke_global_codex.py` com HOME/CODEX_HOME/XDG/PATH descartáveis e preflight de auth/capacidades suportadas; confirmar ID/término de execuções distintas e evidência de contexto novo sem resume/fork; testar negativos sem credencial/capacidade/término e documentar comando/limitações pt/en; verificar T6/T7 sem gravar segredos ou configurações reais.
 - [x] 3.3 Implementar descoberta/invocação Codex real do pacote e cinco skills OpenSpec em dois projetos e worktree com espaços; preparar perfil oficial incluindo Verify e scope suportado sem handcraft, preservando fixture multitool/config/specs/changes; verificar T1/T3/T4 com prova nativa e resultado não conclusivo explicitamente bloqueado.
 - [x] 3.4 Ampliar `tests/smoke_global_opencode.py` para Verify e scope 2.1 detectado pelo help, mantendo prova API nativa em sessão nova e compatibilidade 2.0; executar com OpenCode real sem Codex exigido; verificar T2/T3/T4 e documentar distinção entre invocação, lifecycle e testes.
-- [ ] 3.5 Adicionar ao smoke Codex fluxo mínimo real Explore/Propose→fresh Apply→testes→Verify→Archive com backend GitHub fixture capturado e duas issues sequenciais; provar ausência de duplicatas, comentários/eventos operacionais e criação de evolução trivial/já rastreada; verificar T4/T5/T10/T11 sem criar ou mergear issues reais.
+- [x] 3.5 Adicionar ao smoke Codex fluxo mínimo real Explore/Propose→fresh Apply→testes→Verify→Archive com backend GitHub fixture capturado e duas issues sequenciais; provar ausência de duplicatas, comentários/eventos operacionais e criação de evolução trivial/já rastreada; verificar T4/T5/T10/T11 sem criar ou mergear issues reais.
 - [x] 3.6 Exercitar retomada entre agentes por artefatos duráveis, PR existente e reserva real, incluindo execução interrompida sem teste aprovado, writer desconhecido e leitura de progresso em ambos; confirmar mesmo checkout/change/PR e zero mutações em consulta; verificar T6/T7/T9 e registrar limitações sem afirmar portabilidade de histórico.
 
 ## 4. Publicação verificável A/B
@@ -31,8 +31,8 @@ Execução somente em contexto Apply novo, após revisão independente da propos
 
 ## 5. Integração e validação pré-archive
 
-- [ ] 5.1 Executar grupos focados `test_global_install.py`, `test_install_launcher.py`, `test_instrumentation_distribution.py` com bytecode desabilitado e os dois smokes reais; preencher T1–T11/P1/P2 com comandos/SHA/IDs/resultados efetivos, mantendo limites de fixture e pendências honestos; verificar ausência de plugin, novo ciclo/framework, coletor ou comentários operacionais.
-- [ ] 5.2 Invocar a skill oficial local `openspec-verify-change` desta change, resolver/documentar findings conforme severidade e executar `openspec validate issue-77-native-codex --strict --no-interactive`; verificar coerência implementação/spec/tasks e não usar Verify como substituto dos testes/revisão independente.
+- [x] 5.1 Executar grupos focados `test_global_install.py`, `test_install_launcher.py`, `test_instrumentation_distribution.py` com bytecode desabilitado e os dois smokes reais; preencher T1–T11/P1/P2 com comandos/SHA/IDs/resultados efetivos, mantendo limites de fixture e pendências honestos; verificar ausência de plugin, novo ciclo/framework, coletor ou comentários operacionais.
+- [x] 5.2 Invocar a skill oficial local `openspec-verify-change` desta change, resolver/documentar findings conforme severidade e executar `openspec validate issue-77-native-codex --strict --no-interactive`; verificar coerência implementação/spec/tasks e não usar Verify como substituto dos testes/revisão independente.
 
 ## Workflow follow-up
 

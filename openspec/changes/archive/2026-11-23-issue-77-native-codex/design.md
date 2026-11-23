@@ -178,9 +178,54 @@ Executado no conjunto de artefatos, antes do pin: `openspec status --change issu
 
 Esses resultados validam **planejamento**, não implementação. Suite Python e smokes nativos continuam NOT RUN; não houve revisão independente neste contexto.
 
-## Apply handoff (parcial)
+## Apply handoff
 
-### Estado atual (substitui pendências iniciais abaixo)
+### Closeout de implementação (estado mais recente)
+
+- Smoke Codex completo **PASS**, exit 0 no B `87543a49a4302017cbe558cfeacbcbf57e521ee3`: `ev-20261123T024546Z-fe334d2b`. Vinte execuções nativas distintas com `turn.completed`, cinco skills em três locais, fresh context sem transcript, reviews imutáveis, duas issues fixture sequenciais, Apply/testes reais (1/1 por issue), Verify limpo, Archive/sync e Prepare PR com commit/push local e park antes da próxima. Primeiro draft reutilizado; somente o segundo PR fixture foi criado. Captura gh confirmou ausência de comentários e evolução duplicada/trivial.
+- Recuperação: planner Codex `01a2064e-1626-7540-99c5-0d13a153b487` → sessão/shell OpenCode `ses_df9b0c8ccfferSRS3EPc70fmKo` (SIGINT exato, nunca aprovado) → status read-only Codex `01a2064f-408d-7f82-8a99-6b1d8ea99db3` → fresh Apply `01a2064f-b3b2-7202-a7e6-85262a1b3cb9`. Mesmo checkout/change/PR; writer desconhecido recusado. Verifies Codex `01a20650-5a63-72e2-998d-443014b06102` e `01a20654-236b-7b20-8a30-c481baa195d3`.
+- Prova completa checksum-bound guardada no registro: `artifacts/outputs/.native-proof-codex-0246/proof.tar.gz` SHA-256 `eeb9c3fa88f56e9960109ece5d45b32937a5fc64632a2d0243944fd9d8530fb3`, mais `results.json`, eventos e inputs nativos. `workflow-evidence verify ev-20261123T024546Z-fe334d2b --format json` retornou `verified/passed` antes desta anotação (exit 3 indica obrigação não declarada como gate, não falha da execução). Após anotações/archive o registro é histórico/stale para HEAD, não é gate final.
+- OpenCode cinco skills: `ev-20261123T020359Z-a9e561c8`, exit 0 em `651af7167d5800fe5a5378731d8b24be3e3be1d8`; 15 sessões nativas, dois projetos/worktree com espaços. Código OpenCode e pacote canônico não mudaram desde esse run. Limite: API/skills/shell reais, sem modelo OpenCode.
+- Grupos focados finais de implementação: `ev-20261123T025834Z-e77d7f2c`, 71 testes/exit 0 (52 instalação, 8 launcher, 4 distribuição, 7 negativos smoke). Comando: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest -v test_global_install test_install_launcher test_instrumentation_distribution test_native_codex_smoke`. Suite preliminar anterior 239/exit 0; o gate amplo final pós-archive permanece obrigatório e terá ID **fora do commit**.
+- Limites mantidos: Linux/Python 3.14.8/Codex 0.171.0/OpenCode v2.3.2/OpenSpec 2.1.1; OpenSpec 2.0 coberto por configuração/fixtures compatíveis, não por um segundo binário real. Perfil de permissões oficial do smoke comprovado nessa versão Codex; indisponibilidade bloqueia a prova, não usa full access. GitHub fixture não comprova publicação/CI/review/merge hospedados. Sem portabilidade de chat ou subagentes Codex comprovados. Auth copiada isoladamente/removida; instalação/config real intocada.
+- Self-review: nenhum cenário obrigatório removido, skip ou gate reduzido; testes novos cobrem fronteiras concretas de seleção/ownership/migração/rollback e falhas efetivas da fixture. Sem CI/timing/otimização novos. Changelog Não lançado já contém uma única entrada #77 e foi revisado sem duplicação. `NO QUALIFIED EVOLUTIONS`: lote sem candidato independente; #61/#78 não foram ampliadas. Wiki externa foi inspecionada e é obsoleta; README pt/en agora têm receita verificada versionada, sem editar a wiki.
+- Archive/sync desta change concluído em `openspec/changes/archive/2026-11-23-issue-77-native-codex/`: merge inline das 3 specs, comparação byte-a-byte dos blocos adicionados e preservação integral dos títulos/Purpose/requisitos antigos, seguida por `openspec archive issue-77-native-codex --skip-specs --yes --json` (skip apenas da aplicação redundante, pois sync já verificado). Validação strict das 12 specs passou. Restam commit final, suite ampla/verify no HEAD limpo exato, um PR e revisão independente pelo coordenador. Este worker **não mergeia**; preservar A por merge commit e conferir objetos públicos após integração. ID do gate/HEAD final fica fora do commit, não será inserido retrospectivamente neste arquivo.
+
+### Matriz de provas executadas (substitui o estado pendente de planejamento)
+
+| ID | Implementação → prova | Resultado e limites |
+|---|---|---|
+| T1 | `preflight`, seleção/paths; `test_exclusive_agent_install_and_implicit_update`, `test_public_codex_only_install_update`; smoke Codex | PASS: grupo 71 + Codex nativo, sem dependência OpenCode no fluxo Codex-only |
+| T2 | schema 1/baseline e entrada OpenCode; testes legado/públicos + smoke OpenCode | PASS: grupo 71 + API nativa cinco skills; sem modelo OpenCode |
+| T3 | `manifest_for`, `installed_selection`, união de seleção; expansão mesma revisão/subconjunto e ambos públicos | PASS: grupo 71; smokes usam mesma fonte canônica |
+| T4 | perfil oficial/OpenSpec real + `smoke_global_{codex,opencode}.py` | PASS: cinco skills/3 locais; lifecycle completo Codex duas issues; limite de versões acima |
+| T5 | política canônica + controller sequencial e park por execução nativa | PASS: issue 2 inicia somente após PR/park da 1; sem alegar scheduler/delegação novos |
+| T6 | helper de reserva real + SIGINT + consulta OpenCode/Codex + fresh Apply | PASS: mesmo checkout/change/PR, incompleto não aprovado; histórico não portado |
+| T7 | preflight/capacidade, negativos identidade/término/roots/grafo/receipt/perfil; falhas nativas históricas recusadas | PASS: grupo 71 + smoke real; nenhuma capacidade desconhecida promovida a sucesso |
+| T8 | validação de origem/bytes/modos/ownership/paths; rollback multiagente/EXDEV/alias universal/estado interrompido | PASS: grupo 71 com preservação de personalizações/config/auth e active |
+| T9 | status em sessão/shell OpenCode e thread Codex separada + snapshots | PASS: status/next action atuais da fixture, zero alteração de fontes; sem analytics |
+| T10 | captura gh literal; reviews/Prepare PR nativos e política compartilhada | PASS: nenhuma chamada de comentário ou coletor/evento novo |
+| T11 | backlog fixture e sugestões trivial/já rastreada nos prompts Apply/Prepare PR | PASS: nenhuma criação de issue; política de qualificadas preservada |
+| P1 | A `e6e1b5c...` + B `651af716...`; digest literal/ancestralidade/negativos e três fluxos públicos | PASS local: grupo 71; alcance em main e disponibilidade pública **pós-merge pendentes**, não dispensados |
+| P2 | pt/en, guidance, referências geradas/ausência de plugin; distribuição 4/4 | PASS focado; suite final obrigatória após archive/commit |
+
+### Verification Report: issue-77-native-codex
+
+Skill oficial local `openspec-verify-change` descoberta/invocada nesta sessão Apply; `status` e `instructions apply` usados como contexto, não como veredito. Leitura dos três deltas, design, tasks e implementação/testes; nenhum requisito removido/renomeado.
+
+| Dimension | Status |
+|---|---|
+| Completeness | 17/17 tarefas implementadas (checkboxes reconciliados com provas), 11/11 requisitos encontrados |
+| Correctness | 11/11 requisitos e 35/35 cenários mapeados à matriz acima; testes reais + negativos; nenhum cenário aplicável sem prova |
+| Coherence | D1–D7 preservadas: fonte única, seleção aditiva/ownership verificável, paths nativos, transação conjunta, execução comprovada, smokes isolados e A/B imutável; padrões de scripts/fixtures existentes mantidos |
+
+- Distribuição (3 requisitos/11 cenários): `scripts/install-global:65-92,149-173,240-315,373-397`; testes exclusivos, configuração/override, homônimo e smokes oficiais.
+- Update (4/13): `scripts/install-global:325-370,547-890`, `scripts/install.sh:20-86`, `scripts/update.sh`; testes de migração, expansão mesma revisão, seleção adulterada, interrupção/rollback e entradas públicas.
+- Entrega (4/11): `protocol/AI_WORKFLOW.md:28-64`, referências idênticas, `tests/test_worktree_reservation.py`, `tests/test_native_codex_smoke.py`, smoke nativo completo com inputs/IDs/resultados imutáveis e captura gh.
+- CRITICAL: 0. WARNING: 0. SUGGESTION: 0. Checks da skill não omitidos. Strict validate desta change retornou 1/1, `valid=true`, sem issues em `87543a49...` e será refeito após atualizar os checkboxes.
+- **All checks passed. Ready for archive.** Isso verifica implementação/contrato, não aprova merge nem substitui gate final/CI/revisão independente; follow-ups de entrega acima continuam explícitos.
+
+### Estado intermediário histórico (substituído pelo closeout acima)
 
 - Auth isolada resolvida pelo [fallback oficial de cache headless](https://developers.openai.com/codex/auth.md?surface=cli): somente auth.json explícito copiado com permissão restrita e removido ao finalizar; config real intocada. Probe nativo Codex exit 0, thread `01a205d7-9681-7f81-b853-a83d5ce40a6c`, sem ferramentas; prova privada em `/tmp/opencode/issue77-native-probe-mbw28l2_`.
 - Instalador A atual: `e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d`, digest `0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de`. As âncoras anteriores `d8dd884...`, `d06b4dc...`, `acc97c8...`, `0613945...` e `1b6f01f...` não foram emendadas: novas revisões A incorporaram endurecimento de seleção, preservação CRLF/modos/rechecks, diagnóstico de skill desabilitada por nome, migração simultânea de aliases e recusa de estados parciais inconsistentes. O launcher posterior fixa A atual literalmente; refs finais de B/HEAD ficam fora deste commit. Merge commit permanece obrigatório; API viva confirmou `allow_merge_commit=true`.
@@ -439,6 +484,20 @@ As duas falhas históricas abaixo foram observadas no transcript nativo da sess�
       "simplest_alternative": "Perfil oficial com exceção de escrita apenas no Git descartável para writer e fontes read-only para leitores",
       "choice_rationale": "Verificar com sandbox CLI sem modelo antes de novo smoke caro; não usar danger-full-access nem alterar usuário/global",
       "next_hypothesis": "Tabela TOML completa com pais writer/reader distintos permite somente exceção Git writer documentada e mantém fontes reader protegidas"
+    },
+    {
+      "kind": "attempt", "seq": 20, "obligation": "codex-smoke",
+      "signature": "Permission denied: native git add index.lock under protected metadata",
+      "target": "smoke_global_codex.py --cross-agent-opencode", "class": "fixture/isolation",
+      "hypothesis": "Perfil oficial por execução permite somente Git writer e metadados fixture necessários",
+      "change": "Override TOML completo com parent :workspace para writer e :read-only para leitor, exceções Git exatas e auth deny", "change_target": "test",
+      "observed_effect": "Vinte threads concluídas; duas issues com testes/Verify/Archive/PR/push local/park e retomada completa; sem comentários ou duplicatas",
+      "result": "pass", "evidence": ["evidence:ev-20261123T024546Z-fe334d2b"]
+    },
+    {
+      "kind": "resolution",
+      "group": {"obligation": "codex-smoke", "signature": "Permission denied: native git add index.lock under protected metadata"},
+      "outcome": "passed", "via_seq": 20
     }
   ]
 }
