@@ -235,6 +235,30 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertIn("homônima", self.install(agents=(), env=env).stderr)
         self.assertEqual((self.data / "guidance.json").read_bytes(), before)
 
+    def test_both_agents_preserve_unmanaged_crlf_bytes_and_instruction_modes(self):
+        instructions = (self.home / ".codex/AGENTS.md", self.home / ".config/opencode/AGENTS.md")
+        prefix = b"# Personal instructions\r\nKeep my exact newlines.\r\n"
+        suffix = b"\r\n# Personal suffix\r\n"
+        for path in instructions:
+            path.parent.mkdir(parents=True)
+            path.write_bytes(prefix)
+            path.chmod(0o600)
+        installed = self.install(agents=("codex", "opencode"))
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        for path in instructions:
+            self.assertTrue(path.read_bytes().startswith(prefix))
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            path.write_bytes(path.read_bytes() + suffix)
+        before = [path.read_bytes() for path in instructions]
+        repeated = self.install(agents=())
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertEqual([path.read_bytes() for path in instructions], before)
+        revision = self.next_revision()
+        failed = self.install(agents=(), revision=revision,
+                              env={**self.env, "MY_AI_SKILLS_FAIL_AT": "guidance"})
+        self.assertEqual(failed.returncode, 1)
+        self.assertEqual([path.read_bytes() for path in instructions], before)
+
     def test_codex_local_diagnosis_and_explicit_reconciliation(self):
         self.assertEqual(self.install(agents=("codex",)).returncode, 0)
         project = self.root / "codex project"

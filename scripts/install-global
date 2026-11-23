@@ -46,6 +46,11 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def read_utf8(path):
+    # Path.read_text() normalizes CRLF; unmanaged instruction bytes must survive.
+    return path.read_bytes().decode("utf-8")
+
+
 def absent_or_regular(path):
     if path.is_symlink() or (path.exists() and not path.is_file()):
         raise InstallError(f"Caminho inseguro ou de outra origem: {path}")
@@ -342,7 +347,7 @@ def installed_selection(record, prior, data, paths):
         for path in (skills, instructions):
             safe_parent(path, Path(path.anchor))
         absent_or_regular(instructions)
-        text = instructions.read_text() if instructions.exists() else ""
+        text = read_utf8(instructions) if instructions.exists() else ""
         if not text:
             raise InstallError("Registro global existe, mas orientação foi removida.")
         if hashlib.sha256(managed_block(text).encode()).hexdigest() != entry["sha256"]:
@@ -350,7 +355,7 @@ def installed_selection(record, prior, data, paths):
     for agent in set(SUPPORTED_AGENTS) - set(entries):
         instructions = paths[agent][1]
         if instructions.is_file() and not instructions.is_symlink():
-            text = instructions.read_text()
+            text = read_utf8(instructions)
             if BEGIN in text or END in text:
                 block_hash = hashlib.sha256(managed_block(text).encode()).hexdigest()
                 if block_hash in trusted_hashes:
@@ -559,7 +564,7 @@ def install(args, *, source=ORIGIN):
             launcher, launcher_record = inspect_launcher(home, data, env)
             safe_parent(versions, home)
             absent_or_regular(ownership)
-            ownership_before = ownership.read_text() if ownership.exists() else None
+            ownership_before = read_utf8(ownership) if ownership.exists() else None
             old_active = None
             prior = None
             old_manifest = None
@@ -595,7 +600,7 @@ def install(args, *, source=ORIGIN):
                 for path in (skills, instructions):
                     safe_parent(path, home)
                 absent_or_regular(instructions)
-                previous = instructions.read_text() if instructions.exists() else None
+                previous = read_utf8(instructions) if instructions.exists() else None
                 if agent not in previous_selection and previous and (BEGIN in previous or END in previous):
                     raise InstallError("Bloco global sem registro de propriedade; preserve e reconcilie manualmente.")
                 new_text = updated_guidance(previous or "", block)
@@ -741,6 +746,7 @@ def install(args, *, source=ORIGIN):
                 for link, name in links:
                     if name not in skill_names:
                         continue
+                    safe_parent(link.parent, home)
                     expected = str(data / "active" / "skills" / name)
                     if not link.exists() and not link.is_symlink():
                         link.symlink_to(data / "active" / "skills" / name)
@@ -753,8 +759,9 @@ def install(args, *, source=ORIGIN):
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "skills":
                     raise InstallError("Falha simulada após registrar skills")
                 for instructions, previous, new_text in texts:
+                    safe_parent(instructions, home)
                     absent_or_regular(instructions)
-                    if (instructions.read_text() if instructions.exists() else None) != previous:
+                    if (read_utf8(instructions) if instructions.exists() else None) != previous:
                         raise InstallError(f"Orientação mudou durante a preparação: {instructions}")
                     if previous != new_text:
                         tmp = instructions.with_name(".AGENTS.md.install-tmp")
@@ -765,13 +772,14 @@ def install(args, *, source=ORIGIN):
                         tmp.replace(instructions)
                         guidance_written.append((instructions, previous, new_text))
                 absent_or_regular(ownership)
-                if (ownership.read_text() if ownership.exists() else None) != ownership_before:
+                if (read_utf8(ownership) if ownership.exists() else None) != ownership_before:
                     raise InstallError("Registro global mudou durante a preparação.")
                 if ownership_before != new_record:
                     tmp = ownership.with_name(".guidance.json.install-tmp")
                     if tmp.exists() or tmp.is_symlink():
                         raise InstallError(f"Arquivo temporário conflitante: {tmp}")
-                    tmp.write_text(new_record)
+                    with tmp.open("x") as output:
+                        output.write(new_record)
                     tmp.replace(ownership)
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "guidance":
                     raise InstallError("Falha simulada após orientação")
@@ -793,6 +801,9 @@ def install(args, *, source=ORIGIN):
                     raise InstallError("Falha simulada após launcher")
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "publish":
                     raise InstallError("Falha simulada antes da publicação")
+                if ((os.readlink(active) if active.is_symlink() else None) != old_active
+                        or (not active.is_symlink() and active.exists())):
+                    raise InstallError("Ponteiro ativo mudou durante a preparação; não substituir.")
                 if old_active != str(Path("versions") / args.revision):
                     pointer = data / ".active.install-tmp"
                     if pointer.exists() or pointer.is_symlink():
@@ -800,18 +811,25 @@ def install(args, *, source=ORIGIN):
                     pointer.symlink_to(Path("versions") / args.revision)
                     pointer.replace(active)
             except Exception:
-                if launcher_record_created:
+                expected_launcher_record = {"schema": 1, "path": str(launcher),
+                                            "sha256": hashlib.sha256(launcher_text(data).encode()).hexdigest(),
+                                            "mode": 0o755}
+                if (launcher_record_created and not launcher_record.is_symlink()
+                        and launcher_record.is_file()
+                        and json.loads(read_utf8(launcher_record)) == expected_launcher_record):
                     launcher_record.unlink()
-                if launcher_created:
+                if (launcher_created and not launcher.is_symlink() and launcher.is_file()
+                        and launcher.read_bytes() == launcher_text(data).encode()
+                        and stat.S_IMODE(launcher.stat().st_mode) == 0o755):
                     launcher.unlink()
                 if (not ownership.is_symlink() and ownership.is_file()
-                        and ownership.read_text() == new_record and new_record != ownership_before):
+                        and read_utf8(ownership) == new_record and new_record != ownership_before):
                     if ownership_before is None:
                         ownership.unlink()
                     else:
                         ownership.write_text(ownership_before)
                 for instructions, previous, new_text in reversed(guidance_written):
-                    if not instructions.is_symlink() and instructions.is_file() and instructions.read_text() == new_text:
+                    if not instructions.is_symlink() and instructions.is_file() and read_utf8(instructions) == new_text:
                         if previous is not None:
                             instructions.write_text(previous)
                         else:
