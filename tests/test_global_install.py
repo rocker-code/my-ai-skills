@@ -152,6 +152,15 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertIn("--agent codex", result.stderr)
         self.assertFalse(self.data.exists())
 
+    def test_codex_capability_gap_blocks_without_cross_agent_fallback(self):
+        binary = self.bin / "codex"
+        binary.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'codex-cli 0.171.0'; else echo '--json only'; fi\n")
+        result = self.install(agents=("codex",), env=self.exclusive_path("codex"))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Codex CLI com exec", result.stderr)
+        self.assertNotIn("Falta opencode", result.stderr)
+        self.assertFalse(self.data.exists())
+
     def test_same_revision_additive_selection_and_immutable_manifest(self):
         self.assertEqual(self.install().returncode, 0)
         manifest = self.data / "active/manifest.json"
@@ -450,7 +459,7 @@ class GlobalInstallTests(unittest.TestCase):
         transport = self.root / "transport"
         transport.mkdir()
         pinned = call("git", "show",
-                      "d8dd884954f20252b8514d64f6b2ed3de51dce5c:scripts/install-global",
+                      "d06b4dc7e1d25d80515903544dcb0eb1ce8ace7b:scripts/install-global",
                       cwd=ROOT)
         self.assertEqual(pinned.returncode, 0, pinned.stderr)
         entry = transport / "install-global"
@@ -789,8 +798,8 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "d8dd884954f20252b8514d64f6b2ed3de51dce5c"
-        published = "8982a4bd850e251eea1abf86483b0bd48315c1e8b2545aad5a5a38eef02d8f94"
+        revision = "d06b4dc7e1d25d80515903544dcb0eb1ce8ace7b"
+        published = "36c733d268da960ddb3f468589ab210058d91c6b5c80e9b0177e9ed2f9f84001"
         # The launcher pins immutable commit A with the finished 2.x installer.
         pinned_entry = subprocess.check_output(
             ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
@@ -816,7 +825,7 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_in_disposable_home(self):
         # Transport is mocked, but README pipelines, launcher, digest check,
         # pinned installer and Git snapshot installation execute unchanged.
-        revision = "d8dd884954f20252b8514d64f6b2ed3de51dce5c"
+        revision = "d06b4dc7e1d25d80515903544dcb0eb1ce8ace7b"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
                          "case \"$2\" in\n"
@@ -989,7 +998,8 @@ class GlobalInstallTests(unittest.TestCase):
         curl.chmod(0o755)
         for executable in ("python3", "git", "gh", "jq", "bash"):
             (self.bin / executable).symlink_to(shutil.which(executable))
-        result = self.install(env={**self.env, "PATH": str(self.bin)})
+        result = self.install(env={**self.env, "PATH": str(self.bin) + os.pathsep
+                                  + str(self.home / ".local/bin")})
         self.assertIn("Digest do instalador OpenSpec divergente", result.stderr)
         self.assertFalse(marker.exists())
 

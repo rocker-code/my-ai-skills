@@ -1,6 +1,7 @@
 """Offline checks for the public shell launcher (no user install or network)."""
 import os
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "scripts/install.sh"
 UPDATER = ROOT / "scripts/update.sh"
 ENTRY = ROOT / "scripts/install-global"
-REVISION = "96864599e1d7b1ec06239aa8f8f6e757043d7212"
+REVISION = "d06b4dc7e1d25d80515903544dcb0eb1ce8ace7b"
 
 
 class LauncherTests(unittest.TestCase):
@@ -25,8 +26,10 @@ class LauncherTests(unittest.TestCase):
         pinned = subprocess.run(["git", "show", f"{REVISION}:scripts/install-global"],
                                 cwd=ROOT, capture_output=True, check=True).stdout
         self.assertEqual(hashlib.sha256(pinned).hexdigest(),
-                          "2a655bd499c94dcc0330313abfffa93642ed719500847f41b2275adf0712cbc3")
+                          "36c733d268da960ddb3f468589ab210058d91c6b5c80e9b0177e9ed2f9f84001")
         self.assertEqual(pinned, ENTRY.read_bytes())
+        self.assertEqual(subprocess.run(["git", "merge-base", "--is-ancestor", REVISION, "HEAD"],
+                                        cwd=ROOT).returncode, 0)
         entry_source = root / "pinned-install-global"
         entry_source.write_bytes(pinned)
         bin_dir = root / "bin"
@@ -76,9 +79,17 @@ class LauncherTests(unittest.TestCase):
         global_launcher = global_bin / "worktree-reservation"
         global_launcher.write_text("#!/bin/sh\nexec \"${XDG_DATA_HOME}/my-ai-skills/active/scripts/worktree-reservation\" \"$@\"\n")
         global_launcher.chmod(0o755)
-        self.skill = root / "config/opencode/skills/apply-issue/SKILL.md"
+        self.skill = data / "skills/apply-issue/SKILL.md"
         self.skill.parent.mkdir(parents=True)
         self.skill.write_text("test skill\n")
+        link = root / "config/opencode/skills/apply-issue"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(self.skill.parent)
+        instructions = root / "config/opencode/AGENTS.md"
+        instructions.write_text("fixture instructions")
+        (data.parent / "guidance.json").write_text(json.dumps({
+            "schema": 2, "agents": {"opencode": {"skills": str(link.parent),
+                                                "instructions": str(instructions)}}}))
         self.env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + str(global_bin) + os.pathsep + os.environ["PATH"],
                     "HOME": str(root), "XDG_DATA_HOME": str(root / "data"),
                     "XDG_CONFIG_HOME": str(root / "config"), "FAIL_OPENSPEC": "0",
@@ -92,8 +103,8 @@ class LauncherTests(unittest.TestCase):
         return subprocess.run(["sh", "-s", "--", *args], input=LAUNCHER.read_text(),
                               text=True, capture_output=True, cwd=self.temp.name, env=env or self.env)
 
-    def run_updater(self, env=None):
-        return subprocess.run(["sh", "-s"], input=UPDATER.read_text(),
+    def run_updater(self, *args, env=None):
+        return subprocess.run(["sh", "-s", "--", *args], input=UPDATER.read_text(),
                               text=True, capture_output=True, cwd=self.temp.name, env=env or self.env)
 
     def test_default_and_explicit_update(self):
@@ -102,7 +113,7 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Post-install verification passed", result.stdout)
             self.assertEqual(self.log.read_text().splitlines()[1:],
-                             ["--revision", revision, "--agent", "opencode"])
+                             ["--revision", revision])
             self.assertEqual(Path(self.env["CURL_LOG"]).read_text().splitlines()[-1],
                              f"https://raw.githubusercontent.com/rocker-code/my-ai-skills/{REVISION}/scripts/install-global")
 
@@ -114,6 +125,17 @@ class LauncherTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(self.log.exists())
 
+    def test_agent_arguments_are_forwarded_without_implicit_default(self):
+        args = ("--agent", "codex", "--agent", "opencode")
+        result = self.run_launcher(*args)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.log.read_text().splitlines()[1:],
+                         [*args, "--revision", "a" * 40])
+        result = self.run_updater(*args)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.log.read_text().splitlines()[1:],
+                         ["--revision", "a" * 40, *args])
+
     def test_install_requires_a_valid_latest_main(self):
         for changes in ({"FAKE_MAIN_REVISION": "not-a-sha"}, {"GIT_FAIL": "1"}):
             result = self.run_launcher(env={**self.env, **changes})
@@ -123,7 +145,9 @@ class LauncherTests(unittest.TestCase):
 
     def test_invalid_revision_does_not_download(self):
         for args in (("--revision", "main"), ("--revision", "b" * 39),
-                     ("--revision", "b" * 40, "--agent", "codex")):
+                     ("--revision", "b" * 40, "--agent", "claude"),
+                     ("--agent", "codex;touch pwned"), ("--agent",),
+                     ("--revision", ""), ("--revision", "b" * 40, "--revision", "a" * 40)):
             result = self.run_launcher(*args)
             self.assertEqual(result.returncode, 2)
             self.assertFalse(self.log.exists())
@@ -134,7 +158,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Post-install verification passed", result.stdout)
         self.assertEqual(self.log.read_text().splitlines()[1:],
-                         ["--revision", "a" * 40, "--agent", "opencode"])
+                         ["--revision", "a" * 40])
         self.assertEqual(Path(self.env["CURL_LOG"]).read_text().splitlines(), [
             "https://raw.githubusercontent.com/rocker-code/my-ai-skills/" + "a" * 40 + "/scripts/install.sh",
             f"https://raw.githubusercontent.com/rocker-code/my-ai-skills/{REVISION}/scripts/install-global"])

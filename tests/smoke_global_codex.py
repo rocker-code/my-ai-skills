@@ -38,6 +38,29 @@ def completed_thread(events, exit_code):
     return ids[0]
 
 
+def discovered_paths(visible):
+    """Resolve Codex's native compact rN skill paths, not guessed root order."""
+    def strings(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "text" and isinstance(child, str):
+                    yield child
+                else:
+                    yield from strings(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from strings(child)
+    text = "\n".join(strings(json.loads(visible)))
+    roots = dict(re.findall(r"- `(r\d+)` = `([^`]+)`", text))
+    paths = {}
+    for name, root, relative in re.findall(
+            r"(?m)^- ([\w-]+):[^\n]*\(file: (r\d+)/([^)\n]+/SKILL\.md)\)", text):
+        if root not in roots:
+            raise RuntimeError(f"BLOCKED: native skill root {root} unavailable")
+        paths[name] = Path(roots[root]) / relative
+    return paths
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--auth-cache", type=Path, help="Explicit regular auth.json; never config.toml")
@@ -243,15 +266,26 @@ def main():
             prompt = (" ".join("$" + skill for skill in ACTIONS.values()) +
                       " $roadmap-status\nNative discovery smoke only: identify the five official skills "
                       "and the global roadmap-status skill, their effective paths and current OpenSpec root. "
+                      "Invoke the native skills named by $ mentions: load their FULL SKILL.md instructions "
+                      "from the native discovered paths, not just frontmatter. Apply only their read-only "
+                      "project/context checks in this invocation and explain the remaining lifecycle steps. "
                       "Do not create artifacts, implement, archive, initialize or update anything. "
                       "Run only read-only context/list commands. Finish with NATIVE_DISCOVERY_OK.")
-            response, visible, _ = native("discovery", location, prompt)
+            response, visible, events = native("discovery", location, prompt)
             assert "NATIVE_DISCOVERY_OK" in response
+            discovered = discovered_paths(visible)
             for skill in (*ACTIONS.values(), "roadmap-status"):
-                assert skill in visible, f"Native prompt did not discover {skill}"
+                assert skill in discovered, f"Native prompt did not discover {skill}"
             for skill in ACTIONS.values():
-                assert str(location / ".agents/skills" / skill / "SKILL.md") in visible
-            assert str(home / ".agents/skills/roadmap-status/SKILL.md") in visible
+                assert discovered[skill] == location / ".agents/skills" / skill / "SKILL.md"
+            assert discovered["roadmap-status"] == home / ".agents/skills/roadmap-status/SKILL.md"
+            output = "\n".join(e.get("item", {}).get("aggregated_output", "") for e in events
+                               if e.get("type") == "item.completed"
+                               and e.get("item", {}).get("type") == "command_execution"
+                               and e.get("item", {}).get("exit_code") == 0)
+            for skill in (*ACTIONS.values(), "roadmap-status"):
+                assert f"name: {skill}" in output, f"No runtime loading evidence for {skill}"
+            assert "Verify that an implementation" in output and "Planning boundary" in output
             assert (home / ".agents/skills/roadmap-status").resolve() == (active / "skills/roadmap-status").resolve()
             results["locations"][location.name] = {"discovery": True, "native_skills": list(ACTIONS.values())}
         # A fresh execution has neither resume/fork nor the previous prompt's nonce.
