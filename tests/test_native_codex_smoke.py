@@ -2,6 +2,8 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 
 PATH = Path(__file__).with_name("smoke_global_codex.py")
@@ -11,6 +13,28 @@ spec.loader.exec_module(smoke)
 
 
 class NativeCodexSmokeTests(unittest.TestCase):
+    def test_source_snapshot_preserves_deleted_indexed_artifacts_and_broken_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            def run(argv, cwd):
+                return subprocess.check_output(argv, cwd=cwd, text=True)
+            run(["git", "init", "-q"], repo)
+            path = repo / "planning.md"
+            path.write_text("approved artifact\n")
+            run(["git", "add", "planning.md"], repo)
+            run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.org",
+                 "commit", "-qm", "fixture"], repo)
+            present = smoke.source_snapshot(repo, run)
+            path.unlink()
+            missing = smoke.source_snapshot(repo, run)
+            self.assertNotEqual(present, missing)
+            self.assertEqual(missing, smoke.source_snapshot(repo, run))
+            path.symlink_to("absent-target")
+            self.assertNotEqual(missing, smoke.source_snapshot(repo, run))
+            path.unlink()
+            path.write_text("approved artifact\n")
+            self.assertEqual(present, smoke.source_snapshot(repo, run))
+
     def test_interrupted_shell_requires_own_terminal_signal_not_missing_exit(self):
         receipt = {"id": "sh_fixture", "cwd": "/fixture", "status": "exited", "signal": "SIGINT"}
         smoke.require_interrupted_shell(receipt, "sh_fixture", Path("/fixture"))

@@ -197,6 +197,7 @@ Esses resultados validam **planejamento**, não implementação. Suite Python e 
 - A fixture de lifecycle agora usa Git real com origin bare local e main coerente, permitindo commit/push não forçado de preparação sem acesso a GitHub real; somente o backend gh é simulado. Isso não comprova publicação/CI/review hospedados.
 - Para cumprir a transação coerente de D4, o ownership schema 2 (novo, ainda não publicado) vincula explicitamente a revisão ativa e aceita links anteriores somente quando inventariados no pacote anterior comprovado. Estado interrompido com revisão divergente, links órfãos ou skill anterior ausente bloqueia sem reparo/adopção implícitos. É detalhe de integridade do registro operacional existente, não store/lifecycle novo nem redução do contrato aprovado; schema 1 publicado permanece compatível. Prova focada: 13 testes/exit 0 (`ev-20261123T015259Z-ae54d69f`). Uma edição intermediária de indentação falhou antes da execução (`ev-20261123T015211Z-8f4ca06b`); corrigida no próprio código e refeito o grupo sem mudar asserções.
 - B `651af7167d5800fe5a5378731d8b24be3e3be1d8`: 65 testes focados/exit 0 (`ev-20261123T020151Z-74c6fdd7`), suite preliminar 239/exit 0 (`ev-20261123T020234Z-e7c349ce`), OpenCode cinco skills/exit 0 (`ev-20261123T020359Z-a9e561c8`). A quinta execução Codex (`ev-20261123T020348Z-61960379`) passou discovery/contexto/recovery/Apply, mas Verify não retornou aprovação: alegou lock negado sem executar verify. Eventos mostram também `SMOKE_GH_CALLS=/dev/null` para contornar escrita do backend em sandbox read-only. Não é prova de capacidade faltante do produto nem smoke aprovado. Correção da fixture: sandbox workspace-write limitado à raiz descartável, proibição explícita de fontes/posse nos leitores, snapshots antes/depois inalteráveis e log gh em path literal não redirecionável por ambiente. Não há novo adapter ou redução das asserções de fontes/HEAD; independência continua execução distinta com escopo de leitura, não promessa de sandbox imutável.
+- Sexta execução (`ev-20261123T021230Z-01555003`, B `7ef11d2f4e4c83b0c5748de388318e13caa04819`) passou Verify limpo e Archive/sync reais da issue fixture 1 em doze threads, mas o controlador falhou antes de preparar PR: snapshot usava `git ls-files --cached` e tentava lstat de artefatos já movidos por Archive. Correção local: representar explicitamente a ausência de path indexado no fingerprint, em vez de assumir presença ou ignorar deleções; teste negativo distingue presente/ausente/link quebrado/restaurado. Sem alteração do contrato/instalador ou dispensa de comparação.
 
 ### Registro inicial histórico (não é o status atual)
 
@@ -388,6 +389,30 @@ As duas falhas históricas abaixo foram observadas no transcript nativo da sess�
       "simplest_alternative": "Permitir metadados no diretório descartável com escopo de fontes read-only explícito e snapshot obrigatório",
       "choice_rationale": "Não aprovar relatório incompleto, não remover lock/asserções e não interpretar alegação sem comando como runtime proof",
       "next_hypothesis": "Leitores podem consultar backend capturado sem alterar fontes nem tentar assumir posse"
+    },
+    {
+      "kind": "attempt", "seq": 16, "obligation": "codex-smoke",
+      "signature": "FileNotFoundError: source snapshot lstat of archived indexed artifact",
+      "target": "smoke_global_codex.py --cross-agent-opencode", "class": "fixture/isolation",
+      "hypothesis": "Metadados permitidos e escopo de leitura explícito destravam Verify",
+      "change": "Captura gh literal e permissões da raiz descartável, sem mudar asserções", "change_target": "test",
+      "observed_effect": "Doze threads terminaram; Verify limpo e Archive/sync passaram; snapshot não suportava deleção indexada antes do PR",
+      "result": "fail", "evidence": ["evidence:ev-20261123T021230Z-01555003"]
+    },
+    {
+      "kind": "diagnosis", "seq": 17,
+      "group": {"obligation": "codex-smoke", "signature": "FileNotFoundError: source snapshot lstat of archived indexed artifact"},
+      "class": "fixture/isolation",
+      "checked": {
+        "phase": "snapshot antes da preparação de PR, após Archive",
+        "scope": "git ls-files --cached inclui paths removidos do working tree",
+        "lifecycle": "Archive moveu corretamente os artefatos antes de git add/commit",
+        "consumers": "identidade de fontes deve codificar ausência, não omitir a entrada nem exigir existência"
+      },
+      "runtime_proof": ["evidence:ev-20261123T021230Z-01555003"],
+      "simplest_alternative": "Hash de marcador MISSING para entrada indexada ausente, mantendo path e HEAD no fingerprint",
+      "choice_rationale": "Preserva detecção de deleção/restauração sem alterar o Archive oficial ou fazer commit artificial durante ele",
+      "next_hypothesis": "Snapshot representa transições Git válidas e permite executar preparação fixture real"
     }
   ]
 }

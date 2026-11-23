@@ -77,6 +77,25 @@ def require_interrupted_shell(detail, shell_id, cwd):
         raise RuntimeError("BLOCKED: native interrupted shell receipt is missing or belongs to another execution")
 
 
+def source_snapshot(repo, run):
+    paths = run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+                cwd=repo).split("\0")
+    digest = hashlib.sha256(run(["git", "rev-parse", "HEAD"], cwd=repo).encode())
+    for name in sorted(set(filter(None, paths))):
+        path = repo / name
+        digest.update(name.encode())
+        try:
+            mode = path.lstat().st_mode
+        except FileNotFoundError:
+            # Archive legitimately removes still-indexed planning files.
+            # Their absence remains part of the before/after source identity.
+            digest.update(b"\0MISSING\0")
+            continue
+        digest.update(str(mode).encode())
+        digest.update(os.readlink(path).encode() if path.is_symlink() else path.read_bytes())
+    return digest.hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--auth-cache", type=Path, help="Explicit regular auth.json; never config.toml")
@@ -144,15 +163,7 @@ def main():
                                "--json", *options]))
 
     def snapshot(repo):
-        paths = run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-                    cwd=repo).split("\0")
-        digest = hashlib.sha256(run(["git", "rev-parse", "HEAD"], cwd=repo).encode())
-        for name in sorted(set(filter(None, paths))):
-            path = repo / name
-            digest.update(name.encode())
-            digest.update(str(path.lstat().st_mode).encode())
-            digest.update(os.readlink(path).encode() if path.is_symlink() else path.read_bytes())
-        return digest.hexdigest()
+        return source_snapshot(repo, run)
 
     def native(label, repo, prompt, *, writable=False):
         index = len(results["sessions"])
