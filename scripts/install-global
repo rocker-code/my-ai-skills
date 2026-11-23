@@ -627,6 +627,7 @@ def install(args, *, source=ORIGIN):
                 inspect_codex(*paths["codex"], skill_names)
             lock_entries = skill_lock(home, env)
             legacy = []
+            legacy_baselines = {}
             pending = []
             preserved = [f"entrada extra mantida na versão anterior (não migrada): {path}"
                          for path in preserved_extras]
@@ -643,7 +644,10 @@ def install(args, *, source=ORIGIN):
                 if not link.exists() and not link.is_symlink():
                     continue
                 entry = lock_entries.get(name)
-                baseline = legacy_baseline(name, entry, source, Path(directory) / ("legacy-" + name))
+                if name not in legacy_baselines:
+                    legacy_baselines[name] = legacy_baseline(
+                        name, entry, source, Path(directory) / ("legacy-" + name))
+                baseline = legacy_baselines[name]
                 proven = baseline is not None and legacy_matches(link, baseline, home)
                 if not proven:
                     raise InstallError(f"blocked: skill global de outra origem, alterada ou sem baseline: {link}; "
@@ -654,6 +658,10 @@ def install(args, *, source=ORIGIN):
                 legacy.append((link, baseline))
             if set(args.migrate_global_skill) != {path.name for path, _ in legacy}:
                 raise InstallError("Migração global autorizada sem entrada comprovada em conflito.")
+            # skills.sh aliases may reference the universal Codex directory.
+            # Move verified aliases first while their baseline still exists;
+            # reverse-order rollback restores that directory before its aliases.
+            legacy.sort(key=lambda item: not item[0].is_symlink())
             local_prior = prior
             if args.baseline_revision:
                 local_prior = fetch_snapshot(args.baseline_revision, source, Path(directory) / "local-prior")

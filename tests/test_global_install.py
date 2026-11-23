@@ -299,6 +299,35 @@ class GlobalInstallTests(unittest.TestCase):
             record.write_bytes(before)
         self.assertEqual(self.install(agents=()).returncode, 0)
 
+    def test_simultaneous_skills_sh_alias_and_universal_migration_rolls_back_both(self):
+        self.assertEqual(self.install().returncode, 0)
+        alias = self.home / ".config/opencode/skills/apply-issue"
+        alias.unlink()
+        universal = self.home / ".agents/skills/apply-issue"
+        universal.parent.mkdir(parents=True)
+        shutil.copytree(self.data / "active/skills/apply-issue", universal)
+        alias.symlink_to(universal)
+        lock = self.home / ".agents/.skill-lock.json"
+        lock.write_text(json.dumps({"skills": {"apply-issue": {
+            "source": "rocker-code/my-ai-skills", "sourceType": "github",
+            "ref": self.revision, "skillPath": "skills/apply-issue/SKILL.md"}}}))
+        original_lock = lock.read_bytes()
+        before = (self.data / "guidance.json").read_bytes()
+        failed = self.install("--migrate-global-skill", "apply-issue", agents=("codex",),
+                              env={**self.env, "MY_AI_SKILLS_FAIL_AT": "guidance"})
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("Falha simulada", failed.stderr)
+        self.assertEqual(os.readlink(alias), str(universal))
+        self.assertFalse(universal.is_symlink())
+        self.assertTrue((universal / "SKILL.md").is_file())
+        self.assertEqual((self.data / "guidance.json").read_bytes(), before)
+        migrated = self.install("--migrate-global-skill", "apply-issue", agents=("codex",))
+        self.assertEqual(migrated.returncode, 0, migrated.stderr)
+        for link in (alias, universal):
+            self.assertEqual(os.readlink(link), str(self.data / "active/skills/apply-issue"))
+        self.assertEqual(lock.read_bytes(), original_lock)
+        self.assertEqual(len(list((self.data / "migration-backups").iterdir())), 2)
+
     def test_legacy_schema1_real_template_migration_and_same_revision_expansion(self):
         # Reproduce the actual published schema/template without executing the
         # historical installer. The trusted fixture repository contains its bytes.
