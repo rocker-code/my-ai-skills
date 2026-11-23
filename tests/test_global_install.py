@@ -227,6 +227,8 @@ class GlobalInstallTests(unittest.TestCase):
         override.unlink()
         config.write_text('[[skills.config]]\npath = "/some/skill/apply-issue"\nenabled = false\n')
         self.assertIn("desabilitada", self.install(agents=(), env=env).stderr)
+        config.write_text('[[skills.config]]\nname = "apply-issue"\nenabled = false\n')
+        self.assertIn("desabilitada", self.install(agents=(), env=env).stderr)
         config.write_text('[[skills.config]]\npath = "/personal/unrelated"\nenabled = false\n')
         self.assertEqual(self.install(agents=(), env=env).returncode, 0)
         config.write_text('model = "keep-my-model"\n')
@@ -483,7 +485,7 @@ class GlobalInstallTests(unittest.TestCase):
         transport = self.root / "transport"
         transport.mkdir()
         pinned = call("git", "show",
-                      "d06b4dc7e1d25d80515903544dcb0eb1ce8ace7b:scripts/install-global",
+                      "acc97c89d912c249d0656daaa3faabafd3e468d7:scripts/install-global",
                       cwd=ROOT)
         self.assertEqual(pinned.returncode, 0, pinned.stderr)
         entry = transport / "install-global"
@@ -822,8 +824,8 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "d06b4dc7e1d25d80515903544dcb0eb1ce8ace7b"
-        published = "36c733d268da960ddb3f468589ab210058d91c6b5c80e9b0177e9ed2f9f84001"
+        revision = "acc97c89d912c249d0656daaa3faabafd3e468d7"
+        published = "b6919c4d1a81fcef2af17413f1b099a56e610954fa7060fb620988bdb8419e86"
         # The launcher pins immutable commit A with the finished 2.x installer.
         pinned_entry = subprocess.check_output(
             ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
@@ -849,7 +851,7 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_in_disposable_home(self):
         # Transport is mocked, but README pipelines, launcher, digest check,
         # pinned installer and Git snapshot installation execute unchanged.
-        revision = "d06b4dc7e1d25d80515903544dcb0eb1ce8ace7b"
+        revision = "acc97c89d912c249d0656daaa3faabafd3e468d7"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
                          "case \"$2\" in\n"
