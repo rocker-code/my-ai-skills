@@ -239,6 +239,31 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual(migrated.returncode, 0, migrated.stderr)
         self.assertFalse(local.exists())
 
+    def test_multiagent_ownership_tampering_cannot_reduce_selection_or_adopt_paths(self):
+        self.assertEqual(self.install(agents=("opencode", "codex")).returncode, 0)
+        record = self.data / "guidance.json"
+        before = record.read_bytes()
+        parsed = json.loads(before)
+        mutations = []
+        removed = json.loads(before)
+        removed["agents"].pop("codex")
+        mutations.append(removed)
+        wrong_path = json.loads(before)
+        wrong_path["agents"]["codex"]["instructions"] = str(self.root / "foreign/AGENTS.md")
+        mutations.append(wrong_path)
+        wrong_hash = json.loads(before)
+        wrong_hash["agents"]["codex"]["sha256"] = "a" * 64
+        mutations.append(wrong_hash)
+        for mutation in mutations:
+            record.write_text(json.dumps(mutation))
+            active = os.readlink(self.data / "active")
+            result = self.install(agents=())
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertEqual(os.readlink(self.data / "active"), active)
+            self.assertEqual(json.loads(record.read_text()), mutation)
+            record.write_bytes(before)
+        self.assertEqual(self.install(agents=()).returncode, 0)
+
     def test_legacy_schema1_real_template_migration_and_same_revision_expansion(self):
         # Reproduce the actual published schema/template without executing the
         # historical installer. The trusted fixture repository contains its bytes.
@@ -410,11 +435,22 @@ class GlobalInstallTests(unittest.TestCase):
                               "--json", cwd=outside, env=env).returncode, 0)
 
     def test_public_install_and_update_execute_pinned_installer_and_active_command(self):
+        (self.bin / "codex").unlink()
+        self.public_install_update_flow(("opencode",))
+
+    def test_public_codex_only_install_update(self):
+        (self.bin / "opencode").unlink()
+        self.public_install_update_flow(("codex",))
+
+    def test_public_both_agents_install_update(self):
+        self.public_install_update_flow(("opencode", "codex"))
+
+    def public_install_update_flow(self, agents):
         """Use the public shell routes with local transport and a real installer."""
         transport = self.root / "transport"
         transport.mkdir()
         pinned = call("git", "show",
-                      "96864599e1d7b1ec06239aa8f8f6e757043d7212:scripts/install-global",
+                      "d8dd884954f20252b8514d64f6b2ed3de51dce5c:scripts/install-global",
                       cwd=ROOT)
         self.assertEqual(pinned.returncode, 0, pinned.stderr)
         entry = transport / "install-global"
@@ -457,7 +493,8 @@ class GlobalInstallTests(unittest.TestCase):
                "PUBLIC_SOURCE": str(self.source), "REAL_GIT": shutil.which("git"),
                "REAL_PYTHON": shutil.which("python3"),
                "ACTIVE_HELPER": str(self.data / "active/scripts/worktree-reservation")}
-        installed = call("sh", str(ROOT / "scripts/install.sh"), cwd=self.root, env=env)
+        installed = call("sh", str(ROOT / "scripts/install.sh"),
+                         *(arg for agent in agents for arg in ("--agent", agent)), cwd=self.root, env=env)
         self.assertEqual(installed.returncode, 0, installed.stderr)
         self.assertIn("global command", installed.stdout)
         launcher = self.home / ".local/bin/worktree-reservation"
@@ -469,6 +506,10 @@ class GlobalInstallTests(unittest.TestCase):
         updated = call("sh", str(ROOT / "scripts/update.sh"), cwd=self.root,
                        env={**env, "PUBLIC_REVISION": next_revision})
         self.assertEqual(updated.returncode, 0, updated.stderr)
+        selection = json.loads((self.data / "guidance.json").read_text())["agents"]
+        self.assertEqual(set(selection), set(agents))
+        self.assertEqual((self.home / ".config/opencode").exists(), "opencode" in agents)
+        self.assertEqual((self.home / ".codex/AGENTS.md").exists(), "codex" in agents)
         self.assertEqual(json.loads((self.data / "active/manifest.json").read_text())["revision"],
                          next_revision)
         self.assertEqual(call(str(launcher), "list", "--repository", str(self.source),
@@ -748,8 +789,8 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "96864599e1d7b1ec06239aa8f8f6e757043d7212"
-        published = "2a655bd499c94dcc0330313abfffa93642ed719500847f41b2275adf0712cbc3"
+        revision = "d8dd884954f20252b8514d64f6b2ed3de51dce5c"
+        published = "8982a4bd850e251eea1abf86483b0bd48315c1e8b2545aad5a5a38eef02d8f94"
         # The launcher pins immutable commit A with the finished 2.x installer.
         pinned_entry = subprocess.check_output(
             ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
@@ -759,7 +800,7 @@ class GlobalInstallTests(unittest.TestCase):
         launcher = (ROOT / "scripts/install.sh").read_text()
         self.assertIn(f"entry_revision={revision}", launcher)
         self.assertIn(f"entry_sha256={published}", launcher)
-        self.assertIn('python3 "$tmp" --revision "$revision" --agent opencode', launcher)
+        self.assertIn('python3 "$tmp" "$@"', launcher)
         updater = (ROOT / "scripts/update.sh").read_text()
         self.assertIn('git ls-remote --exit-code "$origin" "$ref"', updater)
         self.assertIn('sh "$tmp" --revision "$revision"', updater)
@@ -775,7 +816,7 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_in_disposable_home(self):
         # Transport is mocked, but README pipelines, launcher, digest check,
         # pinned installer and Git snapshot installation execute unchanged.
-        revision = "96864599e1d7b1ec06239aa8f8f6e757043d7212"
+        revision = "d8dd884954f20252b8514d64f6b2ed3de51dce5c"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
                          "case \"$2\" in\n"

@@ -347,6 +347,14 @@ def installed_selection(record, prior, data, paths):
             raise InstallError("Registro global existe, mas orientação foi removida.")
         if hashlib.sha256(managed_block(text).encode()).hexdigest() != entry["sha256"]:
             raise InstallError("Orientação global personalizada; não sobrescrever.")
+    for agent in set(SUPPORTED_AGENTS) - set(entries):
+        instructions = paths[agent][1]
+        if instructions.is_file() and not instructions.is_symlink():
+            text = instructions.read_text()
+            if BEGIN in text or END in text:
+                block_hash = hashlib.sha256(managed_block(text).encode()).hexdigest()
+                if block_hash in trusted_hashes:
+                    raise InstallError(f"Seleção instalada inconsistente: orientação {agent} sem ownership.")
     return sorted(entries)
 
 
