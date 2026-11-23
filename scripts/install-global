@@ -174,8 +174,10 @@ def manifest_for(root, revision, agents=None, *, schema=2):
 
 
 def validate_manifest(root, manifest, staged=False, allow_extras=False):
-    if (not isinstance(manifest, dict) or manifest.get("schema") not in (1, 2)
+    if (not isinstance(manifest, dict) or type(manifest.get("schema")) is not int
+            or manifest.get("schema") not in (1, 2)
             or manifest.get("origin") != ORIGIN
+            or not isinstance(manifest.get("revision"), str)
             or not re.fullmatch(r"[0-9a-f]{40}", manifest.get("revision", ""))
             or (not staged and root.name != manifest["revision"])
             or (manifest.get("agents") != ["opencode"] if manifest.get("schema") == 1
@@ -223,7 +225,8 @@ def validate_manifest(root, manifest, staged=False, allow_extras=False):
         path = root / relative
         if (relative.split("/", 1)[0] not in COMPONENTS or Path(relative).is_absolute()
                 or ".." in Path(relative).parts or not isinstance(info, dict)
-                or not re.fullmatch(r"[0-9a-f]{64}", info.get("sha256", ""))
+                or not isinstance(info.get("sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", info["sha256"])
                 or not isinstance(info.get("mode"), int)
                 or not path.is_file() or path.is_symlink() or digest(path) != info["sha256"]
                 or stat.S_IMODE(path.stat().st_mode) != info["mode"]):
@@ -319,21 +322,24 @@ def managed_block(text):
     return text[text.index(BEGIN):text.index(END) + len(END)]
 
 
-def installed_selection(record, prior, data, paths):
+def installed_selection(record, prior, data, paths, revision):
     if not prior:
         if record is not None:
             raise InstallError("Registro global sem pacote ativo verificável.")
         return []
-    if not isinstance(record, dict):
+    if not isinstance(record, dict) or type(record.get("schema")) is not int:
         raise InstallError("Pacote ativo sem registro global comprovado.")
     expected_hash = hashlib.sha256(baseline_guidance(prior, data).encode()).hexdigest()
     trusted_hashes = {expected_hash, hashlib.sha256(guidance(data).rstrip("\n").encode()).hexdigest()}
     if record.get("schema") == 1:
-        if set(record) != {"schema", "sha256"} or record.get("sha256") not in trusted_hashes:
+        if (set(record) != {"schema", "sha256"} or not isinstance(record.get("sha256"), str)
+                or record["sha256"] not in trusted_hashes):
             raise InstallError("Orientação global personalizada/sem baseline.")
         entries = {"opencode": {"skills": str(paths["opencode"][0]),
                                 "instructions": str(paths["opencode"][1]), "sha256": record["sha256"]}}
-    elif record.get("schema") == 2 and set(record) == {"schema", "agents"}:
+    elif record.get("schema") == 2 and set(record) == {"schema", "revision", "agents"}:
+        if record.get("revision") != revision:
+            raise InstallError("Ownership e revisão ativa inconsistentes; preserve o estado parcial e reconcilie explicitamente.")
         entries = record["agents"]
         if not isinstance(entries, dict) or not entries or not set(entries) <= set(SUPPORTED_AGENTS):
             raise InstallError("Seleção instalada inválida.")
@@ -341,7 +347,8 @@ def installed_selection(record, prior, data, paths):
         raise InstallError("Registro global sem propriedade comprovada.")
     for agent, entry in entries.items():
         skills, instructions = paths[agent]
-        if (not isinstance(entry, dict) or entry.get("sha256") not in trusted_hashes
+        if (not isinstance(entry, dict) or not isinstance(entry.get("sha256"), str)
+                or entry["sha256"] not in trusted_hashes
                 or entry != {"skills": str(skills), "instructions": str(instructions), "sha256": entry.get("sha256")}):
             raise InstallError(f"Paths/ownership de {agent} divergentes; reconcilie CODEX_HOME/XDG explicitamente.")
         for path in (skills, instructions):
@@ -590,7 +597,8 @@ def install(args, *, source=ORIGIN):
                 raise InstallError("Ponteiro ativo de outra origem.")
             paths = integration_paths(home, env)
             previous_selection = installed_selection(
-                json.loads(ownership_before) if ownership_before else None, prior, data, paths)
+                json.loads(ownership_before) if ownership_before else None, prior, data, paths,
+                old_manifest["revision"] if old_manifest else None)
             selection = sorted(set(previous_selection) | set(requested))
             preflight(home, selection)
             ensure_openspec(data, env)
@@ -609,17 +617,17 @@ def install(args, *, source=ORIGIN):
                 texts.append((instructions, previous, new_text))
                 entries[agent] = {"skills": str(skills), "instructions": str(instructions),
                                   "sha256": hashlib.sha256(block.rstrip("\n").encode()).hexdigest()}
-            new_record = json.dumps({"schema": 2, "agents": entries}, sort_keys=True) + "\n"
+            new_record = json.dumps({"schema": 2, "revision": args.revision, "agents": entries}, sort_keys=True) + "\n"
             if target.exists():
                 if target.is_symlink() or not target.is_dir():
                     raise InstallError(f"Versão conflitante: {target}")
                 old = json.loads((target / "manifest.json").read_text())
+                validate_manifest(target, old)
                 expected = manifest_for(repo, args.revision, schema=old.get("schema"))
                 if "directories" not in old and old.get("schema") == 1:
                     expected.pop("directories")
                 if old != expected:
                     raise InstallError(f"Manifesto conflitante: {target}")
-                validate_manifest(target, old)
             elif target.is_symlink():
                 raise InstallError(f"Versão symlink conflitante: {target}")
             skill_names = sorted(p.name for p in (repo / "skills").iterdir() if (p / "SKILL.md").is_file())
@@ -631,15 +639,23 @@ def install(args, *, source=ORIGIN):
             pending = []
             preserved = [f"entrada extra mantida na versão anterior (não migrada): {path}"
                          for path in preserved_extras]
+            proven_links = set()
+            if old_manifest:
+                for agent in previous_selection:
+                    inventory = old_manifest["integrations"].get(agent, old_manifest["integrations"]["opencode"])
+                    proven_links.update(paths[agent][0] / Path(relative).name for relative in inventory["skills"])
             links = [(paths[agent][0] / name, name) for agent in selection
                      for name in sorted(set(skill_names) | set(lock_entries))]
             for link, name in links:
+                expected = str(data / "active" / "skills" / name)
                 if name not in skill_names:
-                    if name in lock_entries and (link.exists() or link.is_symlink()):
+                    managed_obsolete = link in proven_links and link.is_symlink() and os.readlink(link) == expected
+                    if name in lock_entries and (link.exists() or link.is_symlink()) and not managed_obsolete:
                         preserved.append(f"skill skills.sh sem colisão (intocada): {link}")
                     continue
-                expected = str(data / "active" / "skills" / name)
                 if link.is_symlink() and os.readlink(link) == expected:
+                    if link not in proven_links:
+                        raise InstallError(f"Vínculo global sem ownership comprovado: {link}; preserve estado parcial e reconcilie explicitamente.")
                     continue
                 if not link.exists() and not link.is_symlink():
                     continue
@@ -684,6 +700,8 @@ def install(args, *, source=ORIGIN):
                             obsolete.append((link, expected))
                         elif link.exists() or link.is_symlink():
                             raise InstallError(f"Skill obsoleta personalizada: {link}")
+                        else:
+                            raise InstallError(f"Skill gerenciada ausente: {link}; estado anterior inconsistente.")
             for link, name in links:
                 if name not in skill_names:
                     continue

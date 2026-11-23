@@ -12,7 +12,7 @@ develop this repository is not a request to install it.
 1. Inventory the selected installation: global package at
    `${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/active`, supported agent,
    `active/manifest.json` (schema 2 lists available integrations, not selection),
-   `guidance.json` (schema 2 records installed agents/paths/managed-block hashes;
+   `guidance.json` (schema 2 binds active revision to installed agents/paths/managed-block hashes;
    verified schema 1 is legacy OpenCode), global OpenCode skills at
    `${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills`, Codex native skills at
    `$HOME/.agents/skills`, Codex guidance at `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`,

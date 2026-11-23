@@ -152,6 +152,36 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertIn("--agent codex", result.stderr)
         self.assertFalse(self.data.exists())
 
+    def test_orphan_managed_looking_link_is_not_adopted_after_interruption(self):
+        orphan = self.home / ".agents/skills/apply-issue"
+        orphan.parent.mkdir(parents=True)
+        orphan.symlink_to(self.data / "active/skills/apply-issue")
+        result = self.install(agents=("codex",))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("sem ownership", result.stderr)
+        self.assertTrue(orphan.is_symlink())
+        self.assertFalse((self.data / "active").exists())
+        self.assertFalse((self.home / ".codex/AGENTS.md").exists())
+
+    def test_interrupted_ownership_or_unrecorded_new_link_blocks_republication(self):
+        self.assertEqual(self.install().returncode, 0)
+        record = self.data / "guidance.json"
+        before = record.read_bytes()
+        revision = self.next_revision()
+        changed = json.loads(before)
+        changed["revision"] = revision  # Crash after ownership but before active.
+        record.write_text(json.dumps(changed))
+        blocked = self.install(agents=(), revision=revision)
+        self.assertIn("revisão ativa inconsistentes", blocked.stderr)
+        self.assertEqual((self.data / "active").resolve().name, self.revision)
+        record.write_bytes(before)
+        orphan = self.home / ".config/opencode/skills/new-feature"
+        orphan.symlink_to(self.data / "active/skills/new-feature")
+        blocked = self.install(agents=(), revision=revision)
+        self.assertIn("sem ownership", blocked.stderr)
+        self.assertEqual(record.read_bytes(), before)
+        self.assertEqual((self.data / "active").resolve().name, self.revision)
+
     def test_codex_capability_gap_blocks_without_cross_agent_fallback(self):
         binary = self.bin / "codex"
         binary.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'codex-cli 0.171.0'; else echo '--json only'; fi\n")
@@ -289,6 +319,9 @@ class GlobalInstallTests(unittest.TestCase):
         wrong_hash = json.loads(before)
         wrong_hash["agents"]["codex"]["sha256"] = "a" * 64
         mutations.append(wrong_hash)
+        nonstring_hash = json.loads(before)
+        nonstring_hash["agents"]["codex"]["sha256"] = []
+        mutations.append(nonstring_hash)
         for mutation in mutations:
             record.write_text(json.dumps(mutation))
             active = os.readlink(self.data / "active")
@@ -514,7 +547,7 @@ class GlobalInstallTests(unittest.TestCase):
         transport = self.root / "transport"
         transport.mkdir()
         pinned = call("git", "show",
-                      "06139455da07e336d6969b66f90194afeb9302b8:scripts/install-global",
+                      "1b6f01f604f16fa4910418f4fbde080a43cad5c0:scripts/install-global",
                       cwd=ROOT)
         self.assertEqual(pinned.returncode, 0, pinned.stderr)
         entry = transport / "install-global"
@@ -853,8 +886,8 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "06139455da07e336d6969b66f90194afeb9302b8"
-        published = "c8d4a9cc367fc40b754374c2fa7e774bd288db1a3806d645835eb65922d195f7"
+        revision = "1b6f01f604f16fa4910418f4fbde080a43cad5c0"
+        published = "48a3360bd8f80a7dc9f274f946be887e3d4ec610d5f4ecb5e609612503ff7a21"
         # The launcher pins immutable commit A with the finished 2.x installer.
         pinned_entry = subprocess.check_output(
             ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
@@ -880,7 +913,7 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_in_disposable_home(self):
         # Transport is mocked, but README pipelines, launcher, digest check,
         # pinned installer and Git snapshot installation execute unchanged.
-        revision = "06139455da07e336d6969b66f90194afeb9302b8"
+        revision = "1b6f01f604f16fa4910418f4fbde080a43cad5c0"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
                          "case \"$2\" in\n"
@@ -1130,6 +1163,12 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual(self.install().returncode, 0)
         name = "apply-issue"
         link = self.home / ".config/opencode/skills" / name
+        lock = self.home / ".agents/.skill-lock.json"
+        lock.parent.mkdir(parents=True)
+        lock.write_text(json.dumps({"skills": {name: {
+            "source": "rocker-code/my-ai-skills", "sourceType": "github",
+            "ref": self.revision, "skillPath": f"skills/{name}/SKILL.md"}}}))
+        original_lock = lock.read_bytes()
         old = os.readlink(self.data / "active")
         shutil.rmtree(self.source / "skills" / name)
         self.git("add", "-A")
@@ -1139,9 +1178,18 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotEqual(fail.returncode, 0)
         self.assertTrue(link.is_symlink())
         self.assertEqual(os.readlink(self.data / "active"), old)
+        previous_target = os.readlink(link)
+        link.unlink()
+        missing = self.install(revision=revision)
+        self.assertEqual(missing.returncode, 1)
+        self.assertIn("Skill gerenciada ausente", missing.stderr)
+        self.assertEqual(os.readlink(self.data / "active"), old)
+        link.symlink_to(previous_target)
         success = self.install(revision=revision)
         self.assertEqual(success.returncode, 0, success.stderr)
         self.assertFalse(link.is_symlink())
+        self.assertNotIn(f"preserved: skill skills.sh sem colisão (intocada): {link}", success.stdout)
+        self.assertEqual(lock.read_bytes(), original_lock)
 
     def test_legacy_source_clone_at_data_path_is_not_modified(self):
         self.data.mkdir(parents=True)
