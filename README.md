@@ -12,7 +12,7 @@ O ciclo passa por descoberta, prontidão, implementação, revisão e conclusão
 
 ### Retomar após interrupção
 
-Em uma **nova sessão do OpenCode**, no checkout correspondente, peça **“continue de onde parou”** ou informe a URL da issue/milestone a retomar. A skill global `resume-workflow` reconcilia Git/GitHub, OpenSpec, evidências e a posse da worktree antes de delegar ao `milestone-orchestrator`. Quando o escopo ou a posse não forem verificáveis, preserva o trabalho e solicita somente a informação necessária, sem sobrescrever arquivos. Um teste/comando interrompido não é considerado aprovado sem evidência final. Alterações que nunca saíram de um disco perdido não podem ser restauradas automaticamente.
+Em uma **nova sessão nativa do OpenCode ou Codex**, no checkout correspondente, peça **“continue de onde parou”** ou informe a URL da issue/milestone a retomar. A skill global `resume-workflow` reconcilia Git/GitHub, OpenSpec, evidências e a posse da worktree antes de delegar ao `milestone-orchestrator`. Quando o escopo ou a posse não forem verificáveis, preserva o trabalho e solicita somente a informação necessária, sem sobrescrever arquivos. Trocar de agente reaproveita artefatos duráveis, não histórico de chat; é preciso comprovar parada do writer anterior e transferir a reserva. Um teste/comando interrompido não é considerado aprovado sem evidência final. Alterações que nunca saíram de um disco perdido não podem ser restauradas automaticamente.
 
 Após uma instalação global atualizada, `worktree-reservation verify --session <id>` verifica a posse a partir de qualquer subdiretório do checkout; informe `--path <checkout>` ao selecionar outra worktree e `--json` para automação. A sessão sempre vem do chamador. Antes da atualização, use o helper em `~/.local/share/my-ai-skills/active/scripts/worktree-reservation` com `--path` explícito.
 
@@ -22,12 +22,12 @@ Após uma instalação global atualizada, `worktree-reservation verify --session
 
 ## Instalar ou atualizar
 
-Linux/macOS: requer Git, Python 3.10+, `curl`, `gh`, `jq` e OpenCode V2 no `PATH`. Para usar o workflow, OpenSpec **2.x** é necessário, mas **não precisa estar instalado antes**: o instalador verifica o CLI existente sem substituí-lo, recusa 1.x com instrução para atualizá-lo pela origem, ou instala a distribuição standalone oficial para seu usuário se estiver ausente. Autentique o GitHub CLI separadamente com `gh auth login`.
+Linux/macOS: requer Git, Python 3.10+, `curl`, `gh`, `jq` e somente o agente selecionado no `PATH`: OpenCode V2 ou Codex CLI com `exec --json/--cd/--ephemeral/--sandbox`. Para usar o workflow, OpenSpec **2.x** é necessário, mas **não precisa estar instalado antes**: o instalador verifica o CLI existente sem substituí-lo, recusa 1.x com instrução para atualizá-lo pela origem, ou instala a distribuição standalone oficial para seu usuário se estiver ausente. Autentique GitHub e o agente separadamente. Preflight/version/help não comprovam autenticação, execução de modelo, subagentes ou revisão independente.
 
 Execute o instalador diretamente do GitHub:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh -s -- --agent opencode
 ```
 
 O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `96864599e1d7b1ec06239aa8f8f6e757043d7212`, confere seu SHA-256 `2a655bd499c94dcc0330313abfffa93642ed719500847f41b2275adf0712cbc3` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`. Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use o [comando com entrada verificada](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global) para maior garantia.
@@ -39,6 +39,14 @@ curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scrip
 ```
 
 **Os dois comandos instalam a revisão mais recente ao serem executados.** `update.sh` apenas deixa explícita a intenção de atualizar; ele confia na `main` atual e chama o mesmo instalador verificado. Nenhuma atualização roda em segundo plano. Não use `npx skills update` nem execute o instalador da instalação ativa para atualizar o pacote. [Detalhes, conflitos e migração](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global).
+
+Na primeira instalação, escolha `--agent codex` em vez de `--agent opencode` para usar somente Codex; repita `--agent opencode --agent codex` para ambos. Não há autodetecção nem default implícito. Update sem flags preserva a seleção comprovada; seleção explícita posterior é **aditiva**, inclusive na mesma revisão. Não remove agentes por omissão; runtime mantido ausente bloqueia com diagnóstico.
+
+Um snapshot canônico fica em `${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/versions/<SHA>`, com `active` compartilhado. Manifesto schema 2 registra integrações **disponíveis**, arquivos/modos/origem; `guidance.json` schema 2 registra agentes **instalados**, caminhos e hashes dos blocos gerenciados. Instalações OpenCode schema 1 são verificadas contra Git confiável antes da migração, sem regravar versões antigas. Links OpenCode ficam em `${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills`; links Codex em `$HOME/.agents/skills` (não relocados por CODEX_HOME), com orientação em `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. Ambos apontam para o mesmo `active/skills`.
+
+Config/auth/hooks permanecem intocados. CODEX_HOME/XDG alterados, symlinks ancestrais, origem incerta, skills homônimas/desabilitadas ou `AGENTS.override.md` sombreando orientação exigem reconciliação explícita. Colisão em um agente impede publicação nos dois; falha reverte somente efeitos comprovadamente próprios. Diagnóstico local com `--project` não autoriza edição; `--baseline-revision` e `--reconcile-path` autorizam somente paths idênticos ao baseline, com backup. Consulte a skill `update-ai-workflow` para os limites.
+
+Provas reais isoladas: `PYTHONDONTWRITEBYTECODE=1 python3 tests/smoke_global_opencode.py` e `PYTHONDONTWRITEBYTECODE=1 python3 tests/smoke_global_codex.py --controller-session <ID-nativo-do-chamador> --auth-cache <auth.json-explícito>`. Codex também aceita token suportado via ambiente/stdin. O cache é copiado com permissão restrita e removido ao finalizar; nenhuma configuração real é copiada. Sem credencial/capacidade/término, o smoke **bloqueia**, não passa por skip. Os relatórios privados distinguem descoberta/invocação, contextos novos, lifecycle/testes reais e backend GitHub fixture; não comprovam checks/review/merge hospedados.
 
 Caches Python (`__pycache__`, `.pyc`, `.pyo`) não bloqueiam a atualização. Arquivos e diretórios extras comuns são preservados na versão anterior, com aviso, ao trocar de revisão; não são migrados. Arquivos oficiais alterados ou ausentes e links simbólicos inesperados continuam bloqueando. A versão de destino mantém a validação estrita de entradas extras desconhecidas.
 
@@ -150,7 +158,7 @@ Os comandos `workflow-event` e `workflow-report` foram removidos. Não há colet
 
 ## Usar
 
-O instalador e o atualizador conferem ao final o pacote, uma skill e o OpenSpec. Abra uma nova sessão OpenCode. No primeiro uso em um projeto, o agente confere a integração OpenSpec 2.0 e pede autorização específica antes de inicializar ou atualizar; a instalação global não modifica projetos. Confira a descoberta e invocação das skills oficiais `openspec-explore`, `openspec-propose`, `openspec-apply-change` e `openspec-archive-change` antes de implementar; comandos `/opsx-*` legados não são exigidos. Preserve ferramentas já configuradas, arquivos personalizados e config/specs/changes; bloqueie conflitos sem forçar.
+O instalador e o atualizador conferem ao final o pacote, cada integração selecionada e o OpenSpec. Abra uma nova sessão do agente escolhido. No primeiro uso em um projeto, o agente confere a integração OpenSpec 2.x e pede autorização específica antes de inicializar ou atualizar; a instalação global não modifica projetos. Confira descoberta e invocação das skills oficiais `openspec-explore`, `openspec-propose`, `openspec-apply-change`, `openspec-verify-change` e `openspec-archive-change`; comandos `/opsx-*` legados não são exigidos. Habilite Verify pelo perfil oficial preservando workflows existentes; use `--scope project` nas fixtures quando suportado. Preserve ferramentas já configuradas, arquivos personalizados e config/specs/changes; bloqueie conflitos sem forçar. Codex usa skills nativas (`$nome-da-skill`) e execuções novas verificadas; não exige OpenCode nem simula sua API.
 
 Peça **“Cuide da issue: URL”**, **“Cuide da fila deste projeto”** ou **“Cuide deste milestone: URL”**; acrescente **“sem merge”** se quiser integrar manualmente. O fluxo planeja com OpenSpec, implementa, testa, prepara a PR e revisa; o merge padrão só ocorre após as verificações exigidas. O agente precisa de acesso ao GitHub e de sessões/worktrees isoladas para executar o fluxo completo.
 

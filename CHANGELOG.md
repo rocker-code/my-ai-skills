@@ -4,6 +4,8 @@
 
 ### Adicionado
 
+- Integração global nativa Codex CLI e coexistência com OpenCode usando a mesma fonte canônica, links/paths próprios, ownership verificável e atualização transacional; instalação inicial exige `--agent` explícito e atualizações preservam ou ampliam a seleção. Smokes isolados distinguem execução nativa de backend GitHub fixture, sem restaurar plugin pessoal ou comentários operacionais. [#77](https://github.com/rocker-code/my-ai-skills/issues/77)
+
 - Comando global `worktree-reservation` com detecção segura da raiz do checkout mesmo sob variáveis Git herdadas, resumo operacional com recibos de execução e `--json` para automação; a instalação protege comandos existentes, preserva caminhos com metacaracteres e acompanha a versão ativa pelo instalador público verificado. [#69](https://github.com/rocker-code/my-ai-skills/issues/69)
 
 - Retomada segura de issues e milestones em uma nova sessão OpenCode com `resume-workflow`, reconhecimento de solicitações naturais de continuação e reconciliação dos checkpoints existentes antes de qualquer escrita.

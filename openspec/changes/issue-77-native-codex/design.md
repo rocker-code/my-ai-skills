@@ -177,3 +177,70 @@ Executar primeiro grupos focados; suite completa obrigatória no último HEAD li
 Executado no conjunto de artefatos, antes do pin: `openspec status --change issue-77-native-codex --json` informa todos os quatro artefatos de planejamento completos; `openspec validate issue-77-native-codex --strict --no-interactive --json` aprovou 1/1, `valid=true`, `issues=[]`; `git diff --check` retornou 0. Revalidar o mesmo conjunto no commit pinado e devolver SHA/resultados ao coordenador.
 
 Esses resultados validam **planejamento**, não implementação. Suite Python e smokes nativos continuam NOT RUN; não houve revisão independente neste contexto.
+
+## Apply handoff (parcial)
+
+- Apply `ses_dfa33e1cfffeWdMuWMEgF2qi91` confirmou reserva e SHA `2a6572d8271a467118aa61f0e952365783af8626`. Revisão independente desse SHA: sessão `ses_dfa3609e4ffenAb7XCzOZXHb6A`, callback APPROVED informado pelo coordenador; planner parado por callback. Política de teste do checkout não mudou desde o pin.
+- Preflight nativo: Python 3.14.8, OpenSpec 2.1.1, OpenCode v2.3.2, Codex 0.171.0. Sem Composer/npm/M2T/serviços. Fixtures Git/HOME descartáveis; instalação real não alterada.
+- Bloqueio de auth Codex isolada: `/tmp/opencode/issue77-codex-auth-9tra60y2/result-ready.json`, `codex login status` exit 1, `Not logged in`. HOME/CODEX_HOME/XDG novos, sem OPENAI_API_KEY/CODEX_ACCESS_TOKEN; nenhuma credencial real copiada. Invocação de modelo e independência Codex não comprovadas. Precisa autenticação isolada autorizada por mecanismo suportado, não troca de agente nem skip.
+- Diagnóstico de testes focados: a execução exclusiva passou (1 teste); o primeiro grupo de 9 teve 8 falhas por launcher real vazando no PATH da fixture; a segunda execução teve 8 falhas distintas (`Falta gh no PATH`) após restringir PATH. Ambos ocorrem no preflight de instalação, antes de publicação/skills; são fixture/setup, não aplicação. `command -v gh` confirma `/home/beto/.local/bin/gh`. Alternativa simples: manter PATH herdado e ignorar colisão foi rejeitada por esconder risco. Correção escolhida: diretório fixture de dependências comuns com links explícitos para Git/gh/jq/curl/Python, sem expor launcher/runtime não selecionado. Nenhuma asserção foi removida ou enfraquecida. Esses resultados não são gate final e nenhuma falha é declarada preexistente.
+- Após correção da fixture: `ev-20261123T003400Z-f1b218d1`, 10 testes focados, exit 0; `workflow-evidence verify` retornou `verified/passed` antes desta anotação. Evidência de desenvolvimento em árvore suja, não gate final; esta anotação posterior altera seu fingerprint. Comando exato e log checksum-bound no registro. A suite completa, os grupos completos e ambos smokes ainda não foram executados; não há contagem aprovada para eles.
+- Estado parcial: somente `scripts/install-global`, `tests/test_global_install.py` e este handoff alterados. Nenhum dos 17 itens está integralmente concluído (faltam documentação/contratos/pós-checks e provas nativas); checkboxes continuam abertos. Não há commit A/B, pin novo, PR, archive/sync ou invocação Verify desta implementação. O pin público anterior não corresponde aos bytes de trabalho novos até a publicação A/B futura; não usar o checkout como distribuição concluída.
+- Pesquisa de auth: [documentação oficial](https://developers.openai.com/codex/auth/) confirma cache em `CODEX_HOME/auth.json` ou keyring, login por browser/API key/access token e tratar auth.json como senha. `codex login --help` confirma `--with-api-key`, `--with-access-token`, `--device-auth`; nenhuma opção foi usada para iniciar login. Próxima ação: preparar autenticação isolada autorizada ou autorizar explicitamente reutilização protegida do cache existente, sem copiar config, expor segredos ou escrever no HOME real; depois retomar Apply no mesmo checkout/reserva.
+
+As duas falhas históricas abaixo foram observadas no transcript nativo da sessão Apply, no HEAD indicado e com alterações locais. O SHA identifica esse contexto, não certifica uma execução limpa nem constitui prova independente; só o terceiro resultado possui log checksum-bound. Assinaturas diferentes refletem mensagens reais diferentes do preflight, não reclassificação artificial de uma mesma falha.
+
+```attempt-log
+{
+  "attempt_log": 1,
+  "entries": [
+    {
+      "kind": "attempt", "seq": 1, "obligation": "installer-focused",
+      "signature": "InstallError: comando de outra origem precede launcher no PATH",
+      "target": "9 testes focados GlobalInstallTests", "class": "environment/bootstrap",
+      "hypothesis": "A fixture herdada usa somente dependências de teste",
+      "change": "Implementação inicial de seleção e testes novos", "change_target": "application",
+      "observed_effect": "8/9 falharam no preflight porque o launcher real era descoberto",
+      "result": "fail", "evidence": ["2a6572d8271a467118aa61f0e952365783af8626"]
+    },
+    {
+      "kind": "attempt", "seq": 2, "obligation": "installer-focused",
+      "signature": "InstallError: falta gh no PATH",
+      "target": "mesmos 9 testes focados GlobalInstallTests", "class": "environment/bootstrap",
+      "hypothesis": "PATH com diretórios de sistema evita launcher real e contém dependências comuns",
+      "change": "Restringir PATH da fixture a bin local e diretórios de sistema", "change_target": "fixture",
+      "observed_effect": "8/9 falharam antes de instalar: gh está no bin do usuário, não no sistema",
+      "result": "fail", "evidence": ["2a6572d8271a467118aa61f0e952365783af8626"]
+    },
+    {
+      "kind": "diagnosis", "seq": 3,
+      "group": {"obligation": "installer-focused", "signature": "InstallError: falta gh no PATH"},
+      "class": "environment/bootstrap",
+      "checked": {
+        "phase": "preflight do instalador, antes de manifesto e publicação",
+        "scope": "HOME/PATH descartáveis da fixture unittest",
+        "lifecycle": "instalação inicial bloqueada; active ainda ausente",
+        "consumers": "preflight precisa gh; inspect_launcher recusa comando real de outra origem"
+      },
+      "runtime_proof": ["2a6572d8271a467118aa61f0e952365783af8626"],
+      "simplest_alternative": "Restaurar PATH herdado foi rejeitado: reintroduz colisão real",
+      "choice_rationale": "command -v gh confirmou bin do usuário; links explícitos isolam dependências sem abrir o PATH do usuário",
+      "next_hypothesis": "Diretório comum de ferramentas fixture resolve gh sem vazar launcher ou runtime não selecionado"
+    },
+    {
+      "kind": "attempt", "seq": 4, "obligation": "installer-focused",
+      "signature": "InstallError: falta gh no PATH",
+      "target": "mesmos 9 testes + cenário exclusivo por agente", "class": "fixture/isolation",
+      "hypothesis": "Links explícitos para dependências comuns isolam o preflight",
+      "change": "Diretório common-tools fixture com Git/gh/jq/curl/Python; manter PATH restrito",
+      "change_target": "fixture", "observed_effect": "10 testes passaram, exit 0",
+      "result": "pass", "evidence": ["evidence:ev-20261123T003400Z-f1b218d1"]
+    },
+    {
+      "kind": "resolution",
+      "group": {"obligation": "installer-focused", "signature": "InstallError: falta gh no PATH"},
+      "outcome": "passed", "via_seq": 4
+    }
+  ]
+}
+```

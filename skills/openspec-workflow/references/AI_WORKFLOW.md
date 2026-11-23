@@ -25,6 +25,32 @@ Material changes to behavior, data, authorization, architecture or public contra
 
 ## Queue and merge
 
+### Native execution boundaries
+
+OpenCode and Codex consume the same skills and policies; neither requires the
+other CLI. Use only tools/sessions actually available in the selected runtime.
+For Codex, a new `codex exec --json --cd <checkout>` without `resume`, `fork` or
+an inherited transcript is a candidate fresh context: confirm its native
+thread/session ID, effective input and terminal completion. Distinct processes,
+help text and feature flags alone do not prove independence or subagent support.
+OpenCode uses its available native session tools and completion callbacks.
+
+Correlate every result with its native identity, issue, checkout and immutable
+input/output SHA. Reject another worker's callback; never reuse the owner's ID,
+invent an identity environment variable or derive identity from a PID. When a
+worker cannot access its native ID, the runtime must supply it with verifiable
+provenance before reservation verification. An independent reviewer uses a
+distinct verified execution, immutable input and read-only scope; `codex review`
+alone does not certify the complete project review contract. If delegation is
+unproven, use distinct native executions with verified completion; if insufficient,
+block only that action with a concrete next step in the same selected CLI.
+
+Agent switching transfers durable Git/GitHub/OpenSpec/worktree evidence, never
+live chat history. Prove the old writer stopped, reconcile and transfer its
+reservation, reuse the existing change/PR, and rerun incomplete or invalidated
+tests. Unknown completion, credentials or capabilities remain unknown, not
+approval, delivery or a reason to silently switch agents.
+
 `milestone-orchestrator` selects a single issue, exact milestone or authorized repository queue. A single-issue request never authorizes prerequisites or siblings. Inventory dependencies and existing PRs read-only. **At most one active issue per selected queue**, including planning: finish or explicitly park it with reason, branch/revision and next action before starting another, even if independent. Subagents may work only within that active issue, with real runtime support, isolated resources and one writer per checkout. Cross-repository consumers require `contract-handoff` design review and frozen effective producer contract before integration; an unmerged hard prerequisite is not delivery.
 
 Default `merge_mode=auto-if-green` applies only to the authorized scope; explicit manual/no-merge overrides it. Merge only after current HEAD, required checks, independent review, required human approvals, target/method and branch protection are verified. Pending/failed/missing/unknown required signals block merge. Native auto-merge is permitted only if GitHub enforces all applicable gates; otherwise wait and recheck. Use the expected HEAD to reject a concurrent push, then verify actual merge/closure and any required merge-commit checks. Never force-push, deploy, release or bypass protection as a side effect.

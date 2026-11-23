@@ -5,6 +5,7 @@ The public command MUST verify this entrypoint's independently published SHA-256
 before running it. --revision binds the fetched Git object to that entrypoint.
 """
 import argparse
+import ast
 import errno
 import fcntl
 import hashlib
@@ -27,6 +28,7 @@ OPENSPEC_INSTALL_SHA256 = "fa5e08b9cec6815e69cd5fc250fc57aa720609927da38587f872e
 BEGIN = "<!-- my-ai-skills-global:v1 begin -->"
 END = "<!-- my-ai-skills-global:v1 end -->"
 COMPONENTS = ("skills", "protocol", "templates", "scripts")
+SUPPORTED_AGENTS = ("codex", "opencode")
 
 
 class InstallError(Exception):
@@ -51,30 +53,36 @@ def absent_or_regular(path):
 
 def safe_parent(path, stop):
     for ancestor in (path, *path.parents):
-        if ancestor == stop.parent:
-            break
         if ancestor.is_symlink():
             raise InstallError(f"Diretório symlink não confiável: {ancestor}")
 
 
 def preflight(home, agents):
-    if not agents or set(agents) != {"opencode"}:
-        raise InstallError("Selecione --agent opencode (único agente suportado).")
+    if not agents or not set(agents) <= set(SUPPORTED_AGENTS):
+        raise InstallError("Selecione --agent opencode ou --agent codex (repetível para ambos).")
     if os.name != "posix" or platform.system() not in ("Linux", "Darwin"):
         raise InstallError("Plataforma não suportada: use Linux ou macOS POSIX.")
     if sys.version_info < (3, 10):
         raise InstallError("Python 3.10+ necessário; instale-o antes de continuar.")
-    for executable in ("git", "gh", "jq", "curl", "opencode"):
+    for executable in ("git", "gh", "jq", "curl", *agents):
         if not shutil.which(executable):
             raise InstallError(f"Falta {executable} no PATH; instale-o antes de continuar.")
-    opencode = shutil.which("opencode")
-    version = run(opencode, "--version")
-    help_text = run(opencode, "--help")
-    if not re.search(r"\bv2\.\d+\.\d+\b", version) or not all(
-        re.search(r"^ *" + token + r"\b", help_text, re.MULTILINE)
-        for token in ("api", "run", "service")
-    ):
-        raise InstallError("OpenCode V2 com API, run e service é necessário; instale/atualize OpenCode V2.")
+    if "opencode" in agents:
+        opencode = shutil.which("opencode")
+        version = run(opencode, "--version")
+        help_text = run(opencode, "--help")
+        if not re.search(r"\bv2\.\d+\.\d+\b", version) or not all(
+            re.search(r"^ *" + token + r"\b", help_text, re.MULTILINE)
+            for token in ("api", "run", "service")
+        ):
+            raise InstallError("OpenCode V2 com API, run e service é necessário; instale/atualize OpenCode V2.")
+    if "codex" in agents:
+        version = run("codex", "--version")
+        help_text = run("codex", "exec", "--help")
+        if not re.fullmatch(r"codex-cli \d+\.\d+\.\d+(?:[-+][\w.-]+)?", version) or not all(
+            flag in help_text for flag in ("--json", "--cd", "--ephemeral", "--sandbox")
+        ):
+            raise InstallError("Codex CLI com exec --json/--cd/--ephemeral/--sandbox necessário; atualize pela origem.")
     if not home.is_dir():
         raise InstallError(f"HOME inválido: {home}")
 
@@ -133,7 +141,7 @@ def fetch_snapshot(revision, source, temp):
     return repo
 
 
-def manifest_for(root, revision, agents):
+def manifest_for(root, revision, agents=None, *, schema=2):
     entries = {}
     directories = {}
     skills = sorted(p.name for p in (root / "skills").iterdir() if (p / "SKILL.md").is_file())
@@ -150,18 +158,23 @@ def manifest_for(root, revision, agents):
     for name in ("worktree-reservation", "workflow-evidence"):
         if f"scripts/{name}" not in entries:
             raise InstallError(f"Helper ausente: {name}")
-    return {"schema": 1, "origin": ORIGIN, "revision": revision,
-            "agents": sorted(set(agents)), "files": entries, "directories": directories,
-            "integrations": {"opencode": {"skills": ["skills/" + name for name in skills],
-                                        "instructions": "AGENTS.md", "ownership": "guidance.json"}}}
+    integrations = {agent: {"skills": ["skills/" + name for name in skills],
+                            "instructions": "AGENTS.md", "ownership": "guidance.json"}
+                    for agent in (("opencode",) if schema == 1 else SUPPORTED_AGENTS)}
+    result = {"schema": schema, "origin": ORIGIN, "revision": revision,
+              "files": entries, "directories": directories, "integrations": integrations}
+    result["agents" if schema == 1 else "available_agents"] = (
+        ["opencode"] if schema == 1 else list(SUPPORTED_AGENTS))
+    return result
 
 
 def validate_manifest(root, manifest, staged=False, allow_extras=False):
-    if (not isinstance(manifest, dict) or manifest.get("schema") != 1
+    if (not isinstance(manifest, dict) or manifest.get("schema") not in (1, 2)
             or manifest.get("origin") != ORIGIN
             or not re.fullmatch(r"[0-9a-f]{40}", manifest.get("revision", ""))
             or (not staged and root.name != manifest["revision"])
-            or manifest.get("agents") != ["opencode"]
+            or (manifest.get("agents") != ["opencode"] if manifest.get("schema") == 1
+                else manifest.get("available_agents") != list(SUPPORTED_AGENTS))
             or not isinstance(manifest.get("files"), dict) or not manifest["files"]
             or not isinstance(manifest.get("integrations"), dict)):
         raise InstallError(f"Manifesto sem propriedade comprovada: {root}")
@@ -239,29 +252,127 @@ peça apenas a identificação necessária; nunca faça takeover inseguro.
 
 OpenSpec no primeiro uso: confira `openspec context --json` e
 `openspec list --json` no root pretendido; inspecione o perfil real do CLI
-2.0 e as skills oficiais Explore, Propose, Apply e Archive em
-.agents/skills/openspec-{{explore,propose,apply-change,archive-change}}/SKILL.md
+2.x e as skills oficiais Explore, Propose, Apply, Verify e Archive em
+.agents/skills/openspec-{{explore,propose,apply-change,verify-change,archive-change}}/SKILL.md
 (ou paths efetivamente gerados pelo perfil), além de outras skills exigidas.
 Não exija comandos /opsx-* ausentes no perfil 2.0. Diferencie essas skills
 locais das skills do pacote global.
 Não execute init/update durante instalação global nem sem autorização.
 Novo projeto: confirme root e inventarie resíduos .opencode/, .agents/,
 .claude/, instruções marcadas e prompts legados no HOME; se houver impacto,
-peça aprovação específica antes de `openspec init --tools opencode` (confirme
+peça aprovação específica antes de `openspec init --tools <agente>` (confirme
 as opções suportadas pelo CLI instalado).
 Projeto existente completo: use como está. Incompleto: inspecione
 `openspec update --dry-run --json`, ferramentas configuradas, diferenças,
 arquivos customizados, propriedade dos gerados e efeitos globais antes de
 pedir autorização específica para update ou limpeza. Preserve versão anterior
 em conflito/falha; não remova personalizações nem arquivos de origem incerta.
-Se OpenCode não estiver configurado, só proponha `openspec init --tools`
-com união explícita de ferramentas existentes + opencode após aprovar qualquer
+Se o agente selecionado (OpenCode ou Codex) não estiver configurado, só proponha `openspec init --tools`
+com união explícita de ferramentas existentes + agente selecionado após aprovar qualquer
 limpeza; sem preservação garantida, bloqueie sem escrever. Nunca use --force.
-Compare config/specs/changes antes e depois. Abra sessão OpenCode NOVA e
-comprove descoberta e invocação das quatro skills oficiais nativas;
+Verify oficial é padrão quando suportado: preserve workflows existentes ao
+habilitá-lo no perfil oficial. Use --scope project somente quando suportado.
+Compare config/specs/changes antes e depois. Abra sessão nativa NOVA do agente e
+comprove descoberta e invocação das cinco skills oficiais nativas;
 sem essa prova reporte bloqueio, não declare bootstrap concluído.
 {END}
 """
+
+
+def baseline_guidance(repo, data):
+    """Reproduce only the literal template, NEVER execute a downloaded module."""
+    module = ast.parse((repo / "scripts/install-global").read_text())
+    function = next(node for node in module.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "guidance")
+    template = next(node.value for node in function.body if isinstance(node, ast.Return))
+
+    def literal(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name) and node.id in ("data", "BEGIN", "END"):
+            return {"data": str(data), "BEGIN": BEGIN, "END": END}[node.id]
+        if isinstance(node, ast.JoinedStr):
+            return "".join(literal(value) for value in node.values)
+        if (isinstance(node, ast.FormattedValue) and node.conversion == -1
+                and node.format_spec is None):
+            return literal(node.value)
+        raise InstallError("Template histórico não reconhecido; preserve e reconcilie manualmente.")
+    return literal(template).rstrip("\n")
+
+
+def integration_paths(home, env):
+    config = Path(env.get("XDG_CONFIG_HOME", str(home / ".config"))).absolute() / "opencode"
+    codex = Path(env.get("CODEX_HOME", str(home / ".codex"))).absolute()
+    return {"opencode": (config / "skills", config / "AGENTS.md"),
+            "codex": (home / ".agents/skills", codex / "AGENTS.md")}
+
+
+def managed_block(text):
+    if (text.count(BEGIN) != 1 or text.count(END) != 1
+            or text.index(BEGIN) > text.index(END)):
+        raise InstallError("Bloco AGENTS.md alterado/inconsistente; não substituir.")
+    return text[text.index(BEGIN):text.index(END) + len(END)]
+
+
+def installed_selection(record, prior, data, paths):
+    if not prior:
+        if record is not None:
+            raise InstallError("Registro global sem pacote ativo verificável.")
+        return []
+    if not isinstance(record, dict):
+        raise InstallError("Pacote ativo sem registro global comprovado.")
+    expected_hash = hashlib.sha256(baseline_guidance(prior, data).encode()).hexdigest()
+    trusted_hashes = {expected_hash, hashlib.sha256(guidance(data).rstrip("\n").encode()).hexdigest()}
+    if record.get("schema") == 1:
+        if set(record) != {"schema", "sha256"} or record.get("sha256") not in trusted_hashes:
+            raise InstallError("Orientação global personalizada/sem baseline.")
+        entries = {"opencode": {"skills": str(paths["opencode"][0]),
+                                "instructions": str(paths["opencode"][1]), "sha256": record["sha256"]}}
+    elif record.get("schema") == 2 and set(record) == {"schema", "agents"}:
+        entries = record["agents"]
+        if not isinstance(entries, dict) or not entries or not set(entries) <= set(SUPPORTED_AGENTS):
+            raise InstallError("Seleção instalada inválida.")
+    else:
+        raise InstallError("Registro global sem propriedade comprovada.")
+    for agent, entry in entries.items():
+        skills, instructions = paths[agent]
+        if (not isinstance(entry, dict) or entry.get("sha256") not in trusted_hashes
+                or entry != {"skills": str(skills), "instructions": str(instructions), "sha256": entry.get("sha256")}):
+            raise InstallError(f"Paths/ownership de {agent} divergentes; reconcilie CODEX_HOME/XDG explicitamente.")
+        for path in (skills, instructions):
+            safe_parent(path, Path(path.anchor))
+        absent_or_regular(instructions)
+        text = instructions.read_text() if instructions.exists() else ""
+        if not text:
+            raise InstallError("Registro global existe, mas orientação foi removida.")
+        if hashlib.sha256(managed_block(text).encode()).hexdigest() != entry["sha256"]:
+            raise InstallError("Orientação global personalizada; não sobrescrever.")
+    return sorted(entries)
+
+
+def inspect_codex(skills, instructions, skill_names):
+    override = instructions.with_name("AGENTS.override.md")
+    absent_or_regular(override)
+    if override.exists() and override.read_text().strip():
+        raise InstallError(f"Orientação Codex sombreada por {override}; reconcilie explicitamente, sem editar automaticamente.")
+    config = instructions.with_name("config.toml")
+    absent_or_regular(config)
+    if config.exists():
+        # Parse config without interpreting hooks, commands, auth or user values.
+        # tomllib is not available on the supported Python 3.10.
+        text = config.read_text()
+        for table in re.split(r"(?m)(?=^\[\[skills\.config\]\])", text)[1:]:
+            table = re.split(r"(?m)^\[(?!\[skills\.config)", table)[0]
+            if re.search(r"(?m)^\s*enabled\s*=\s*false\b", table):
+                path = re.search(r"""(?m)^\s*path\s*=\s*["']([^"'\n]+)["']""", table)
+                if path and any(part in skill_names for part in Path(path[1]).parts):
+                    raise InstallError(f"Skill Codex desabilitada em {config}; confira paths e reconcilie explicitamente.")
+    deprecated = instructions.parent / "skills"
+    safe_parent(deprecated, Path(deprecated.anchor))
+    for name in skill_names:
+        duplicate = deprecated / name
+        if deprecated != skills and (duplicate.exists() or duplicate.is_symlink()):
+            raise InstallError(f"Skill Codex homônima/ambígua: {duplicate}; preserve e reconcilie explicitamente.")
 
 
 def updated_guidance(existing, block):
@@ -346,7 +457,7 @@ def inspect_local(project, old_repo, new_repo, authorized):
     if project.is_symlink() or not project.is_dir():
         raise InstallError(f"Projeto inválido: {project}")
     pending, eligible = [], []
-    roots = {".opencode/skills": "skills", ".ai-workflow/skills": "skills",
+    roots = {".opencode/skills": "skills", ".agents/skills": "skills", ".codex/skills": "skills", ".ai-workflow/skills": "skills",
              ".ai-workflow/protocol": "protocol", ".ai-workflow/templates": "templates",
               ".ai-workflow/scripts": "scripts"}
     package_skills = {item.name for item in (new_repo / "skills").iterdir()
@@ -413,56 +524,34 @@ def inspect_launcher(home, data, env):
 
 def install(args, *, source=ORIGIN):
     home = Path(os.environ["HOME"]).absolute()
-    preflight(home, args.agent)
+    requested = sorted(set(args.agent or []))
+    # Reject invalid explicit selections before any writes. Existing selection
+    # is validated under the common lock before checking its retained runtimes.
+    if requested:
+        preflight(home, requested)
     data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))).absolute() / "my-ai-skills"
-    config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))).absolute() / "opencode"
     safe_parent(data, home)
-    safe_parent(config, home)
+    if not requested and not (data / "active").is_symlink():
+        preflight(home, [])
     if data.exists() and ((data / ".git").exists() or (data / ".git").is_file()):
         raise InstallError(f"Instalação antiga/clone no destino {data}; preserve-o e escolha outro XDG_DATA_HOME antes de instalar.")
     data.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
-    ensure_openspec(data, env)
     lock = data / ".install.lock"
     absent_or_regular(lock)
     with lock.open("a+b") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         with tempfile.TemporaryDirectory(prefix="workflow-source-") as directory:
             repo = fetch_snapshot(args.revision, source, Path(directory))
-            manifest = manifest_for(repo, args.revision, args.agent)
+            manifest = manifest_for(repo, args.revision)
             versions = data / "versions"
             target = versions / args.revision
             active = data / "active"
-            skills = config / "skills"
-            agents = config / "AGENTS.md"
             ownership = data / "guidance.json"
             launcher, launcher_record = inspect_launcher(home, data, env)
-            for parent in (versions, config, skills):
-                safe_parent(parent, home)
-                parent.mkdir(parents=True, exist_ok=True)
-            absent_or_regular(agents)
+            safe_parent(versions, home)
             absent_or_regular(ownership)
-            previous = agents.read_text() if agents.exists() else ""
             ownership_before = ownership.read_text() if ownership.exists() else None
-            if BEGIN in previous or END in previous:
-                if not ownership_before:
-                    raise InstallError("Bloco global sem registro de propriedade; preserve e reconcilie manualmente.")
-                record = json.loads(ownership_before)
-                if record.get("sha256") != hashlib.sha256(previous[previous.index(BEGIN):previous.index(END) + len(END)].encode()).hexdigest():
-                    raise InstallError("Orientação global personalizada; não sobrescrever.")
-            elif ownership_before:
-                raise InstallError("Registro global existe, mas orientação foi removida.")
-            new_text = updated_guidance(previous, guidance(data))
-            new_record = json.dumps({"schema": 1, "sha256": hashlib.sha256(guidance(data).rstrip("\n").encode()).hexdigest()}) + "\n"
-            if target.exists():
-                if target.is_symlink() or not target.is_dir():
-                    raise InstallError(f"Versão conflitante: {target}")
-                old = json.loads((target / "manifest.json").read_text())
-                if old != manifest:
-                    raise InstallError(f"Manifesto conflitante: {target}")
-                validate_manifest(target, old)
-            elif target.is_symlink():
-                raise InstallError(f"Versão symlink conflitante: {target}")
             old_active = None
             prior = None
             old_manifest = None
@@ -477,21 +566,58 @@ def install(args, *, source=ORIGIN):
                     resolved, old_manifest, allow_extras=resolved != target)
                 # A plausible self-declared manifest is not proof of ownership.
                 prior = fetch_snapshot(old_manifest["revision"], source, Path(directory) / "prior")
-                expected_old = manifest_for(prior, old_manifest["revision"], ["opencode"])
+                expected_old = manifest_for(prior, old_manifest["revision"], schema=old_manifest["schema"])
                 if "directories" not in old_manifest:
                     expected_old.pop("directories")
                 if old_manifest != expected_old:
                     raise InstallError("Ponteiro ativo sem origem verificável; preserve e reconcilie manualmente.")
             elif active.exists():
                 raise InstallError("Ponteiro ativo de outra origem.")
+            paths = integration_paths(home, env)
+            previous_selection = installed_selection(
+                json.loads(ownership_before) if ownership_before else None, prior, data, paths)
+            selection = sorted(set(previous_selection) | set(requested))
+            preflight(home, selection)
+            ensure_openspec(data, env)
+            texts = []
+            block = guidance(data)
+            entries = {}
+            for agent in selection:
+                skills, instructions = paths[agent]
+                for path in (skills, instructions):
+                    safe_parent(path, home)
+                absent_or_regular(instructions)
+                previous = instructions.read_text() if instructions.exists() else None
+                if agent not in previous_selection and previous and (BEGIN in previous or END in previous):
+                    raise InstallError("Bloco global sem registro de propriedade; preserve e reconcilie manualmente.")
+                new_text = updated_guidance(previous or "", block)
+                texts.append((instructions, previous, new_text))
+                entries[agent] = {"skills": str(skills), "instructions": str(instructions),
+                                  "sha256": hashlib.sha256(block.rstrip("\n").encode()).hexdigest()}
+            new_record = json.dumps({"schema": 2, "agents": entries}, sort_keys=True) + "\n"
+            if target.exists():
+                if target.is_symlink() or not target.is_dir():
+                    raise InstallError(f"Versão conflitante: {target}")
+                old = json.loads((target / "manifest.json").read_text())
+                expected = manifest_for(repo, args.revision, schema=old.get("schema"))
+                if "directories" not in old and old.get("schema") == 1:
+                    expected.pop("directories")
+                if old != expected:
+                    raise InstallError(f"Manifesto conflitante: {target}")
+                validate_manifest(target, old)
+            elif target.is_symlink():
+                raise InstallError(f"Versão symlink conflitante: {target}")
             skill_names = sorted(p.name for p in (repo / "skills").iterdir() if (p / "SKILL.md").is_file())
+            if "codex" in selection:
+                inspect_codex(*paths["codex"], skill_names)
             lock_entries = skill_lock(home, env)
             legacy = []
             pending = []
             preserved = [f"entrada extra mantida na versão anterior (não migrada): {path}"
                          for path in preserved_extras]
-            for name in sorted(set(skill_names) | set(lock_entries)):
-                link = skills / name
+            links = [(paths[agent][0] / name, name) for agent in selection
+                     for name in sorted(set(skill_names) | set(lock_entries))]
+            for link, name in links:
                 if name not in skill_names:
                     if name in lock_entries and (link.exists() or link.is_symlink()):
                         preserved.append(f"skill skills.sh sem colisão (intocada): {link}")
@@ -520,17 +646,24 @@ def install(args, *, source=ORIGIN):
             pending.extend(local_pending)
             obsolete = []
             if old_active:
-                for relative in old_manifest["integrations"]["opencode"]["skills"]:
-                    name = Path(relative).name
-                    if name not in skill_names:
-                        link = skills / name
+                for agent in previous_selection:
+                    # Schema 1 inventory describes the same canonical skills.
+                    inventory = old_manifest["integrations"].get(agent, old_manifest["integrations"]["opencode"])
+                    for relative in inventory["skills"]:
+                        name = Path(relative).name
+                        link = paths[agent][0] / name
                         expected = str(data / "active" / "skills" / name)
+                        if name in skill_names:
+                            if not link.exists() and not link.is_symlink():
+                                raise InstallError(f"Skill gerenciada ausente: {link}")
+                            continue
                         if link.is_symlink() and os.readlink(link) == expected:
                             obsolete.append((link, expected))
                         elif link.exists() or link.is_symlink():
                             raise InstallError(f"Skill obsoleta personalizada: {link}")
-            for name in skill_names:
-                link = skills / name
+            for link, name in links:
+                if name not in skill_names:
+                    continue
                 expected = str(data / "active" / "skills" / name)
                 if link.is_symlink() and os.readlink(link) == expected:
                     continue
@@ -555,6 +688,11 @@ def install(args, *, source=ORIGIN):
             moved = []
             launcher_created = False
             launcher_record_created = False
+            guidance_written = []
+            for parent in (versions, *(paths[a][0] for a in selection),
+                           *(paths[a][1].parent for a in selection)):
+                safe_parent(parent, home)
+                parent.mkdir(parents=True, exist_ok=True)
             try:
                 if not target.exists():
                     with tempfile.TemporaryDirectory(prefix=".stage-", dir=versions) as stage:
@@ -592,22 +730,35 @@ def install(args, *, source=ORIGIN):
                             raise InstallError(f"Migração entre filesystems recusada: {path}; backups anteriores revertidos") from error
                         raise
                     moved.append((path, backup))
-                for name in skill_names:
-                    link = skills / name
-                    if not link.is_symlink():
+                for link, name in links:
+                    if name not in skill_names:
+                        continue
+                    expected = str(data / "active" / "skills" / name)
+                    if not link.exists() and not link.is_symlink():
                         link.symlink_to(data / "active" / "skills" / name)
                         created.append(link)
+                    elif not link.is_symlink() or os.readlink(link) != expected:
+                        raise InstallError(f"Skill mudou durante a preparação: {link}")
                 for link, expected in obsolete:
                     link.unlink()
                     removed.append((link, expected))
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "skills":
                     raise InstallError("Falha simulada após registrar skills")
-                if previous != new_text:
-                    tmp = agents.with_name(".AGENTS.md.install-tmp")
-                    if tmp.exists() or tmp.is_symlink():
-                        raise InstallError(f"Arquivo temporário conflitante: {tmp}")
-                    tmp.write_text(new_text)
-                    tmp.replace(agents)
+                for instructions, previous, new_text in texts:
+                    absent_or_regular(instructions)
+                    if (instructions.read_text() if instructions.exists() else None) != previous:
+                        raise InstallError(f"Orientação mudou durante a preparação: {instructions}")
+                    if previous != new_text:
+                        tmp = instructions.with_name(".AGENTS.md.install-tmp")
+                        with tmp.open("x") as output:
+                            output.write(new_text)
+                        if instructions.exists():
+                            tmp.chmod(stat.S_IMODE(instructions.stat().st_mode))
+                        tmp.replace(instructions)
+                        guidance_written.append((instructions, previous, new_text))
+                absent_or_regular(ownership)
+                if (ownership.read_text() if ownership.exists() else None) != ownership_before:
+                    raise InstallError("Registro global mudou durante a preparação.")
                 if ownership_before != new_record:
                     tmp = ownership.with_name(".guidance.json.install-tmp")
                     if tmp.exists() or tmp.is_symlink():
@@ -645,18 +796,21 @@ def install(args, *, source=ORIGIN):
                     launcher_record.unlink()
                 if launcher_created:
                     launcher.unlink()
-                if ownership.exists() and ownership.read_text() == new_record and new_record != ownership_before:
+                if (not ownership.is_symlink() and ownership.is_file()
+                        and ownership.read_text() == new_record and new_record != ownership_before):
                     if ownership_before is None:
                         ownership.unlink()
                     else:
                         ownership.write_text(ownership_before)
-                if agents.exists() and agents.read_text() == new_text and new_text != previous:
-                    if previous:
-                        agents.write_text(previous)
-                    else:
-                        agents.unlink()
+                for instructions, previous, new_text in reversed(guidance_written):
+                    if not instructions.is_symlink() and instructions.is_file() and instructions.read_text() == new_text:
+                        if previous is not None:
+                            instructions.write_text(previous)
+                        else:
+                            instructions.unlink()
                 for link in created:
-                    link.unlink()
+                    if link.is_symlink() and os.readlink(link) == str(data / "active/skills" / link.name):
+                        link.unlink()
                 for link, expected in removed:
                     if not link.exists() and not link.is_symlink():
                         link.symlink_to(expected)
@@ -670,8 +824,9 @@ def install(args, *, source=ORIGIN):
             final = json.loads((active / "manifest.json").read_text())["revision"]
             state = ("partial" if pending else "installed" if not old_manifest else "already current" if
                      old_manifest["revision"] == final and not moved and not created and not removed
-                     and previous == new_text else "updated")
-            print(f"state={state} agent=opencode scope=global previous={old_manifest['revision'] if old_manifest else 'none'} "
+                      and all(previous == new_text for _, previous, new_text in texts)
+                      and ownership_before == new_record else "updated")
+            print(f"state={state} agent={','.join(selection)} scope=global previous={old_manifest['revision'] if old_manifest else 'none'} "
                   f"target={args.revision} active={final}")
             for item in pending:
                 print(f"pending: {item}")
@@ -684,7 +839,7 @@ def install(args, *, source=ORIGIN):
 
 def main():
     parser = argparse.ArgumentParser(description="Instalação global do AI Engineering Workflow")
-    parser.add_argument("--agent", action="append", required=True, help="opencode")
+    parser.add_argument("--agent", action="append", default=[], help="opencode ou codex; repetível, update preserva seleção")
     parser.add_argument("--revision", required=True, help="SHA completo aprovado")
     parser.add_argument("--project", help="Raiz única do projeto para diagnóstico somente leitura")
     parser.add_argument("--baseline-revision", help="SHA completo da origem das cópias locais antigas")

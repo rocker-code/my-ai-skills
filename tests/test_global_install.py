@@ -31,14 +31,25 @@ class GlobalInstallTests(unittest.TestCase):
         self.home.mkdir()
         self.bin = self.root / "bin"
         self.bin.mkdir()
-        for executable in ("opencode", "openspec"):
+        tools = self.root / "common-tools"
+        tools.mkdir()
+        for name in ("git", "gh", "jq", "curl", "python3"):
+            (tools / name).symlink_to(shutil.which(name))
+        for executable in ("opencode", "openspec", "codex"):
             path = self.bin / executable
-            path.write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'opencode v2.2.6'; else printf '  api\\n  run\\n  service\\n'; fi\n" if executable == "opencode" else "#!/bin/sh\necho '2.0.0'\n")
+            path.write_text(
+                "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'codex-cli 0.171.0'; else echo '--json --cd --ephemeral --sandbox'; fi\n"
+                if executable == "codex" else
+                "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'opencode v2.2.6'; else printf '  api\\n  run\\n  service\\n'; fi\n"
+                if executable == "opencode" else "#!/bin/sh\necho '2.0.0'\n")
             path.chmod(0o755)
         self.env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_DATA_HOME": str(self.home / ".local/share"),
-                     "PATH": str(self.bin) + os.pathsep + str(self.home / ".local/bin") + os.pathsep + os.environ["PATH"],
-                     "PYTHONDONTWRITEBYTECODE": "1"}
+                     "XDG_CACHE_HOME": str(self.home / ".cache"),
+                     "CODEX_HOME": str(self.home / ".codex"),
+                     "PATH": str(self.bin) + os.pathsep + str(self.home / ".local/bin") + os.pathsep + str(tools) + os.pathsep + "/usr/bin:/bin",
+                      "PYTHONDONTWRITEBYTECODE": "1"}
+        self.env.pop("XDG_STATE_HOME", None)  # Default state remains inside fixture HOME.
         self.source = self.root / "source with spaces"
         self.source.mkdir()
         for name in ("skills", "scripts", "protocol", "templates"):
@@ -53,7 +64,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result
 
-    def install(self, *extra, revision=None, env=None):
+    def install(self, *extra, revision=None, env=None, agents=("opencode",)):
         # Test-only import injects a disposable Git transport into the internal
         # function; the actual public command has no source override.
         runner = ("import importlib.machinery,sys; "
@@ -62,7 +73,8 @@ class GlobalInstallTests(unittest.TestCase):
                   "original=m.install; m.install=lambda args: original(args,source=source); "
                   "sys.exit(m.main())")
         return call("python3", "-c", runner, str(ENTRY), str(self.source),
-                    "--revision", revision or self.revision, "--agent", "opencode", *extra,
+                    "--revision", revision or self.revision,
+                    *(arg for agent in agents for arg in ("--agent", agent)), *extra,
                     env=env or self.env, timeout=90)
 
     def openspec_native_profile(self):
@@ -78,6 +90,10 @@ class GlobalInstallTests(unittest.TestCase):
                          "set MY_AI_SKILLS_TEST_OPENSPEC without changing the global CLI")
         (self.bin / "openspec").unlink()
         (self.bin / "openspec").symlink_to(selected)
+        for args in (("config", "set", "workflows", '["explore","propose","apply","verify","archive"]'),
+                     ("config", "set", "profile", "custom")):
+            result = call(str(selected), *args, env={**self.env, "OPENSPEC_TELEMETRY": "0"})
+            self.assertEqual(result.returncode, 0, result.stderr)
 
     def native_scope(self):
         # OpenSpec 2.1 defaults to global scope; these fixtures prove project
@@ -98,6 +114,160 @@ class GlobalInstallTests(unittest.TestCase):
         self.git("add", "-A")
         self.git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-qm", "next")
         return self.git("rev-parse", "HEAD").stdout.strip()
+
+    def exclusive_path(self, *agents):
+        """No real user PATH: an unselected CLI cannot accidentally be used."""
+        exclusive = self.root / ("exclusive-" + "-".join(agents))
+        exclusive.mkdir(exist_ok=True)
+        for name in ("git", "gh", "jq", "curl", "python3", "sh", "bash", "openspec", *agents):
+            target = exclusive / name
+            if not target.exists():
+                target.symlink_to(shutil.which(name, path=self.env["PATH"]))
+        return {**self.env, "PATH": str(exclusive) + os.pathsep + str(self.home / ".local/bin")}
+
+    def test_exclusive_agent_install_and_implicit_update(self):
+        # Each unittest instance starts empty; exercise both disjoint homes.
+        for agent in ("codex", "opencode"):
+            with self.subTest(agent=agent):
+                home = self.root / ("only-" + agent)
+                home.mkdir()
+                env = {**self.exclusive_path(agent), "HOME": str(home),
+                       "CODEX_HOME": str(home / ".codex"),
+                       "XDG_CONFIG_HOME": str(home / ".config"),
+                       "XDG_DATA_HOME": str(home / ".local/share")}
+                env["PATH"] = env["PATH"].split(os.pathsep)[0] + os.pathsep + str(home / ".local/bin")
+                first = self.install(agents=(agent,), env=env)
+                self.assertEqual(first.returncode, 0, first.stderr)
+                repeated = self.install(agents=(), env=env)
+                self.assertEqual(repeated.returncode, 0, repeated.stderr)
+                self.assertIn("state=already current", repeated.stdout)
+                paths = (home / ".agents/skills" if agent == "codex"
+                         else home / ".config/opencode/skills")
+                self.assertTrue((paths / "apply-issue/SKILL.md").is_file())
+                self.assertFalse((home / (".config/opencode" if agent == "codex" else ".codex")).exists())
+
+    def test_initial_selection_required_without_writes(self):
+        result = self.install(agents=())
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("--agent codex", result.stderr)
+        self.assertFalse(self.data.exists())
+
+    def test_same_revision_additive_selection_and_immutable_manifest(self):
+        self.assertEqual(self.install().returncode, 0)
+        manifest = self.data / "active/manifest.json"
+        before = manifest.read_bytes(), manifest.stat().st_mtime_ns
+        added = self.install(agents=("codex",))
+        self.assertEqual(added.returncode, 0, added.stderr)
+        self.assertIn("agent=codex,opencode", added.stdout)
+        self.assertEqual((manifest.read_bytes(), manifest.stat().st_mtime_ns), before)
+        for root in (self.home / ".agents/skills", self.home / ".config/opencode/skills"):
+            self.assertEqual(os.readlink(root / "apply-issue"), str(self.data / "active/skills/apply-issue"))
+        subset = self.install(agents=("codex",))
+        self.assertEqual(subset.returncode, 0, subset.stderr)
+        self.assertIn("agent=codex,opencode", subset.stdout)
+        missing = self.install(agents=("codex",), env=self.exclusive_path("codex"))
+        self.assertIn("Falta opencode", missing.stderr)
+        self.assertEqual(manifest.read_bytes(), before[0])
+
+    def test_both_agent_collision_and_transaction_rollback(self):
+        self.assertEqual(self.install(agents=("codex", "opencode")).returncode, 0)
+        roots = (self.home / ".agents/skills", self.home / ".config/opencode/skills")
+        guidance = (self.home / ".codex/AGENTS.md", self.home / ".config/opencode/AGENTS.md",
+                    self.data / "guidance.json", self.home / ".local/bin/worktree-reservation")
+        before = [path.read_bytes() for path in guidance]
+        active = os.readlink(self.data / "active")
+        revision = self.next_revision()
+        collision = roots[0] / "new-feature"
+        collision.mkdir()
+        (collision / "SKILL.md").write_text("personal")
+        blocked = self.install(revision=revision, agents=())
+        self.assertIn("outra origem", blocked.stderr)
+        self.assertFalse((roots[1] / "new-feature").exists())
+        (collision / "SKILL.md").unlink()
+        collision.rmdir()
+        for phase in ("skills", "guidance", "launcher", "publish"):
+            failed = self.install(revision=revision, agents=(),
+                                  env={**self.env, "MY_AI_SKILLS_FAIL_AT": phase})
+            self.assertEqual(failed.returncode, 1, failed.stdout)
+            self.assertIn("Falha simulada", failed.stderr)
+            self.assertEqual([path.read_bytes() for path in guidance], before)
+            self.assertEqual(os.readlink(self.data / "active"), active)
+            for root in roots:
+                self.assertFalse((root / "new-feature").is_symlink())
+        self.assertEqual(self.install(revision=revision, agents=()).returncode, 0)
+
+    def test_codex_custom_paths_config_override_and_root_drift(self):
+        custom = self.root / "codex home '$(literal)"
+        custom.mkdir()
+        config = custom / "config.toml"
+        config.write_text('model = "keep-my-model"\n')
+        auth = custom / "auth.json"
+        auth.write_text('{"fixture": "not-a-secret"}\n')
+        env = {**self.env, "CODEX_HOME": str(custom)}
+        self.assertEqual(self.install(agents=("codex",), env=env).returncode, 0)
+        self.assertEqual(config.read_text(), 'model = "keep-my-model"\n')
+        self.assertEqual(auth.read_text(), '{"fixture": "not-a-secret"}\n')
+        before = (self.data / "guidance.json").read_bytes()
+        drift = self.install(agents=(), env={**env, "CODEX_HOME": str(self.root / "elsewhere")})
+        self.assertIn("Paths/ownership", drift.stderr)
+        override = custom / "AGENTS.override.md"
+        override.write_text("custom guidance")
+        blocked = self.install(agents=(), env=env)
+        self.assertIn("sombreada", blocked.stderr)
+        self.assertEqual(override.read_text(), "custom guidance")
+        override.unlink()
+        config.write_text('[[skills.config]]\npath = "/some/skill/apply-issue"\nenabled = false\n')
+        self.assertIn("desabilitada", self.install(agents=(), env=env).stderr)
+        config.write_text('[[skills.config]]\npath = "/personal/unrelated"\nenabled = false\n')
+        self.assertEqual(self.install(agents=(), env=env).returncode, 0)
+        config.write_text('model = "keep-my-model"\n')
+        duplicate = custom / "skills/apply-issue"
+        duplicate.mkdir(parents=True)
+        self.assertIn("homônima", self.install(agents=(), env=env).stderr)
+        self.assertEqual((self.data / "guidance.json").read_bytes(), before)
+
+    def test_codex_local_diagnosis_and_explicit_reconciliation(self):
+        self.assertEqual(self.install(agents=("codex",)).returncode, 0)
+        project = self.root / "codex project"
+        local = project / ".agents/skills/apply-issue"
+        shutil.copytree(self.data / "active/skills/apply-issue", local)
+        diagnosed = self.install("--project", str(project), agents=())
+        self.assertIn("sombra local idêntica", diagnosed.stdout)
+        self.assertTrue(local.exists())
+        migrated = self.install("--project", str(project), "--reconcile-path",
+                                ".agents/skills/apply-issue", agents=())
+        self.assertEqual(migrated.returncode, 0, migrated.stderr)
+        self.assertFalse(local.exists())
+
+    def test_legacy_schema1_real_template_migration_and_same_revision_expansion(self):
+        # Reproduce the actual published schema/template without executing the
+        # historical installer. The trusted fixture repository contains its bytes.
+        module = importlib.machinery.SourceFileLoader("installer_legacy", str(ENTRY)).load_module()
+        legacy_bytes = subprocess.check_output(
+            ["git", "show", "96864599e1d7b1ec06239aa8f8f6e757043d7212:scripts/install-global"], cwd=ROOT)
+        (self.source / "scripts/install-global").write_bytes(legacy_bytes)
+        self.git("add", "scripts/install-global")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-qm", "legacy template")
+        revision = self.git("rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(self.install(revision=revision).returncode, 0)
+        target = self.data / "active"
+        trusted = module.fetch_snapshot(revision, str(self.source), self.root / "legacy-proof")
+        legacy_manifest = module.manifest_for(trusted, revision, schema=1)
+        # Cover the oldest supported optional-directories shape as well.
+        legacy_manifest.pop("directories")
+        (target / "manifest.json").write_text(json.dumps(legacy_manifest))
+        block = module.baseline_guidance(self.source, self.data)
+        instructions = self.home / ".config/opencode/AGENTS.md"
+        instructions.write_text("# personal\n" + block + "\n")
+        (self.data / "guidance.json").write_text(json.dumps({
+            "schema": 1, "sha256": hashlib.sha256(block.encode()).hexdigest()}))
+        before = (target / "manifest.json").read_bytes()
+        result = self.install(revision=revision, agents=("codex",))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((target / "manifest.json").read_bytes(), before)
+        self.assertEqual(sorted(json.loads((self.data / "guidance.json").read_text())["agents"]),
+                         ["codex", "opencode"])
+        self.assertTrue(instructions.read_text().startswith("# personal\n"))
 
     def test_recovery_skill_is_discoverable_and_guidance_routes_new_sessions(self):
         installed = self.install()
@@ -677,7 +847,9 @@ class GlobalInstallTests(unittest.TestCase):
         manifest = json.loads((active / "manifest.json").read_text())
         self.assertEqual(manifest["revision"], self.revision)
         self.assertEqual(manifest["origin"], "https://github.com/rocker-code/my-ai-skills.git")
-        self.assertEqual(manifest["agents"], ["opencode"])
+        self.assertEqual(manifest["schema"], 2)
+        self.assertEqual(manifest["available_agents"], ["codex", "opencode"])
+        self.assertEqual(sorted(json.loads((self.data / "guidance.json").read_text())["agents"]), ["opencode"])
         for relative, info in manifest["files"].items():
             path = active / relative
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), info["sha256"])
@@ -729,7 +901,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotEqual(self.install(revision="a" * 40).returncode, 0)
         result = call("python3", str(ENTRY), "--revision", self.revision, "--agent", "claude",
                       env=self.env)
-        self.assertIn("único agente suportado", result.stderr)
+        self.assertIn("--agent codex", result.stderr)
         self.assertFalse((self.home / ".config/opencode").exists())
         no_gh = self.root / "without-gh"
         no_gh.mkdir()
@@ -968,7 +1140,7 @@ class GlobalInstallTests(unittest.TestCase):
                 before = (spec.read_bytes(), config.read_bytes())
             self.assertEqual(self.install(env=env).returncode, 0)
             guidance = (self.home / ".config/opencode/AGENTS.md").read_text()
-            self.assertIn("openspec-{explore,propose,apply-change,archive-change}/SKILL.md", guidance)
+            self.assertIn("openspec-{explore,propose,apply-change,verify-change,archive-change}/SKILL.md", guidance)
             # Installation never bootstraps a repository implicitly.
             self.assertFalse((repo / ".opencode").exists())
             context = call(str(self.bin / "openspec"), "context", "--json", cwd=repo, env=env)
@@ -984,7 +1156,7 @@ class GlobalInstallTests(unittest.TestCase):
             initialized = call(str(self.bin / "openspec"), "init", "--tools", "opencode", *self.native_scope(), str(repo), env=env)
             self.assertEqual(initialized.returncode, 0, initialized.stderr)
             for skill in ("openspec-explore", "openspec-propose",
-                          "openspec-apply-change", "openspec-archive-change"):
+                          "openspec-apply-change", "openspec-verify-change", "openspec-archive-change"):
                 generated = repo / ".agents/skills" / skill / "SKILL.md"
                 self.assertTrue(generated.is_file(), generated)
                 self.assertIn(f"name: {skill}", generated.read_text())
