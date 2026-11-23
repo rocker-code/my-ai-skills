@@ -5,9 +5,14 @@ The public command MUST verify this entrypoint's independently published SHA-256
 before running it. --revision binds the fetched Git object to that entrypoint.
 """
 import argparse
+import ast
+import base64
+from contextlib import contextmanager
 import errno
 import fcntl
 import hashlib
+import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -18,6 +23,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import urllib.request
 
@@ -27,10 +33,370 @@ OPENSPEC_INSTALL_SHA256 = "fa5e08b9cec6815e69cd5fc250fc57aa720609927da38587f872e
 BEGIN = "<!-- my-ai-skills-global:v1 begin -->"
 END = "<!-- my-ai-skills-global:v1 end -->"
 COMPONENTS = ("skills", "protocol", "templates", "scripts")
+SUPPORTED_AGENTS = ("codex", "opencode")
 
 
 class InstallError(Exception):
     pass
+
+
+# Tomli payload/provenance constants follow (generated from the exact upstream
+# sdist, not a fork). See scripts/vendor/TOMLI.md for offline inspection.
+TOMLI_SDIST_SHA256 = "264507556cd8b8c8e7c6ee037cdf443a463f03f4c958e57195e3d369711b8ff6"
+TOMLI_SDIST_SIZE = 17662
+TOMLI_MEMBERS = {
+    "src/tomli/__init__.py": (314, "7182927b251660b7d649eec79e0dcaf03a59973793400990a693d9f6f8b73eca"),
+    "src/tomli/_parser.py": (26727, "3e782f1bc85639ecef630ae686df3d849f2bedd2e9c987d8f5109a5a154df131"),
+    "src/tomli/_re.py": (3396, "a12359fe294523a72112e434d58452a14c9d050affa2417f9927474e4166bfdd"),
+    "src/tomli/_types.py": (254, "f864c6d9552a929c7032ace654ee05ef26ca75d21b027b801d77e65907138b74"),
+    "src/tomli/py.typed": (26, "f0f8f2675695a10a5156fb7bd66bafbaae6a13e8d315990af862c792175e6e67"),
+    "LICENSE": (1072, "b80816b0d530b8accb4c2211783790984a6e3b61922c2b5ee92f3372ab2742fe"),
+}
+# MIT License
+#
+# Copyright (c) 2021 Taneli Hukkinen
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+TOMLI_SDIST_B85 = (
+    b"ABzYGfWd`U0{?VxZER^RGA=bPFfMdqascgpYj@kWvgrQIUxCe>E=!3-J^YMLoz}6PMz@abV>`R;QM@EdqAc!Eq)Jk@mDKmQ-+2He"
+    b"NKt;IY1Tcb(rROg1ZIH2U@$Wn46K?}`|;Giee2jmC;Z1>@~QJ@+24A7eIxyj&l~k-qxlbU`;Tw%nMJW30{VaaJwMGIF^S!Yv)kBy"
+    b"*;wD+*luiDTaC?^&CMO-AFI#*`cE88Jh$4kHm!Q?sJ(x9e17<s%>S*8jb-z{S>LMvqp{iCYHX}GH@7!&{%_Sc{~_wD`Tv)H-nB2p"
+    b"kvnkw$T5ulU^)-ot8pw!gR*FX6c!h@?|80wJNx+2^&Q_ZPMvV#Mv)u%!i~h(37!62T!pqDJHv_?g^nYFkr<5a@XD!(I1si!7gHyU"
+    b"phD1(ZP$1GD`ATP;4+|OJO(gPFp6*N(1F53VMkFgaBYAmhQVMqas1eh5#Px5oJf@7u_MfLS;H(7lA&XJhU*J_r(TI0Hy#JGScFa#"
+    b"hwcDjRD|mfyx9=jpk90K#FZGZIuRf;0O%}&9$-5wViFA95&m_kThm$JbE9!Z3|$1>pT+Pn!iPl33ihKGgd%c0&j1K6w43^xwvNhR"
+    b")2B$#Sdu8hCpY6@lI@8b8KYU~14@VL3<Dq;Vf?o<i17&)9|fKl++f!Rfj@MyM^Vc#F5s2j53U{R3y-fK#L!f30uI159aZ@%8rz;H"
+    b"`i>+R;05y9T6aQ350l4_UE34WAS8VGZd!o<?V&h7d2{j0-r1pOpNrG8lYg}j4iAL6cMiYJiuk2{@%H5Xg@6)gd&d{QiIX>C@Ax<I"
+    b"bNl$9A`X8&Jv%%<7bj;%``zhL`w*VBkN1z>AGD8u60f1&@d+?-8(0~DUYrO-C_%Lk&k@+W!?XRj@N@5V`>1{KTg7<OzBophZ%)p{"
+    b"o;ck*yJ+vfKiWGJr|-{BPtFek{Q-bIZXdrn11yK{4v#M^zzWaA;lJRAIDfl$bcCpkz4y@iGi;yOKRNyFto_s53-R{k=-?0@zCMJO"
+    b"?Y%xaWK__p{iD71yNWp2d$;$~A=NqoC}##1<JO5^-X7v3#J30k?O(J{j<Fm2C&w3O@UsHFJiAD${?a}_tcbm{_Bj&d&DqJjih<;W"
+    b"8Yct<>Kz|46eP9Cj0hCL-|x>46M*92aPJ6UonvL}qAF~ybb|k7A8V!muk`<w{=d@yLH|EH+&g%8XibLSRR3=_H=50y{tpJg`bz)*"
+    b"7N5>PJFjQ1Hx%cf0?(q$(m0N%QL9$F0_}L#w+6waHYVl2Myyh^Nso?dH$nJu1nOo~i$T4Pthqh$YJGcn<yg`6)en8J2nOTbi5<mG"
+    b"Sbj9vAAX-X;e1yC|89Nn0-?WPaPX4>zHqL=DuAEUSu`#i(23LeX<J-_4h>LJZ0_XBipH+v4I|49YSa1Dtz9!ltxfpY3c{<}Gz?Im"
+    b"mIVysnYh4jhVcrNM9=lsK<|2YB&K#4IiX=Ze|};2J+gQ91F(PmIC}nEJil^$CnWO)Eez3_3`apYvEynS4DKU@UatJyFuwn1wJP+7"
+    b"0$DW{)oSF;u67v!{F>Oe9?-+v-NGNP&p(>*<CS4lMW^k@VQ^V`=HlNnKLJRdM>Y?=NPp7%_mO?&z>69FEgM3>vs3Ie*lk1sG<y6i"
+    b"C_$vC+Et`jm7f-sN6Rf=8lTCsZ@~`n(9*cJJ$Fb|p!ArYR^?NwB+CP}0oM#HpWe_JxD(s64)|{`0uvOhC&uapb_^{2Y@o_lWpVi@"
+    b"s$yZ;94agk(3D_1wMWd*tI=Q2?f1ZnnoNOKeb;m2x$x|{69SIDtRlPT%Hq{b=_-{b8o$~5FQ_%Lf0rnK8PBCDM%?uSyu2CDtN5tO"
+    b"k7U7ige^d;SWLmPb;4_GXc)|Vpi$^f2>?EdW>d7voFT#jD6&>HtyN8HRb{PeQY%Flqm_@O7|tfss8<oao6wD&9@>CC#~%bk_&%EX"
+    b"G=(KHssps3Dpe|94Z<pyuByUn{DT`bX=%{n`4p_ni9H2&0K4{d4o14qPZ9JuxTy{U9x{3e>_4qy(dv|n@>3%5sT0!V@dw0w=`V@)"
+    b"-F!M92yMEK9mj)`6MSAxo>%F)V(S@@f*XY};g`f)E}F0o*w-`-pFI;a4ZpXAZ-cgF(quGWeP6TTElC-4r`W2$z&W8E&cUP)lkx2E"
+    b"yifuJNdQ8vY#IMzu_v0=hE*q<9_F$W3iKQ(_VXMmjflwC4Xa_*7hu&Kzs9cs>Iuw}P>IxtfF+gd%PYgHvW6Ax|2+i+1toR0LN0=I"
+    b"Moog@%yTNnjSYB)L-uiC5p*vM?QodT!}S$~)~!avxOQzAlEYK6wWBrY=H|xYK_RI=bgpYtXBy!@)jE`{LGPI4An>o<p%W=N#hurQ"
+    b"*0%>AaX!#UFzQGIM4A``6gFcMXvMCh0J&bE+(JJS2~`|879rom@bu7w0&Aww2$_s;p!aR_g{Amn7C{3$#FT~02fg8c%jmXJj4S%C"
+    b"k2E9pji>{YAc~cT<_0?M%@O)gOo3sLZKH}2p=)X4zzm$Dd>KK9T&M#>s0|pxawkYVtej3P%h2YBLQH<WYuojBvGmy^C@~VdM&n@S"
+    b"C4hM3VU`GBhXki3CsDdoX>%!ksHRk}*X!HS*qFLgH57t|0pAcPTI3QKwA87}&){{zdY2R~SoJi#%z6gU2l<AP8u+IRMa8Z#P1ERf"
+    b"rnD49mzM^@#K%X@I7T0<Y522A-@&5IEu*mL@oX~57u_}xFe4heur}^8ZVMK+VN_BLC>wSJ;-4EP3+{@~Al-y8B_^{aI-gBM2H(<l"
+    b"RfNgt;AwN~t|HPhNrN(Fw(l;DJ4NsuNpblvCMdpnh@2$Lf~n(|pl&?w#z7aW)nKI`Sy%=e686n9^3bS7y(^|nX;kJGqMH<9hzXbk"
+    b"==enN?Dmus3B;5mN`#u^7b1YU;MrFoP+n_gZd~9t#|LH}I0AHyfOLsiA%G^mzj#yKVTnBRU6hZuCw%7y<ONLjp&Q{`8CHybfc+f7"
+    b"RB{Jnnn|Ja`^*hlL=J*51br1|F%ggmYcZ`0RH}s91&Y;!>>JMSBVtrCFE3er!T&U*qSG<UhI2b`rV^Nij}MS2&S4k^A;X=*B#KMs"
+    b"Z_cy=6dSodC=AdqKZpeZvrIWm#{oz-5WTT*u(p^u5l-Dmu6BL|VlAX$<8>Hh0+2TFy}5-$JXgX7A@^}CqS=J02|{8{5YVSB>_Her"
+    b"5wBOtDkzEjB>giX`{T9H#nB+3vb>N(BT*I!nxX*$VLouN7oai4pdLg}pl-d~X>Po1!fYW9>Jt842{{oJP>rZEa7qdI&LTkbvLf<T"
+    b"?=O#{N7g8rNn;j9dV$Jf084KlCj&^VfwHu0pBLZ(E(W;PP-P%H3}2kA@zg~gB^KSZNu?{A#3%(w-KZi!{{-_YtU!%vh(;?Q6N7Pp"
+    b"TPC<F!g31uamBtNt(mcbY#0n?P#$+qu<erj;=p4a6Bw)QdCnC8V+9zwxrcP?(F)n~+$iqJJ)^PX(&h`5v_QY={mb@dJeztfe2_M_"
+    b"i%YvZ5<P8fd#LjaX9Gat>IfxgKh^L_nEMIlkK%4g@kGN!jqU|ZPgt>eI2ZKBmXXyP7t}*mBvHE))F6RUhS`9$sA8RRl&U8nac40U"
+    b"K^meHA`+2fPdtz@AdIM0iHf%MqGAkl8*ey_FjE|Rh;6n(6$CsiLWT}3CquA*<`rU+Og*EMz829G7;faERhf7wKnu065P_!Gg1(J<"
+    b"eiYYaje*UsnG{wvffdzAH$*w8mJr!6;8VYtFicI9=*X@Kjanp_NYJ?A)vjQj`9B3Wt*Zv@dtu^;n#t-)o3COX%t9KLijrft?o|QW"
+    b"Bx_}|ojHODjfyx3`vELoZZv5XELG7wG7K0@_-n~Vba55HHkQ^aqR}YxTB8X}=&Auas<ZII#Z_9BFyt2{N;_*8iKPw#AJ*&z-dMX-"
+    b"Vhm;#*!syt0gGQ(GxKJDQZ8rwt2$NC#@8ZpM#1-~u5DurJ~?5KvKmMmC`7bGw;8B4dId@F&WGnYOBRXI*tjLt3F_hB4pQKw8$aMQ"
+    b"gA%oJ1*$i##$x>kD%a3x4`%Un2Ew`n+PgatLp!!vKs~|sCoTtAje7k%noT6RJQtSr7W6v8K_hzrU5mhz&|YdEh$sK5#^B*qp|Mp^"
+    b"4m|@z+-L?$3lTgBgW1&>rW!tXhAnOiJ29a#z@4D7FavynJ0~@Kp6t|7Y;+u0tnv0V9U*n%fQX1^AzJ-tsKKn2OA$#@WY%Ch^HLWl"
+    b"%G%iV)zXD)6n&#bwotUNK6aXRSoR}Q!U<6iKoLg(01MY>TJN!0fEKJ&TIb|Cn)I(?Km$DoxsG1VQ%^(ENm@_SCuy&75j+ZlkL-D3"
+    b"XUETOF&{*rqfgPxqWHdy>xdi$4km#WAd2TKKyQ$6Ao@VZr^Q~5{L?&Z`nW&Nzov$}L!!R=%Y%OS>P;D&Oa1|di3`R6I10KtMelR!"
+    b"!(rzMIXJKtlCa#93{8>Gz*KRP(H{m5uPHLNgmHmlG__e#sG!UsX9W#Hs#LKBWDlubtPV-%8T#Lck>nGwMM-s&w$LNpi>ZP1I6<SR"
+    b"`$q~|$j=`-WRX5SaAH_RBk@I_KLArT_YsSamOg#-hcF$;*eh`sz(`T+r4-0EO8lu0V)_}ZvK-7FsOCNK)iIs3!v760wSgb6V0G0o"
+    b"0R#O7nBI_uk?oUI^}jNv*8!L-V7%y<`ta=QbHvGL6ggnwf`F}FxD$tX4}M^zf~CIn@M-)BRXmVAv5dnLSdqdGg)&-EW~J5fpHG30"
+    b")dAB{fCgNO=nF9QjtSaBeM&K<)XQM%eJ$!SChpDxChpHy!n7BL_B_XXWT}32j^LfvET+Fk8nu0N!f6QqB1~u)XggG?FEo9Y><^(1"
+    b"(}%TvJh8)%HT1vJ4g>|fx~MZvg9uFSko;E|V@sM_3P>cC$w@&*d8q8HYxo+>BDG>^#uzT%uN^SLXx*jYSSOl!aipMN;A*G7wc%{M"
+    b"Y(BilABT=plciraUiO>o>pMedw7s*ly}91s8NA$S3|=<Y8|&*E1Kfe4#k+8mE+JOoR-NWPL!TQ6En^e}Klbgg^?zwMh??^s(qM&^"
+    b"Qd)~fy8W_YHJ8)@jU0oVKRE_ehiB92?k-utMu<Omck5PT9eyQ0>Hvx@${)%73k0f-gNaiE_$g#Vs*$q(`n@eqSs|SH)^u*1N*e*q"
+    b"C31g@&3e5qaIQx!<I9u)cFVGj2+Z!>f*lpJEY>-zGzlm`85)I7y|Rw&MRnPaVr+s)$WyCstv7c>1V6wMbZAPJ(27E9OHn>4xwT0p"
+    b"cV1fCo8K`gCb=xIv(BK_Us{c(EFe-`Fyi$F6@bxtS*HSWJY<1p-P+~?*5=Fav@MO)o=zulYDzzm6aOyby8hI0-LW?6i{lD|v9Un~"
+    b"noTHMJg)0%T(>rh$8}4M>o$+;D*ksB|ND23|J~Z&-r8Qp|NhP5f2VWlj-{pMTgCr28r$pn_}}Jcv$=}@{U-6hv`<!z=27fSE{(+d"
+    b"x+^;7$aCW^I__TWf=b-1e7|X48eATCV=%aFSEQvZdSy>t(=a-clhTkCVl>lGyF>7Vn9da9nK(G1BV30E?F(`7wtX&++Q*0D-QMy0"
+    b"y`!VwEOB&rA^Nk)w5e*pzo3&+Sh0O!44r5Yy3<&~T@2MV4SR-8dFmEv37>^(SMGqLSrN{}c0GK>#><a0vV{BqH=E~HYTTIOu3}so"
+    b"^2{Grc-Ou#)$b~wRzy0=bG2qlUa1~p9i;7!X`oY+8<a%ho5sMiqlmZfl9rn%Q?zwZD?Fz`6RnnbXAe%!&B{FmTnuLjMlt^Q#r225"
+    b"O>|%R)06Y|ulVK2^=G%L<Y^dOg*Ha|T!|ywzna-s4wdHKz_)e$=fwBskFV06Og$$(<Oxsq`Q@JhaXLRuns5<J-2pyKj#D0Bgmf?^"
+    b"?<VyT-O{)<pF({{d!Gr7F6L825AWfdGc<AFKRWZ9ARO`-QxMH%%J|kS^rB0{d<&M|6hq61q3$=3O~c$DLkFR4SC1)Q>w7`J#u4!~"
+    b"Jm2`!;nB%Y#5vHAI0!t;je-y+;WP1uVv%@*Q+dfF+A_gS5*dIgfHCCWAvyZhekgR=pkSshR_WrNkL!0MhdullXcEpGK=M-<%)mT$"
+    b"L)>Y!!+6fYsN{}PE{miER}SuB7=F;Dpr>x%8KK2N6Xs-p@8}JkphTKdz|F|Lnvp@mJG8VrpB&+}2LmUfZbi6h!Q16dWPJ348^22p"
+    b">T-kBSh*M=MjL>P;T)_S7-9Boy!LRjITN~Iz_?QI77R-tU#B#VgWH_ogeR|dH>_sEYM4m;6WVp3`55aJ(^jG5Uq`(2?gzpS0q>Q2"
+    b"jr;Hc{C8`>>n{4y2pY<V3T~#q<UftN{M(R!oAU3v{JTMnsM=;BFhJf#d+RbUEU{I*4{Beb-w3zkX**9yB0`&S+&*LNE{m-@)4*NS"
+    b"E&!$mqNHti-=80L-~D#_+dg1N*O2WGQ>oQ4r9liWtWNM>MGE--S;g^SgQh`*^gua$8}kx_+$HWVan5DCWtnnR%))-jm!T-(29jf4"
+    b"S)vEL0DN{U5CrZ%k7~T*jE7cwNPdj^E1Ljrs>$4Hm;kHEk*3{BE540M7Eo9(j#w949s0JX)t-DDx}lOJ!+>iPkVuvTbW{BIGc*yo"
+    b"93I|LQ_aiD5@HTcB^~fdP*_>@a|-%SjN~<w9;q)~rl2*Qr<ktrWs@2Wphr|Mf$#t-S?i&uB)Alo3mA(>fS0B2MPEd*0sOlrMH>c>"
+    b"dT#$eRs3PXG5}o0BFG6KU3VWo*FW5u7RMHrWOeHl{+7Z_Q_QlcF^x_9qP4kPUR%P;PL+MC#q8|i9%mStM)c90c2!Wb6uydIvrvlW"
+    b"Vfwy8aF<WOp);~)9t)vr6_8<o-(zNF;>RlP2s)Behcv&|#1F3*nZV0*KH^l=++_K=_>kzqu{Y(|t1S^V_?gWZ=*-Zbm&)Zr7E&JL"
+    b"qL+Cmo_Rlssu&CN1$4rf9R8K;fTPyazMnl<2FV35k!|-7bcv|?|C^-Tnnj|%bL<F}2o=~S)f@DtT0q5H5m5|*Q~~Amr^sNC0AU5A"
+    b"PT&_vg4p3mPhL}?1){1AmBcTauf(g;6-+I5T9$j3`2a0{O=*d(TA(ivTw(7=vrnHEdc3CC2;bs~p!+77C}D6)Busl6Cub%G80%z~"
+    b"*A^E<2Ki@~!@;ze#X#o+lPJdE7^ykZQ7CL_geNUApkzAZU?Uufbe>Sin2m8=E@dW(pi_@nV7WV02AeYBfJ#<#Y?%1t?+2rmlK`KI"
+    b"GZ+yrv@raVqWA}y{Qed`PHKCO-^DG#Fz|L8=xtdl!X-bc;4}+32aJ7=Sd&5|3T7c;>#PwYu3awHa;DPYICHL?TZi>&KGgtI$GPQr"
+    b"9|{ap!TMyh8S)hy0~#BgIaSA((cD@f*%Z)CY<U_3IuzQ1ll(w!I>jl(+A~?Ig-SLx@k4)2jl(`h24mw;2?6_%0(AysXYdhtjO)82"
+    b"aq-*fVR!%S;r`F<<DXhd<#U>2X|Zk>-3i?;#<N@9?gVC8w`*bfl(M*0d1*xB;HFC_7rGd!l^9Q8m-^kA4?I5@Q*RZ`sZ-fs-TpjI"
+    b"Ytl?6>jt>J%kfQ#MRq_ZNzin4{Q=KXm=bhI#f{RlBuIyzYyut#L!JSHO9AQuq>_svlx!~cGOg;Bl|5$YNOm!77qd$7@M)bU)^xAX"
+    b"qf(U?Tos>_*^&~=!VwGcc;4luAw~ACG}^4^pb|jeP|iS`vDd>caDJ4cT?Xlypx|9l-(a*OeP5jym!2ig-OQeO4f8KO;~;2d7FEQJ"
+    b"lf-e$#*s@2<MJ%6xu{_o+*u|;GCGfLVOB2mbm%1Yi@~q<e^&nAFWvvyu5WH_toDEYX8S);IFOFTZWpyDSi+|BzkL6vUf<Zx@BgfC"
+    b"tv6QtKi}d5y3FapuT_}>vf4)1FYP$A#Jl!|Az#07Jts*Hc>(HHt2jI4GnGq{4pg3=zmd)pn-Zi@*d%BgdteihmS7o1w+m}HDo&zg"
+    b"QhYwDz4!(H=1z*5Whkyr_H@7M77`z@w7N1bMw(kW{1t%><A0<7CDL)V{;$^mg7v=vB6zj_|9#hgmV;ks`F~*j-`Z$wZ0Fbi&GoI-"
+    b"`u}%W|7qRrc1N>#7NP@1oeB2A+UDcTxI245d1!FmrNfcV)y%U);oRbRJ3c%<gJyeZliP!M1}epzPTHY$KEV^7&t!gsYdk1lDqEmP"
+    b"c=o4xmo4dtv<bN}Y;{9&ys9(5`18`p95R;5LYTOaOXLYUJM13pT^wGt-yK%e1KP^YJUM><?)Bjr|0EM1lb0w*dG0a!b_$+zij|5{"
+    b"E<W)5J)d{pEVocK$~(ab6d%nbXOZl~J9~;T4yR#oJI5dgI=&kQpBx`gKNv>F6$a#bLvEG@A6W{05O|&p5wPt3K;db}PKXYnOf$$s"
+    b"CEuS^#GXH|h&Qfpdq!H!>So&evjb%)r3{^bg6{$Giafs&BaWzM;|Uc$H|VM;5oah*nTO6`Mr5-D?%)MpaE19Cyg7P%=;UsafgIB|"
+    b"pu0yuKn*NTNfyMJf<tPeC~>wHHxeg5mn#4Za|+N&g<MJ|I>I^#?Fh5LKx4>@+6Ue(p|1%lTVii82trOD696QJ0*#9J<cCW3Fmi7>"
+    b"RSi4)aWb`_xC$VlY8J*A!F#MN^L5Gm0Yi5L^ULuEFcXl}a-ZKC#}n@v$j8CQDmIPMJp$C%9H~J-*YN!NEoXhHqy!bbmB4W(lwh4b"
+    b"htz0!4AjEFj&TssP;Auebmr5(btf~Nvgsi57}9`XNlI@>2Sn*4{KhTz89>oNZzLifB*q+KbO;n+J$#J2Hl2B1tx@0EE~BRt#{$m~"
+    b"0}Put+9*CA)9{2YwxP^%EfjKsNx;UoH{vWkm~X_UR1-D|9eq?CIntO$oxG(On1JJq-r_O<3Mp*_zGd>aFr=eudoVe$f9?bw?8dvj"
+    b"U%TyNv~Ie`hvyeK<#?vRlmsH;49M~_I^9u9UOPf2i-MM-yEx*ed~_%_CE^3Izt8L;dgKSlw$9kTc9EfJp9@OA@$4($ov2&J!8^o="
+    b"6%YUbfo7P$2ECt!@Fht}v@p{s_1m0Xr8dBjFRszGkGXMXm>E9`Fz49B{^(%-4GgY>mJt`>bB1{3#0gM(Rl>2uammg`rr6JizjZOo"
+    b"`*}(%l$u3AjJ@;ycDuWOadwmzW<eM^acM9POKzDnpdm>@4A?5IH_K)5N3K|-xm~6#qQ{O)iD@|VT0|!YqvY`O?=!j73EIB`z!+T_"
+    b"dB7}|pp->GTY!?1mJ>MPO$h)A=xoR8e6*AR(u~y(VYiQt4u9G^>b~APZ|`@{FU~+>@11GnNP8`+T0hJWF__(|_Ph5-Xf^}yeF2;g"
+    b"K0r!9f$@EK27e1cENN>&D;@!4X_M2Y?4P{D{Qi$^hJkK@?l0#>++hl$mn_lUJ3fF}`U|2@OUsuTb}@-KulGPdKvvDQBrV6Arm&h0"
+    b"ozd0U{r5+2;s?{;!zi9z-`vhWnZn$Ay?=1{=BKyq|MT<FyW^A7|2jLrc>k|oe*Nvg;bpziT;JH-+TM8yKdN05Gzi4kK5k#MkrG+F"
+    b"+4kfbY_36z-yZ&Y(Eh1?vAo5yu}Q<SjR1y7$$NOdzXz(s+2QHY-acKqumBNN5hlWCLmj0wKYZw84!RFBuqH564s;%xK~sC+=%wPM"
+    b")JrY}%ZvWrPu|=79@n6e+CG+rMoFOo7owDf`BGt0YRIJqu!y-BPRA)M^s<gB+vsyyCmPt(wB>6bfY!1|v&ltJW@P#XWn_`ffkpxp"
+    b"B2?@Sbwv&+76*r?XNUWssUCD;K=xpQu-0ap<~geWpwr8ho03C<lu>)ic6cR*GdejsbTFS6@7>agGADEcN_&*^nxTdO`hJzOJ%(4T"
+    b"PFa+!P&O!6qm-tzDkm-5^JT)fG_RGNXlE)%QJQzoV#RT9IE-@1gp%{yq@JXx7}F%WYN61DrJG~CP;tp*nxkTXn2S-AdD4u&gBW<_"
+    b"W2yuZm&3@~Tci$@m8rp0VwaH())f~=hVuiiK?)FM_=~1^oeL)_1AtT#lxtNGzRo88@}fj(YP5qp)$G|XCCn2!-l&rNqW)u^%0I|D"
+    b"=q&QeB}~S}rzr#?&7XomL<4R9%OO0+Scn#x5%f&55#@LqiL~$d!J?T5Fw~TrBu#n;M5zeMoq2yb==!6|K?gC`I!?=J4b&1*;f_28"
+    b"B^#NS>ZyfavVEc9ezQ2+NL|UzGO~%(EOv&LFc(3ck{V2j4%UDOYodg`tB5t|sr*4I*BbN)eq)z3q?F{xtSo>%NJYml+?T~NWOc|)"
+    b"=GnJd;$qUBAX4*xnPkh4H?R+l!SjW|cX@_B9UhH+Av_@57r-N)TZEU&D=V4GG=sTpmN;^)NuIHI;l^5&)Q1$0il|qR9%b=DH1vt0"
+    b"%I}Isww)w>n24D=X)3j%l2yVRk|@j~HjLbOzS;%z%Et*+&cg$9xElfo;r<VXF|kY~mNV~dh*oiAl63vd9lWb38Ty%;d#Aw(LmWP="
+    b"@fp6{i4s_NpHo<O<+SYbp<yUmFY&R(fZ^ZlV`M)Xq3mO%%5EallgG)B@|WyOMSS`Tt1T`7l=HUR9Zg%JebS*wqDx?&OajoB=2yYK"
+    b"<KMEVz7mwk6J|YmXfBhr`83Hs%bprr`8nvsL_n96(SncV`v4K~lRKis44b5vrKUrHzC~$s9r<47kKI#Cx3*vtpOY5`omQ+r7+HDv"
+    b"U{c=-2Xdl+r$<SJ*G54=aeHeZ>%#t8xt9)enfr)IUyO8;@upxY$|h3PzLz!nM=$^pEs|fK@|@GuN*4WRq$7}XMCKls2~kl?Fh7Ja"
+    b"4N+O(>FAI}?@J)EzUQLH&WkK@<e<leE}!GGHW(5%nk!AlDj3UfK*JqbGFGv~C@X?39&K<-+0m_}<5_;>NRQ0JTj(chY^Z-Q-&IKP"
+    b"u6;&L0?A&6$@%-t_BdegZf*I%@{Fs~cRXaYD^4gPSn}kUc1&B8y=qs;huTo$+_pbD-N+s}UF~@(%M?sw9!J1T;fUm=MBkH5o+nwR"
+    b"gnm+X=}a6O)6n};OLS${77ozlmfVby?JvTaCI_F1h9%BFx>K$Oi#uP0IEE3<T1(t_iX_LY9D%XJL50^$X})UG?3rj<vIil0(=EZ{"
+    b"Kn;}H<`ex}Z;ik!6{HMDQL*F|Ha7oC<_pX}{^-nW<l~2taKrptdy0qKXfClw31mVE^_L0Wju@lYDI(Vt5u?0-lOvL;`s1n*tz%$X"
+    b"FH2`W`UTDLU_j}X1XU+9duZJP^5am1gAS1YGF_Q?*0gak&51*jve4F#`l`xsc4^*ai_#*#tF7X^T%sX3a~41VuPu5E7U1pTNbqh;"
+    b"7kNVCADBuNIe9XouUr7+eg;ezd%b_1T=y0z%F82Okx8JHv4ZnHB{Zrvmzio05IhGJASHq%F$89@H6jn{2%Q@4Cy)ycnQNs5r8Wbq"
+    b"pjVPcijug<6L-?F!2*(J5iF`lOW`56KM3#3M(dx@uV=Y_Ndcd82$*e|Qa+K6u!1NY8A-G*1zcV}=q=<|rNa6fiSW{d51MdAV(PD*"
+    b"tp6;Uti|+MwA_-FP+lsabs_Oq*dw|nrjV#hOs+&$=&BF$HJx<ejY8?vp}m4cQK4U)KNgd3qI-h(2XOPCmI%*CS6trNn1CA-`AsG>"
+    b"+6qdgEE=2CFWwwNZ@ji;RAzzt=IrFZ506tHVm%9(wv@O{V;d74flPL8Q6{_SW#<VnBm<XowuAEKU&#&BXPP#d=Bze5g#XeM(cF*i"
+    b"TW-hUuct@t{q_az*rd&A6u4zjZzqKhrAI5P&UZ<8v@~6izR_kWYK7<(`FxkFBPEQg3#NQ0o=rWcL;I&-u~Rkl)Rxoc*u!BWn%IPa"
+    b"VQTS~D*|ef_hMNyGbk;9RVsZ{HOm^71u3|s^XR-t0FZiG&@&?|h@k-XDXCUTcbax-=em4vqX(cHg*ruM=*-4g#T-2fnu|*(ku({y"
+    b"Y)`NUP`%TtHZEIvx&Kk-#U&_<B0A?i*3jXf&d1A+$s5<^Wu`q~K2DJs9l%+k_G*1YLM<I-vQQG*wFD;oOgoM9zz=@6TVk(XUw;e<"
+    b"P%oI`W?@X|x|DHZHz5c;#8wv4OxAoV)g*0jdYIH2v&9^bCty|Ay7@PfkS&-~cTb}@?}>8PmNty5%VJ-pZCQw&h3eR@biWmK03lIc"
+    b"(k!L<nX-i&bsw1g$O{?IDs~nN7kHsKUIh6iS${%IER2#DBx{yQ{`x5-!&fp@ecuVY*}=`jRuU*JyGZ8Cr8v<VE8-*_+5$7>CW$^Z"
+    b"bUrKWZ$Xz7dlU^(QSW4*aD{zT=Z!)-E2ZF=dUpWJR_oDgAA2yQx-j62HkDbK*?!6S(GW?_Z^8>?g82$WI-W^mO&2M@Y+EFm0qGV)"
+    b"`jxYfkmen+fW%#17;Cxtu*`p>IDj@P6uXlSRmALnLg?KmzVcA@&XDS(?OR}#3YpF2Vtfj0wXpy<w*|tWu(JiASjh!)OYQ%H_RGkJ"
+    b"&N^G)8M|~74m<<WnB_dzQDbn2cRqzhiqFS&{Ge+4^C}m))U+LP3()ve&>i&eX{&qzA1UdSwhZ_`?tUa^QNcV;-WHB08Fh-ds^~)`"
+    b"rb<hPD^KG+Upma>Ert}>L>`h6-Y0Pn$&&_JOvuvbyYjt`c)br8clr75G7%8$VrxB3F{UHmyP9w*<+MAJO&GI?e@n_0o3&S^KUQr%"
+    b"R>%m0?<!sqXYVDo0N%D1U7hT3Q>Gt{BLP_MYq`fN#QZwCiG>!K)@X`$Wm%Q9+|aj9D-r=3f!b>+wD>4);J4B^4eDL?ZPy7#EY2#%"
+    b"J^cm)vn#FZaA5J~4kMP<wbs@AZhN*q?)U(VvOX^|jd_G6toeXHb1VKC-YL6QqS76`hBkK;F3ZK+J^mfI>?FYPY{{yZ<)s5Ig>gdL"
+    b"`+aQ7TK|S7o4P>{ImjNMmHt`b(YljRS2BrgV}`p^Uq_C=?-|kMUa`xE_%`qQ(j9ZUt4Fpt&&=AkK}BsYR@B~vB<yZs*j6RODZ5$i"
+    b"u6)l_QWwv3VXf<uGogDEJxH%2?>dx}NzA$kIk#K)u!~HO7Arr_ah2OO-QCSMqEHi0DNy9&TabeR$YUv&i3sdIpjWVbNL@xTc;fXo"
+    b"JErjz*C0LN<&mAj@ICLMgKnliR5VY>yyu|QjE|*^>gv*>>=s(wRa%&g`*aKe?_KmTSmHClxD)Y>J8%}JV2UhpI~25Qi5DU>`x0+j"
+    b"u~w0hr)v3rs4J=`7>dky?bw2x^Ljs)NJW(Dbn$$Ixf)95rOCw~!f6!yBiAn1R8+O}N80SOlVs*wd<z_r`AN*O0VtB?<&6LPPw{e7"
+    b"<K=J6%unS|bdSbPp`VnPc7a`=35*h=QAmsW!HvA(D~6J;&xs<{t(wkcinl(ZMhFZvu`Dac_^FF5Vbf;<is9)8r8Ww_1Qf4!g$I1k"
+    b";xr7#Zl6vF@NtklH~du-tVr+w|6+#y=_$52$9(B1fBGbA>XR(DtC!V4i|1KI-zi@j?2ywi)dZ?A5%qZ_@#FrkHvKfP6|xb#-nF+|"
+    b"=l(p&=V<q%Zdw6~$sMs58W^?xfp?ByV_V`e`9r#N6k=DD^g5lEdzn8k0Fn!}UF5bhw~=pD@e?C(32@ylvX9w{c*YI`3RK0qyz!9U"
+    b"u@*XXpR$8I;M}@=h$c=>U=@lYg|2vUeViUHCq#l?6G;mEqFhqBndlN5OnWR3G$?9N!baSUS<|C=k}J7cbVv#W`u=}PAQ>MZ3jzEz"
+    b"G+0(wht`b6jaz+V<bEP85%O8?dZN6~MY}vg_-E1G6;Jshn~rkN-lvLWA%7E@S>W=-rhFAN+Rk8RCy`uW@&H=0NtrG(xQ;2htM+Lw"
+    b"7(!DKB~-AbC#KvgU@KhGbdize3w=>TlY<+JUC-<v5VB%Rr%-q<72ZokbShVA2f!#$pmgu%13J*RusU%Eeb;=DKhlMBcP-fzmtxq?"
+    b"g%mCDOvbW*l75(7+4yAg0}EPydDhp+{7^5mVV9}A6}7&_nbj5_<c3XoMRB21MJnYd5unI^E{vwQk0TxtSy2><qjQI4F0+tX>sji*"
+    b"c}m2~lZYz`jM(zTRjy*GIEYswd$h4&S<aq?T#OSLQH~u#IHoIC>7F;67hQ@MMMqi&%^e>eHSdWKc`$M?CzKQ!9$;5=QGOeD6-@lx"
+    b"Sv*5Km=MO@#c1q%`ke)}uvbB4u*C`JR?>Fef3~*hKVuTg09{xJ!W=Vc)z{3mCDozxly$R9S8f+Tc_1cBC0b3Lm8i?I1jUifhH7a;"
+    b"UyS(COpuwAnI0{6qyk!!7h@P^Vi)Qyp#}b{FNnC_cPKEYpuvQ)m6pMc5V<F{=<-|iPG$%B5k8un--KY@=gOp2<x5tlq;qOJ2<qPF"
+    b"&Rp8Jbe3vinJuvpoQX_M6XbHKFwgfnsfKGn<#8d1@BM)n(0ND%Q)szlqvO6{C?7qX%e$wuH7l}R(oVlRcV~CBi&&gP8OXa_v^%%3"
+    b"Dfe}F|L#HF*V>hCw=bOrf7%OC{_@x-8FBKkfAFvH5f<uX(lXRZSnQ`xI;sa0<U{Y48jN4pXnfFcypMbbGm6qj(&=^~u5O<d#G*~P"
+    b"2W+%2ln#%Tg?A6g!ooT5r^KR8o%^NZ*A<R;j}nge_4m;Rdm^>+KImn3x-N_prKHQ}`<Dyk=bE;X#1rw3=5lR_fp*<t0fRIzGy57!"
+    b"awbT~$&mtp>G9e8@IlZiEliuhe|__=l|S2}9ckeVT)uM~3qSCy+M84{OoGrgIB03$xlqBUlF28YsqRKe2nyvLk`e7zCQKk{JVnia"
+    b"C_LoySbJ^hsgY&j{f|5zqU-ynnUCIC9`k?i?BkvfF-yc6J1qF{Uf~q{LQ}SQXS$#}nUSEwMjvjMSuJDdmhfrln&o9sW>0{!u@uVt"
+    b"CqUULa8c<!zBg@2C&7IAMUK(O4XeJLbdR9vCiDDB=2fvprG!_JVYMjpbh<8xIeh6kei}|(*bFR%w*8`1ll2or8T}%%bQvd-e6R8^"
+    b"WK-3EMitHQIuY``a-|1{MOnO1VTlJ>PA-W$>3}Q4d=p$1(by^*nYg{~%y$u27YOXxp)|Q<?Wb-9O72M|uS`H-i}#F0FqVaGEZqsj"
+    b"c(^cWPG*#I{)Z<U@X2aI%R1#~fmd-DOvkJ%75Q8=sg(;LN?FrfD~cOhNE(%k9ZI6Kiz5yeJvB-Dd1FX#y-ucNqAVd4E&P&}+Bu8+"
+    b"NVmSs2%?CotX7mYPAR(sqe?TkIG&64h^ZZl#tri2q*mn4FEH5$=Gxj?E)B@Spxl$wtGH$|R25^<2^l&OUxA~-_hdINbBmtp-3v*{"
+    b"Y_zJP$C|m8H3<{&k8w9ismRLC-jH$%sx*i3O&~9?NqHu!QF5mUhe++<N6zmvOwTBxz+~P)v9`$}rgSWgZfv3qf+O*7Om?tt-4kO#"
+    b"U0ZG^t1d3u^nVH*(3wguci&~oGFb5(^@73$uJkzVdHFQbmEe|<XR$|RkxL_Xv1z<IMvJVmuof5aTLIobht0^$1*xMI3DZY!$9%yS"
+    b"%u*Exq|e0lZJDlNxo%T%h&|)X*4VOOFqavG370MLyf3#n*G$t~E3!Ek(5ycm&C?FyvpTzA;xnq<N8pmKs-a|*go7kUm5NP=6ho%A"
+    b"kxSfExIgkxQi0;Q>19rtw&yulnLUTk_;r~dCSCh9F~SPg*LI7h8{o*3vZ&mu%jIp=jNnr(t#C9BW*#V+_O+vu-Q^Mt+aBi5nOm77"
+    b"Qm`mEK3;Da>A8mSR%^`aB9med1HMMho@n-S;a1_&%+blJPCJMCDeS1mNtY?Jn9QGCxT9$10$F&6F-x60PV}qoGZqD^e5JiVxvsX~"
+    b"ot~Us>>XdUV0Fb{49vmc@+H@O$_I?YGsVQ>!H6%5BYh8(0lObzu^I=#Pyu_5!dObS=-%D9Cy1DgQMRB^O5H;$c6n#(<2U_e4~`hl"
+    b"vOZ)sBnxy<()#{vAJTZ2M{av6>chH^Npcn%9pB$*ygKb+hvG&hJ<F*BAKed}Zl-$}`esF)nv_Z-O|AuGon_t(-pzbqR{~eTgj$)L"
+    b"=?jQHFGG~sUwR6@1I#;4^M)>8<<nj=1%8*Z+{4V&(&=0DY;o@=Tjw6#B`Fy6|4oURa(VYlSx5^z6zRbwOo!?`DQ5|SMr~c8SX6VI"
+    b"JbAONv2Yi)T*-8T(}k+*0d$%rHx4W#TCUc@*yi3V?2DHYlyW6Cc8Z-VjNZf%Hhs*a>Y1F(Oh#4mncfiZ2<061cqPQp#ne{R6WgEj"
+    b"jhu-~fMPstj9+#EngoI@O6kHg>E?q0=k1_KF3OdS00L$gjqSK8oD^NBAm7lijC^|e1={H^7YN5MOM01H1|)U8=oEShf|n`Ao271u"
+    b"QR-ui+Fx{qttU<}y&U=RU7s#(_w9`PKCh<g`N=d8WexWzm=$^9Hgc$`7-6nT)Gy@UDz*WC-`AFnqP8GRNt_4f+M-vEHNIu;HGD!x"
+    b"9g30~$cB~b;(I)LD@)>!&CTY^O*&*$+T32>*jOmgXf!t9e}(?RL~y!>$&v8M&ol!vGJg=-c!dgZI>Hn^4MtBO2ATLc`+~9`ax^x}"
+    b"7k7a9Swq_40*T#s_;w4<PEXftuw6)+D9ot|-7i6NP#(l5?N8}@Dn>TK^!_tSF*u^6IIOWH8R;!K?XeMfxd!(K9hION(zYs%ZzOuD"
+    b"!0j=ArQQv$PB(@~D}WkoCCQFc0i*I(_aq$>G(PB-p@bCW;E0nchzIu*OrSXNq3DVIa6>8`nN0o!JjsyeRml%H{fqhvsjM{4U@mBh"
+    b"Zs>hB)*x52ykz52t9tMDCC{Ifx+PQZ+5LR7c+6hIn#l;2@A>K~vDN*5tNZ^}_y4Uv|3mKo3!SfY_unJ#|J~ZGZ{+U(Yi@0<?*Cog"
+    b"|0nPNqcY0)RVDCuY7$pO`tQ*3Vw=By3VeL{32((?FmxpnX!yxBa$Y#=4(!3$Q8)aB&KKNum%YO7G1u2=M_-LDn(JM#JkKxA()5ra"
+    b">awLyy>Z#8S6^QK(S$$im*vcM!!t1k+bA+xP_DYk1<PXL^9(OT!z)jW(huC~dn!B=!4xTvo<GV$%eDa2{9u)+!skY1>#j^+pO=5g"
+    b")EJ>Vo*brhvY!DM<sS^n>zNqWS}z^EkZtO!2xaPZJ!$7HV%e*{v8$s?c-H+v`(1v{6mV{-=pUS39tkE(Hn>Q>dwti}Dg*#=JAu8u"
+    b"SOt1Fh>f!GhtYXaz5D@6*8k`<pzle0piWsU4rUEy)<ho&oq&MeoPJM=F#dX#l9MWD!2D1&42r1mmB7jR9p~_pnp6lztMA-SVIqKK"
+    b"O0~;47L_yvdl!b_Ux#O}PtFhVMoHa;R5(mJw^kNF5CG-3yJwh3lDm<eK5yLJm8+#XQT2}oJZxU3zdMbloB``Jq(owx{gk!8@p5OU"
+    b"+JGwC3Da~gV!>{S&w69;6yZvp|NeAY{-cD%D=*Hl%-qP4Qr-kOikw(-^>Ruo+duDXWY-ar<Q;xX6H6sB?hpE!SpNH*u^;ABPa|$m"
+    b"`pQ7k_Eb$ved(dqmVMllu7NW)u{D>bj5J_y$-(jTLLo{6AyRLqA+NPbz-LVFG(2SP*kLzGK1J6H!7?z;J{sEd>;sf&xmqN=vd=)W"
+    b"<O>bLAj&@bH1lTN^!`+8HjQ03a<BYsS@~iSyL^#vL|OTft*bDYO(S`#0sCCxe&X^pmvLW;6lIbOrGyUhw<JR1WK^v{Uqd$GndTub"
+    b"<#EZ237~F8(o992NpK2#(iN@&w3G!URm(C3IW>V2g>vd-rm-xW65R4I;-s`y5oX;iQ|0ufULTLcXX&r`>_4^SN}cZI(ZW3J#-Fkw"
+    b"NBN;D7@|C$T#yhYAy2qNZv<dfnu9fq2WglFU4?-TZ=!uQxtJlTmcJ1sneX{ws$_<!f`qO}f+=NXH~xh3;~4;z7a6MyFo`50az8m1"
+    b"Z~D4?(UKsK7CN|io6_~Cv)Fj1Qf|jc$jlAJbcu&btVl_=IrFvXQ?PX~g38SeLA(={#dEP$7m{=6XH%4z#$xD(oH7BYM001SZW%u&"
+    b"Y86PkTWswvCmp6tJ;|u55tN(n>G;V936~`PGBq|lWcVHvX%oB3vb1IO!eq9qX2Oe9<&>KeeKE^m)aPA-{yaB<GUX&W^pe`#%15Rx"
+    b"tO)5&%F-nvWzUq`bv9RGP@iyxa_O7RagElc`(;mt^B0ICcT0*Wvots(>r!<`Iw4ACqJf#^B^#RTY}G53GeMx#0sU=7)XV>){Uj^@"
+    b"-^%~D^8c;;e>wjj?}U9N7vKZ_zxw+2R?h#oz5%aS{=dJA|F6J%wl8;TE8+rUD^V53Ti-H{!OT^8szOI<2pETHaFQB=z(>_B%epj9"
+    b"m3p(1aI5uywf?Wx|JC}RTmPqX3pIe@H`)J#`QOa1|IPaLYW@E<>p!ME#GFld0tgc~ogSWw&8^02_W$kX|LM;^RolmJPX3DZfBF1x"
+    b"ZZtL**8eR~30Cv}8+_h5v5hHStN(K7@DC{V)~0c6Pn?z@-Z1nRR^2$CO(u3YZ;3tOx!xMbfpT;ws@pd~IE=Weu{VpyL0EMrw(GU>"
+    b"wu1P6Oy7Q-LCwg*3woyB+`4k(@vM(~g|Cb==l7W#I#HDmMzzGN-F0inIB=pt=+cH<b)T<;s$S4NKQUM)HE7+(VQ}Lc%BDHIodOW<"
+    b"1KKqEc+rfsaZaWVCc_5f<9tr3fm%?;9-N#%T#CGw!6?Qbzqmf2j2^6XdUD?W6~7$0{_HkW{4@-%LVGg73P-koHM6fAs=|lD;M+R>"
+    b"bK-mRC)R6E!2CgTi_9i`vd=I7G@R4<X|^#J!PFh#n{yz{4ITqKz(ZWYl<s?@e)mH@l$L^i7Yy;%=qw<%2wU{c875<ihA2R3?;jqY"
+    b"9~#hRys@bI{_F@kHO9=^UT{?r<2as1ty(Q*rW!MwRB!rT&<8$&Q3-4NZ}*OWIy^f0$(jta0N(}^X9`q!5T4N{!?mi<8l&^i&g+@$"
+    b"4aGUoYZhIW9%__~o2bDI`Z&Ui+H0{B#gR3)Ctj^@53d|6y1x1W=;sf{yWINnqrv|0`^*XFy9)Ss>w6an{RM-ApA7H?ofU+i(^)hw"
+    b"V<%vY+v1vKK#I+sTv^fBb-ZC@xdG^lQ@3`_7_~OxV=D-+YE!1GEI`IQQ|VQa7%`qdzo01XU?k)OkDfml&#xTc;c#&ZMDI+7BRpCX"
+    b"SL0xCA0hN|<>!X+{XeT!p+DqPCZbx6yxG+*1At!>`<Bii?rz}^*XJKi`0>gxs-n~O<1n}^J#+DInV$e8&!Y)KFVdg%{(S`e1TSXz"
+    b"7k3um8DE@k%NyM3s2!9bQdI3KQmo2Pi^`+cmM@LZWZAcP_{B-C6T&J`nvTRcRr!=E$?`yLz%?7hq9+g9SO@&K7jYC5W2JK`0BNAg"
+    b"S7mYeC#qs$*&He?5zv&NGn1l6%+RaRU(fCL@XqEb(5mlxF5Wa@&z%r(^ko&<Jy#a5W=dD7G|~9Y-hV-@k^Q?w`OA3D*H18a{Qxg-"
+    b"#`7vZs`4XQupOyeqw$sscz%ry4RJTL3Ii}D0Qe}HO>w?ELxcrTWUXpitD4rT%39T=R*H_dUx5_E*<>2^Dxyaj?KpPB@$p1Sk0aKA"
+    b"fh01j1GJzjRVrV_MV3leRbe&$!3`ey<+B<TeTJ7W1HT4J_|j7ZJq~WF!+?j39s>JMt5~!;rK0?lNPOyqG<p01F<<&iqJ2l_kG1JK"
+    b"b{r2%(z)bn^1MpV6<en#pb;kgl6cES6Bd(V&@_BTr_I9Pdz<nZ?wT|i%~#*oY<NpjhW58re?3}&=49!p@$B%tPyz%=079*7Db)uw"
+    b"pAD<d$9!$d4h~IK><80}r4bSNx?we}`U0$)<Jb5VKt1u$B`QTKAC^uk*Oym@S7i;WWf*%32ntH-YK7u>(it_OrL|(**b(08%x+ma"
+    b"03Jhc>~NUS!}S$~)~!avxOQzA60iifcC-fF+}v0^C?wT~&UJ0-Oe6fKT8EM~=pB<B1pc)<#G^q%ql-?ozCHLz?q0Gv31}n&A`KlE"
+    b"hh}U7t@zwH-#~+Mt0JUO#eriH@;wYskB^o|LL+1{zJcDi%@>y9iy4MNb%-eomk)Zw|CS9PoMK!)SwCmCj;I5ZAWH5ey@8H<bA&z="
+    b"Q(zcm+o)nhfrvn(fEh@);EXUS6Q{A%28^x=nIQGBayqdrL(dQ(5hLf=*PvYUV(HVVNrjQvRi+Y<fRdyCc!o8>X~{{HE>+rGN*}5z"
+    b")$8^8b~HAo?o<thRC(YHfucn&fk8{1s{9OI7p!+l;eu69!^^Cv;&i2+g@0t!0|uaVI#XH-qRUGIVdCQ>XB?x+VHzA$fKe)2Mq$z8"
+    b"8EU}UqT3w1N{D1GTf%L@!ZwUbssUvK)K^C~OcvY~pE)#6VlrEz^VvjX@GWf@p3fw7@U*#gR}pEMq(PZ7+jp17og#RSq`3SS6BOS("
+    b"L{5@rc&!Q^42vlc1FO~WM4yFaupwdJEF%xe8ySl!QyP`Ig?JE;yi0VtEWNb_M2?(D6HG`}N^WuKA%Y%X7jGG_wK8;6*ztjx2XsSJ"
+    b"K)OV%5I~dOU%aXAutc8uF3LySQyC*8F?1uGE5nM>53rvj%zT5#jYB+@NY*BaND6%%#NM2h1|qD*v@TGo5^5JHRu8hTI;p;lz0Au?"
+    b"R$uTx4XNmK%(5Ymr*nnesaTmQEX1G{^EYQ&5p)v|C=Adq4DcjimMMqnIEWpN7Nb-wVgfcZOx;MXc76n6Eu>-Nb(rH}G4#yBA)YH?"
+    b"gOK|;7SU|N)C3_hCkU|U#KK0qIpXyySp_9=pQL{#WPiLCx;Pqqwt&m44M>TyNYE4w5MODA-Uy&djK|)0McsP2)7*I3G&7+}yApCD"
+    b"DzpQf3HZ(;K=ZO9@>TCIkD^D`D49uP7Djr3%6PRBjvhK=?18eh)D>{a@mZ=o;HczejprkzL{Jvp95$>en#3ptNL|bZ8Qfq5V+CqV"
+    b"DcpTP>3sq){ApFh<H-XXSL_?on&nYk-yRHRP##?h*mlW%ap19z35?a&Pxlfx_mFNqS|NLQvK2IMN(wM`+z_<;zC2I7mpO*a!l$3)"
+    b"<Z(y2L)Nfr4`+BgQ0`bVarRRUpM<%eVE!oXmK0AkOw{OJ!1Tm?y_`iMuQ#@gtlqew9<m~d+MS>V(P?*P1Ja_3b;?nyo`A%i#qz>G"
+    b"bV5WTa_or*G6sYZwJK53wq8^WnWreZnhS?9JppcmDhPO3gbW?LWdQ7-c}2)G>}frtlfK5xJp=MDX&wsDLhUO=py{=sZ=;?c#Wh)D"
+    b"zySxf6jn8X71c;Lq!3)Wgvf>gpZdjwVQMBhITejsB$!ChxZ>5WV4e9t1vjm$2JL%c;)t5b>guCXEasSa0f(iM9HP>_DuT}AXQ?Ab"
+    b"FriTq2Vp;e#mkK*t%9X0nnwm6euBT2Y($shw4sfq^@?aTWIUxNFrlkPn%z#9q_|3}5{CSuL}_R3BC*s#;A2jjJa4RBDlrDL3T*vk"
+    b"qJYJ(tC@MTKPi_p{#BhSXya=UIiukFRM)n#1)rQSNLdY}4HP0;qT3AA8oh!fc<00OoF$9IXl&e)>IC)hZwD#x(TyK)nn8&g#S=HJ"
+    b"#$x>kD%a3x59l&Rs6Yvy1YMa<0_q92KXEz0YSioB(QG2g<+(QI&%i6oQNE%*fUZSBr>v-bAfEiI8iR*dg~nDvIrIz=aibY1Eky7j"
+    b"3}#njm})Vl7i)1-*onzG%0Ojd2KWMZPHOl(*{P%0=s2)g<LzlWLh8gxQcl=tsKKn2OA%kY3d|ZzXI|>!L|GfVzFN9)jiPTHHB}^9"
+    b"SRXr0JFGJ6E8&Ew2cU>^*p(x5<|HXOz)GccPOhU#|0)JF&~t2=AEG}`Jq<}GX+2G!q`k&P@F)mAvge7N9Y4Fpe1KQ4PtnVw_?|+|"
+    b"<tXsZ1FQg1JZAxVgM<UoN2esLWaOXbS<}b;asD+m+#M42)n6X;!&h(0*j(}tFic!92Eb9!Rk{}}_2IDdgd7~$3Q1V*NrtA#X9G;I"
+    b"r$#?HyXE==Z#I;;Krx!ytSD3j-SP#aNQ00nRcry-LuwbRL(+MM{`Vxe64;`ox=CB;k?zIRKzf{@QPlk-1+BvM|Ii_e^yz^U!zvny"
+    b"FZ%oen5wytSbVhf>7ze{=^z-)NGzQNFjCZdDFw2P5`XH0m@xb?2eSvNc~5+GOy{ide*;W1w^#-fFwkFsi6cw1eUhsFSH>ih6=pDD"
+    b"8mh0)5hr|N3-j+)FZiTs(b-XW%IDBP_QV{wi}&Kjd>^<_Mk~s!w7NQ7)gw$tbW|=y^aYrD#{})6KBbsa>SYhUel6-TChpDxChpHy"
+    b"!bB+_bG%2E>R0Co-f7KZ`fH?-Ofs1w{EIN5VW90$rM}SgS+YNbI!qtd_Ay3{)X@J<I}mj1w2L~^G>E|D4#|IocT$t)mI4w<WqE-&"
+    b"80Dd|v##N5FpJcRr5R(mc)xbQ2%~kEFSy3k%8`PCCp|m$tqo`6W%J=Z{y21;nk@aY@v`4sU*8!zqwSrY?alT6&fw)vWAL)E-dJDX"
+    b"7~l>RE#8HjbP2Hvx9T+a8T#BnXc?m*__1$?t^Z5ALDZc8kOnKPl+s!>((RWGtGT2OXyha4$0x^t>hNqj-Q6V%*a-3G?rz;`ti!M5"
+    b"M;$=1MfoGSe}O=?aWHXe06&FnNHtQ{U%$7-DJz6C-<r<phye~K-GYr}#b&);=k$>+<I9u)BT3+nS&M~p3wD$|^{;bQiBcy66ZRc+"
+    b">XmhDFRIIa6k`)aLY`W6YrVN6BKUzRjcH1j(27E9OHn>4xwT0pcV1fCo8K`gCb=xIv(BK_Us{c(EFe-`Fyi$F6@bxtS*HSWJY<1p"
+    b"-P+~?*5=Fav@MO)o=zulYDzzm6aOyby8hI0-LW?6i{lD|v9Un~noTHMJg)0%T(>rh$8}4M>$V)%RkZEuv-+$)tIz7Q`m8>y&+4=K"
+    b"tUjyH>a+T+KC92_v-+$)tIz7Q`m8>y&+4=KtUjyH>a+T+KC92_v-+$)tIz7Q`h1<w{{zR#!R-J*0RR"
+)
+CODEX_CONFIG_MAX_BYTES = 1024 * 1024
+
+
+@contextmanager
+def bundled_tomli():
+    """Authenticate before decompress/import; never consult ambient tomli."""
+    namespace = None
+    bytecode = sys.dont_write_bytecode
+    try:
+        payload = base64.b85decode(TOMLI_SDIST_B85)
+        if (len(payload) != TOMLI_SDIST_SIZE
+                or hashlib.sha256(payload).hexdigest() != TOMLI_SDIST_SHA256):
+            raise ValueError("payload")
+        sources = {}
+        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+            for member in archive.getmembers():
+                relative = member.name.removeprefix("tomli-2.5.0/")
+                if relative not in TOMLI_MEMBERS:
+                    continue
+                size, expected = TOMLI_MEMBERS[relative]
+                if (member.name != "tomli-2.5.0/" + relative or relative in sources
+                        or not member.isfile() or member.size != size):
+                    raise ValueError("member")
+                with archive.extractfile(member) as stream:
+                    source = stream.read(size + 1)
+                if len(source) != size or hashlib.sha256(source).hexdigest() != expected:
+                    raise ValueError("member digest")
+                sources[relative] = source
+        if sources.keys() != TOMLI_MEMBERS.keys():
+            raise ValueError("members")
+        with tempfile.TemporaryDirectory(prefix="my-ai-skills-tomli-") as temp:
+            package = Path(temp) / "tomli"
+            package.mkdir(mode=0o700)
+            # No extractall, archive-controlled output paths, or setup scripts.
+            for relative, source in sources.items():
+                target = package / Path(relative).name
+                target.write_bytes(source)
+                target.chmod(0o600)
+            namespace = "_my_ai_skills_tomli_" + Path(temp).name.replace("-", "_")
+            if namespace in sys.modules:
+                raise ValueError("namespace")
+            spec = importlib.util.spec_from_file_location(
+                namespace, package / "__init__.py",
+                submodule_search_locations=[str(package)])
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[namespace] = module
+            sys.dont_write_bytecode = True
+            spec.loader.exec_module(module)
+            yield module
+    except (OSError, ValueError, ImportError, tarfile.TarError, EOFError) as exc:
+        raise InstallError("Parser TOML incorporado inválido; reinstale pela entrada verificada.") from None
+    finally:
+        sys.dont_write_bytecode = bytecode
+        if namespace:
+            for name in list(sys.modules):
+                if name == namespace or name.startswith(namespace + "."):
+                    del sys.modules[name]
+
+
+def codex_config_error(config, cause, error=None):
+    # Never stringify parser/IO exceptions: they may quote a secret input line.
+    position = ""
+    if error is not None:
+        line, column = getattr(error, "lineno", None), getattr(error, "colno", None)
+        if type(line) is int and type(column) is int:
+            position = f", linha {line}, coluna {column}"
+    return InstallError(
+        f"Configuração Codex inválida em {config}: {cause}{position}; reconcilie explicitamente.")
+
+
+def codex_skill_rules(config):
+    try:
+        with config.open("rb") as stream:
+            raw = stream.read(CODEX_CONFIG_MAX_BYTES + 1)
+    except OSError:
+        raise codex_config_error(config, "leitura") from None
+    if len(raw) > CODEX_CONFIG_MAX_BYTES:
+        raise codex_config_error(config, "limite de tamanho")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeError:
+        raise codex_config_error(config, "UTF-8") from None
+    with bundled_tomli() as parser:
+        try:
+            document = parser.loads(text)
+        except parser.TOMLDecodeError as exc:
+            raise codex_config_error(config, "TOML", exc) from None
+        except (RecursionError, MemoryError, OverflowError):
+            raise codex_config_error(config, "limite do parser") from None
+    skills = document.get("skills", {})
+    if not isinstance(skills, dict):
+        raise codex_config_error(config, "estrutura de skills")
+    rules = skills.get("config", [])
+    if not isinstance(rules, list):
+        raise codex_config_error(config, "estrutura de skills.config")
+    for rule in rules:
+        if (not isinstance(rule, dict) or not ({"name", "path"} & rule.keys())
+                or any(not isinstance(rule[key], str) for key in ("name", "path") if key in rule)
+                or ("enabled" in rule and type(rule["enabled"]) is not bool)):
+            raise codex_config_error(config, "tipo de regra skills.config")
+    return rules
 
 
 def run(*argv, cwd=None, env=None):
@@ -44,6 +410,11 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def read_utf8(path):
+    # Path.read_text() normalizes CRLF; unmanaged instruction bytes must survive.
+    return path.read_bytes().decode("utf-8")
+
+
 def absent_or_regular(path):
     if path.is_symlink() or (path.exists() and not path.is_file()):
         raise InstallError(f"Caminho inseguro ou de outra origem: {path}")
@@ -51,30 +422,36 @@ def absent_or_regular(path):
 
 def safe_parent(path, stop):
     for ancestor in (path, *path.parents):
-        if ancestor == stop.parent:
-            break
         if ancestor.is_symlink():
             raise InstallError(f"Diretório symlink não confiável: {ancestor}")
 
 
 def preflight(home, agents):
-    if not agents or set(agents) != {"opencode"}:
-        raise InstallError("Selecione --agent opencode (único agente suportado).")
+    if not agents or not set(agents) <= set(SUPPORTED_AGENTS):
+        raise InstallError("Selecione --agent opencode ou --agent codex (repetível para ambos).")
     if os.name != "posix" or platform.system() not in ("Linux", "Darwin"):
         raise InstallError("Plataforma não suportada: use Linux ou macOS POSIX.")
     if sys.version_info < (3, 10):
         raise InstallError("Python 3.10+ necessário; instale-o antes de continuar.")
-    for executable in ("git", "gh", "jq", "curl", "opencode"):
+    for executable in ("git", "gh", "jq", "curl", *agents):
         if not shutil.which(executable):
             raise InstallError(f"Falta {executable} no PATH; instale-o antes de continuar.")
-    opencode = shutil.which("opencode")
-    version = run(opencode, "--version")
-    help_text = run(opencode, "--help")
-    if not re.search(r"\bv2\.\d+\.\d+\b", version) or not all(
-        re.search(r"^ *" + token + r"\b", help_text, re.MULTILINE)
-        for token in ("api", "run", "service")
-    ):
-        raise InstallError("OpenCode V2 com API, run e service é necessário; instale/atualize OpenCode V2.")
+    if "opencode" in agents:
+        opencode = shutil.which("opencode")
+        version = run(opencode, "--version")
+        help_text = run(opencode, "--help")
+        if not re.search(r"\bv2\.\d+\.\d+\b", version) or not all(
+            re.search(r"^ *" + token + r"\b", help_text, re.MULTILINE)
+            for token in ("api", "run", "service")
+        ):
+            raise InstallError("OpenCode V2 com API, run e service é necessário; instale/atualize OpenCode V2.")
+    if "codex" in agents:
+        version = run("codex", "--version")
+        help_text = run("codex", "exec", "--help")
+        if not re.fullmatch(r"codex-cli \d+\.\d+\.\d+(?:[-+][\w.-]+)?", version) or not all(
+            flag in help_text for flag in ("--json", "--cd", "--ephemeral", "--sandbox")
+        ):
+            raise InstallError("Codex CLI com exec --json/--cd/--ephemeral/--sandbox necessário; atualize pela origem.")
     if not home.is_dir():
         raise InstallError(f"HOME inválido: {home}")
 
@@ -133,7 +510,7 @@ def fetch_snapshot(revision, source, temp):
     return repo
 
 
-def manifest_for(root, revision, agents):
+def manifest_for(root, revision, agents=None, *, schema=2):
     entries = {}
     directories = {}
     skills = sorted(p.name for p in (root / "skills").iterdir() if (p / "SKILL.md").is_file())
@@ -150,18 +527,25 @@ def manifest_for(root, revision, agents):
     for name in ("worktree-reservation", "workflow-evidence"):
         if f"scripts/{name}" not in entries:
             raise InstallError(f"Helper ausente: {name}")
-    return {"schema": 1, "origin": ORIGIN, "revision": revision,
-            "agents": sorted(set(agents)), "files": entries, "directories": directories,
-            "integrations": {"opencode": {"skills": ["skills/" + name for name in skills],
-                                        "instructions": "AGENTS.md", "ownership": "guidance.json"}}}
+    integrations = {agent: {"skills": ["skills/" + name for name in skills],
+                            "instructions": "AGENTS.md", "ownership": "guidance.json"}
+                    for agent in (("opencode",) if schema == 1 else SUPPORTED_AGENTS)}
+    result = {"schema": schema, "origin": ORIGIN, "revision": revision,
+              "files": entries, "directories": directories, "integrations": integrations}
+    result["agents" if schema == 1 else "available_agents"] = (
+        ["opencode"] if schema == 1 else list(SUPPORTED_AGENTS))
+    return result
 
 
 def validate_manifest(root, manifest, staged=False, allow_extras=False):
-    if (not isinstance(manifest, dict) or manifest.get("schema") != 1
+    if (not isinstance(manifest, dict) or type(manifest.get("schema")) is not int
+            or manifest.get("schema") not in (1, 2)
             or manifest.get("origin") != ORIGIN
+            or not isinstance(manifest.get("revision"), str)
             or not re.fullmatch(r"[0-9a-f]{40}", manifest.get("revision", ""))
             or (not staged and root.name != manifest["revision"])
-            or manifest.get("agents") != ["opencode"]
+            or (manifest.get("agents") != ["opencode"] if manifest.get("schema") == 1
+                else manifest.get("available_agents") != list(SUPPORTED_AGENTS))
             or not isinstance(manifest.get("files"), dict) or not manifest["files"]
             or not isinstance(manifest.get("integrations"), dict)):
         raise InstallError(f"Manifesto sem propriedade comprovada: {root}")
@@ -205,7 +589,8 @@ def validate_manifest(root, manifest, staged=False, allow_extras=False):
         path = root / relative
         if (relative.split("/", 1)[0] not in COMPONENTS or Path(relative).is_absolute()
                 or ".." in Path(relative).parts or not isinstance(info, dict)
-                or not re.fullmatch(r"[0-9a-f]{64}", info.get("sha256", ""))
+                or not isinstance(info.get("sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", info["sha256"])
                 or not isinstance(info.get("mode"), int)
                 or not path.is_file() or path.is_symlink() or digest(path) != info["sha256"]
                 or stat.S_IMODE(path.stat().st_mode) != info["mode"]):
@@ -239,29 +624,135 @@ peça apenas a identificação necessária; nunca faça takeover inseguro.
 
 OpenSpec no primeiro uso: confira `openspec context --json` e
 `openspec list --json` no root pretendido; inspecione o perfil real do CLI
-2.0 e as skills oficiais Explore, Propose, Apply e Archive em
-.agents/skills/openspec-{{explore,propose,apply-change,archive-change}}/SKILL.md
+2.x e as skills oficiais Explore, Propose, Apply, Verify e Archive em
+.agents/skills/openspec-{{explore,propose,apply-change,verify-change,archive-change}}/SKILL.md
 (ou paths efetivamente gerados pelo perfil), além de outras skills exigidas.
 Não exija comandos /opsx-* ausentes no perfil 2.0. Diferencie essas skills
 locais das skills do pacote global.
 Não execute init/update durante instalação global nem sem autorização.
 Novo projeto: confirme root e inventarie resíduos .opencode/, .agents/,
 .claude/, instruções marcadas e prompts legados no HOME; se houver impacto,
-peça aprovação específica antes de `openspec init --tools opencode` (confirme
+peça aprovação específica antes de `openspec init --tools <agente>` (confirme
 as opções suportadas pelo CLI instalado).
 Projeto existente completo: use como está. Incompleto: inspecione
 `openspec update --dry-run --json`, ferramentas configuradas, diferenças,
 arquivos customizados, propriedade dos gerados e efeitos globais antes de
 pedir autorização específica para update ou limpeza. Preserve versão anterior
 em conflito/falha; não remova personalizações nem arquivos de origem incerta.
-Se OpenCode não estiver configurado, só proponha `openspec init --tools`
-com união explícita de ferramentas existentes + opencode após aprovar qualquer
+Se o agente selecionado (OpenCode ou Codex) não estiver configurado, só proponha `openspec init --tools`
+com união explícita de ferramentas existentes + agente selecionado após aprovar qualquer
 limpeza; sem preservação garantida, bloqueie sem escrever. Nunca use --force.
-Compare config/specs/changes antes e depois. Abra sessão OpenCode NOVA e
-comprove descoberta e invocação das quatro skills oficiais nativas;
+Verify oficial é padrão quando suportado: preserve workflows existentes ao
+habilitá-lo no perfil oficial. Use --scope project somente quando suportado.
+Compare config/specs/changes antes e depois. Abra sessão nativa NOVA do agente e
+comprove descoberta e invocação das cinco skills oficiais nativas;
 sem essa prova reporte bloqueio, não declare bootstrap concluído.
 {END}
 """
+
+
+def baseline_guidance(repo, data):
+    """Reproduce only the literal template, NEVER execute a downloaded module."""
+    module = ast.parse((repo / "scripts/install-global").read_text())
+    function = next(node for node in module.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "guidance")
+    template = next(node.value for node in function.body if isinstance(node, ast.Return))
+
+    def literal(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name) and node.id in ("data", "BEGIN", "END"):
+            return {"data": str(data), "BEGIN": BEGIN, "END": END}[node.id]
+        if isinstance(node, ast.JoinedStr):
+            return "".join(literal(value) for value in node.values)
+        if (isinstance(node, ast.FormattedValue) and node.conversion == -1
+                and node.format_spec is None):
+            return literal(node.value)
+        raise InstallError("Template histórico não reconhecido; preserve e reconcilie manualmente.")
+    return literal(template).rstrip("\n")
+
+
+def integration_paths(home, env):
+    config = Path(env.get("XDG_CONFIG_HOME", str(home / ".config"))).absolute() / "opencode"
+    codex = Path(env.get("CODEX_HOME", str(home / ".codex"))).absolute()
+    return {"opencode": (config / "skills", config / "AGENTS.md"),
+            "codex": (home / ".agents/skills", codex / "AGENTS.md")}
+
+
+def managed_block(text):
+    if (text.count(BEGIN) != 1 or text.count(END) != 1
+            or text.index(BEGIN) > text.index(END)):
+        raise InstallError("Bloco AGENTS.md alterado/inconsistente; não substituir.")
+    return text[text.index(BEGIN):text.index(END) + len(END)]
+
+
+def installed_selection(record, prior, data, paths, revision):
+    if not prior:
+        if record is not None:
+            raise InstallError("Registro global sem pacote ativo verificável.")
+        return []
+    if not isinstance(record, dict) or type(record.get("schema")) is not int:
+        raise InstallError("Pacote ativo sem registro global comprovado.")
+    expected_hash = hashlib.sha256(baseline_guidance(prior, data).encode()).hexdigest()
+    trusted_hashes = {expected_hash, hashlib.sha256(guidance(data).rstrip("\n").encode()).hexdigest()}
+    if record.get("schema") == 1:
+        if (set(record) != {"schema", "sha256"} or not isinstance(record.get("sha256"), str)
+                or record["sha256"] not in trusted_hashes):
+            raise InstallError("Orientação global personalizada/sem baseline.")
+        entries = {"opencode": {"skills": str(paths["opencode"][0]),
+                                "instructions": str(paths["opencode"][1]), "sha256": record["sha256"]}}
+    elif record.get("schema") == 2 and set(record) == {"schema", "revision", "agents"}:
+        if record.get("revision") != revision:
+            raise InstallError("Ownership e revisão ativa inconsistentes; preserve o estado parcial e reconcilie explicitamente.")
+        entries = record["agents"]
+        if not isinstance(entries, dict) or not entries or not set(entries) <= set(SUPPORTED_AGENTS):
+            raise InstallError("Seleção instalada inválida.")
+    else:
+        raise InstallError("Registro global sem propriedade comprovada.")
+    for agent, entry in entries.items():
+        skills, instructions = paths[agent]
+        if (not isinstance(entry, dict) or not isinstance(entry.get("sha256"), str)
+                or entry["sha256"] not in trusted_hashes
+                or entry != {"skills": str(skills), "instructions": str(instructions), "sha256": entry.get("sha256")}):
+            raise InstallError(f"Paths/ownership de {agent} divergentes; reconcilie CODEX_HOME/XDG explicitamente.")
+        for path in (skills, instructions):
+            safe_parent(path, Path(path.anchor))
+        absent_or_regular(instructions)
+        text = read_utf8(instructions) if instructions.exists() else ""
+        if not text:
+            raise InstallError("Registro global existe, mas orientação foi removida.")
+        if hashlib.sha256(managed_block(text).encode()).hexdigest() != entry["sha256"]:
+            raise InstallError("Orientação global personalizada; não sobrescrever.")
+    for agent in set(SUPPORTED_AGENTS) - set(entries):
+        instructions = paths[agent][1]
+        if instructions.is_file() and not instructions.is_symlink():
+            text = read_utf8(instructions)
+            if BEGIN in text or END in text:
+                block_hash = hashlib.sha256(managed_block(text).encode()).hexdigest()
+                if block_hash in trusted_hashes:
+                    raise InstallError(f"Seleção instalada inconsistente: orientação {agent} sem ownership.")
+    return sorted(entries)
+
+
+def inspect_codex(skills, instructions, skill_names):
+    override = instructions.with_name("AGENTS.override.md")
+    absent_or_regular(override)
+    if override.exists() and override.read_text().strip():
+        raise InstallError(f"Orientação Codex sombreada por {override}; reconcilie explicitamente, sem editar automaticamente.")
+    config = instructions.with_name("config.toml")
+    absent_or_regular(config)
+    if config.exists():
+        for rule in codex_skill_rules(config):
+            if rule.get("enabled") is False and (
+                    rule.get("name") in skill_names
+                    or any(part in skill_names for part in Path(rule.get("path", "")).parts)):
+                raise InstallError(f"Regra de skill Codex desabilitada em {config}; confira precedência/paths e reconcilie explicitamente.")
+    deprecated = instructions.parent / "skills"
+    safe_parent(deprecated, Path(deprecated.anchor))
+    for name in skill_names:
+        duplicate = deprecated / name
+        if deprecated != skills and (duplicate.exists() or duplicate.is_symlink()):
+            raise InstallError(f"Skill Codex homônima/ambígua: {duplicate}; preserve e reconcilie explicitamente.")
 
 
 def updated_guidance(existing, block):
@@ -346,7 +837,7 @@ def inspect_local(project, old_repo, new_repo, authorized):
     if project.is_symlink() or not project.is_dir():
         raise InstallError(f"Projeto inválido: {project}")
     pending, eligible = [], []
-    roots = {".opencode/skills": "skills", ".ai-workflow/skills": "skills",
+    roots = {".opencode/skills": "skills", ".agents/skills": "skills", ".codex/skills": "skills", ".ai-workflow/skills": "skills",
              ".ai-workflow/protocol": "protocol", ".ai-workflow/templates": "templates",
               ".ai-workflow/scripts": "scripts"}
     package_skills = {item.name for item in (new_repo / "skills").iterdir()
@@ -413,56 +904,34 @@ def inspect_launcher(home, data, env):
 
 def install(args, *, source=ORIGIN):
     home = Path(os.environ["HOME"]).absolute()
-    preflight(home, args.agent)
+    requested = sorted(set(args.agent or []))
+    # Reject invalid explicit selections before any writes. Existing selection
+    # is validated under the common lock before checking its retained runtimes.
+    if requested:
+        preflight(home, requested)
     data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))).absolute() / "my-ai-skills"
-    config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))).absolute() / "opencode"
     safe_parent(data, home)
-    safe_parent(config, home)
+    if not requested and not (data / "active").is_symlink():
+        preflight(home, [])
     if data.exists() and ((data / ".git").exists() or (data / ".git").is_file()):
         raise InstallError(f"Instalação antiga/clone no destino {data}; preserve-o e escolha outro XDG_DATA_HOME antes de instalar.")
     data.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
-    ensure_openspec(data, env)
     lock = data / ".install.lock"
     absent_or_regular(lock)
     with lock.open("a+b") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         with tempfile.TemporaryDirectory(prefix="workflow-source-") as directory:
             repo = fetch_snapshot(args.revision, source, Path(directory))
-            manifest = manifest_for(repo, args.revision, args.agent)
+            manifest = manifest_for(repo, args.revision)
             versions = data / "versions"
             target = versions / args.revision
             active = data / "active"
-            skills = config / "skills"
-            agents = config / "AGENTS.md"
             ownership = data / "guidance.json"
             launcher, launcher_record = inspect_launcher(home, data, env)
-            for parent in (versions, config, skills):
-                safe_parent(parent, home)
-                parent.mkdir(parents=True, exist_ok=True)
-            absent_or_regular(agents)
+            safe_parent(versions, home)
             absent_or_regular(ownership)
-            previous = agents.read_text() if agents.exists() else ""
-            ownership_before = ownership.read_text() if ownership.exists() else None
-            if BEGIN in previous or END in previous:
-                if not ownership_before:
-                    raise InstallError("Bloco global sem registro de propriedade; preserve e reconcilie manualmente.")
-                record = json.loads(ownership_before)
-                if record.get("sha256") != hashlib.sha256(previous[previous.index(BEGIN):previous.index(END) + len(END)].encode()).hexdigest():
-                    raise InstallError("Orientação global personalizada; não sobrescrever.")
-            elif ownership_before:
-                raise InstallError("Registro global existe, mas orientação foi removida.")
-            new_text = updated_guidance(previous, guidance(data))
-            new_record = json.dumps({"schema": 1, "sha256": hashlib.sha256(guidance(data).rstrip("\n").encode()).hexdigest()}) + "\n"
-            if target.exists():
-                if target.is_symlink() or not target.is_dir():
-                    raise InstallError(f"Versão conflitante: {target}")
-                old = json.loads((target / "manifest.json").read_text())
-                if old != manifest:
-                    raise InstallError(f"Manifesto conflitante: {target}")
-                validate_manifest(target, old)
-            elif target.is_symlink():
-                raise InstallError(f"Versão symlink conflitante: {target}")
+            ownership_before = read_utf8(ownership) if ownership.exists() else None
             old_active = None
             prior = None
             old_manifest = None
@@ -477,32 +946,82 @@ def install(args, *, source=ORIGIN):
                     resolved, old_manifest, allow_extras=resolved != target)
                 # A plausible self-declared manifest is not proof of ownership.
                 prior = fetch_snapshot(old_manifest["revision"], source, Path(directory) / "prior")
-                expected_old = manifest_for(prior, old_manifest["revision"], ["opencode"])
+                expected_old = manifest_for(prior, old_manifest["revision"], schema=old_manifest["schema"])
                 if "directories" not in old_manifest:
                     expected_old.pop("directories")
                 if old_manifest != expected_old:
                     raise InstallError("Ponteiro ativo sem origem verificável; preserve e reconcilie manualmente.")
             elif active.exists():
                 raise InstallError("Ponteiro ativo de outra origem.")
+            paths = integration_paths(home, env)
+            previous_selection = installed_selection(
+                json.loads(ownership_before) if ownership_before else None, prior, data, paths,
+                old_manifest["revision"] if old_manifest else None)
+            selection = sorted(set(previous_selection) | set(requested))
+            preflight(home, selection)
+            ensure_openspec(data, env)
+            texts = []
+            block = guidance(data)
+            entries = {}
+            for agent in selection:
+                skills, instructions = paths[agent]
+                for path in (skills, instructions):
+                    safe_parent(path, home)
+                absent_or_regular(instructions)
+                previous = read_utf8(instructions) if instructions.exists() else None
+                if agent not in previous_selection and previous and (BEGIN in previous or END in previous):
+                    raise InstallError("Bloco global sem registro de propriedade; preserve e reconcilie manualmente.")
+                new_text = updated_guidance(previous or "", block)
+                texts.append((instructions, previous, new_text))
+                entries[agent] = {"skills": str(skills), "instructions": str(instructions),
+                                  "sha256": hashlib.sha256(block.rstrip("\n").encode()).hexdigest()}
+            new_record = json.dumps({"schema": 2, "revision": args.revision, "agents": entries}, sort_keys=True) + "\n"
+            if target.exists():
+                if target.is_symlink() or not target.is_dir():
+                    raise InstallError(f"Versão conflitante: {target}")
+                old = json.loads((target / "manifest.json").read_text())
+                validate_manifest(target, old)
+                expected = manifest_for(repo, args.revision, schema=old.get("schema"))
+                if "directories" not in old and old.get("schema") == 1:
+                    expected.pop("directories")
+                if old != expected:
+                    raise InstallError(f"Manifesto conflitante: {target}")
+            elif target.is_symlink():
+                raise InstallError(f"Versão symlink conflitante: {target}")
             skill_names = sorted(p.name for p in (repo / "skills").iterdir() if (p / "SKILL.md").is_file())
+            if "codex" in selection:
+                inspect_codex(*paths["codex"], skill_names)
             lock_entries = skill_lock(home, env)
             legacy = []
+            legacy_baselines = {}
             pending = []
             preserved = [f"entrada extra mantida na versão anterior (não migrada): {path}"
                          for path in preserved_extras]
-            for name in sorted(set(skill_names) | set(lock_entries)):
-                link = skills / name
+            proven_links = set()
+            if old_manifest:
+                for agent in previous_selection:
+                    inventory = old_manifest["integrations"].get(agent, old_manifest["integrations"]["opencode"])
+                    proven_links.update(paths[agent][0] / Path(relative).name for relative in inventory["skills"])
+            links = [(paths[agent][0] / name, name) for agent in selection
+                     for name in sorted(set(skill_names) | set(lock_entries))]
+            for link, name in links:
+                expected = str(data / "active" / "skills" / name)
                 if name not in skill_names:
-                    if name in lock_entries and (link.exists() or link.is_symlink()):
+                    managed_obsolete = link in proven_links and link.is_symlink() and os.readlink(link) == expected
+                    if name in lock_entries and (link.exists() or link.is_symlink()) and not managed_obsolete:
                         preserved.append(f"skill skills.sh sem colisão (intocada): {link}")
                     continue
-                expected = str(data / "active" / "skills" / name)
                 if link.is_symlink() and os.readlink(link) == expected:
+                    if link not in proven_links:
+                        raise InstallError(f"Vínculo global sem ownership comprovado: {link}; preserve estado parcial e reconcilie explicitamente.")
                     continue
                 if not link.exists() and not link.is_symlink():
                     continue
                 entry = lock_entries.get(name)
-                baseline = legacy_baseline(name, entry, source, Path(directory) / ("legacy-" + name))
+                if name not in legacy_baselines:
+                    legacy_baselines[name] = legacy_baseline(
+                        name, entry, source, Path(directory) / ("legacy-" + name))
+                baseline = legacy_baselines[name]
                 proven = baseline is not None and legacy_matches(link, baseline, home)
                 if not proven:
                     raise InstallError(f"blocked: skill global de outra origem, alterada ou sem baseline: {link}; "
@@ -513,6 +1032,10 @@ def install(args, *, source=ORIGIN):
                 legacy.append((link, baseline))
             if set(args.migrate_global_skill) != {path.name for path, _ in legacy}:
                 raise InstallError("Migração global autorizada sem entrada comprovada em conflito.")
+            # skills.sh aliases may reference the universal Codex directory.
+            # Move verified aliases first while their baseline still exists;
+            # reverse-order rollback restores that directory before its aliases.
+            legacy.sort(key=lambda item: not item[0].is_symlink())
             local_prior = prior
             if args.baseline_revision:
                 local_prior = fetch_snapshot(args.baseline_revision, source, Path(directory) / "local-prior")
@@ -520,17 +1043,26 @@ def install(args, *, source=ORIGIN):
             pending.extend(local_pending)
             obsolete = []
             if old_active:
-                for relative in old_manifest["integrations"]["opencode"]["skills"]:
-                    name = Path(relative).name
-                    if name not in skill_names:
-                        link = skills / name
+                for agent in previous_selection:
+                    # Schema 1 inventory describes the same canonical skills.
+                    inventory = old_manifest["integrations"].get(agent, old_manifest["integrations"]["opencode"])
+                    for relative in inventory["skills"]:
+                        name = Path(relative).name
+                        link = paths[agent][0] / name
                         expected = str(data / "active" / "skills" / name)
+                        if name in skill_names:
+                            if not link.exists() and not link.is_symlink():
+                                raise InstallError(f"Skill gerenciada ausente: {link}")
+                            continue
                         if link.is_symlink() and os.readlink(link) == expected:
                             obsolete.append((link, expected))
                         elif link.exists() or link.is_symlink():
                             raise InstallError(f"Skill obsoleta personalizada: {link}")
-            for name in skill_names:
-                link = skills / name
+                        else:
+                            raise InstallError(f"Skill gerenciada ausente: {link}; estado anterior inconsistente.")
+            for link, name in links:
+                if name not in skill_names:
+                    continue
                 expected = str(data / "active" / "skills" / name)
                 if link.is_symlink() and os.readlink(link) == expected:
                     continue
@@ -555,6 +1087,11 @@ def install(args, *, source=ORIGIN):
             moved = []
             launcher_created = False
             launcher_record_created = False
+            guidance_written = []
+            for parent in (versions, *(paths[a][0] for a in selection),
+                           *(paths[a][1].parent for a in selection)):
+                safe_parent(parent, home)
+                parent.mkdir(parents=True, exist_ok=True)
             try:
                 if not target.exists():
                     with tempfile.TemporaryDirectory(prefix=".stage-", dir=versions) as stage:
@@ -592,27 +1129,43 @@ def install(args, *, source=ORIGIN):
                             raise InstallError(f"Migração entre filesystems recusada: {path}; backups anteriores revertidos") from error
                         raise
                     moved.append((path, backup))
-                for name in skill_names:
-                    link = skills / name
-                    if not link.is_symlink():
+                for link, name in links:
+                    if name not in skill_names:
+                        continue
+                    safe_parent(link.parent, home)
+                    expected = str(data / "active" / "skills" / name)
+                    if not link.exists() and not link.is_symlink():
                         link.symlink_to(data / "active" / "skills" / name)
                         created.append(link)
+                    elif not link.is_symlink() or os.readlink(link) != expected:
+                        raise InstallError(f"Skill mudou durante a preparação: {link}")
                 for link, expected in obsolete:
                     link.unlink()
                     removed.append((link, expected))
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "skills":
                     raise InstallError("Falha simulada após registrar skills")
-                if previous != new_text:
-                    tmp = agents.with_name(".AGENTS.md.install-tmp")
-                    if tmp.exists() or tmp.is_symlink():
-                        raise InstallError(f"Arquivo temporário conflitante: {tmp}")
-                    tmp.write_text(new_text)
-                    tmp.replace(agents)
+                for instructions, previous, new_text in texts:
+                    safe_parent(instructions, home)
+                    absent_or_regular(instructions)
+                    if (read_utf8(instructions) if instructions.exists() else None) != previous:
+                        raise InstallError(f"Orientação mudou durante a preparação: {instructions}")
+                    if previous != new_text:
+                        tmp = instructions.with_name(".AGENTS.md.install-tmp")
+                        with tmp.open("x") as output:
+                            output.write(new_text)
+                        if instructions.exists():
+                            tmp.chmod(stat.S_IMODE(instructions.stat().st_mode))
+                        tmp.replace(instructions)
+                        guidance_written.append((instructions, previous, new_text))
+                absent_or_regular(ownership)
+                if (read_utf8(ownership) if ownership.exists() else None) != ownership_before:
+                    raise InstallError("Registro global mudou durante a preparação.")
                 if ownership_before != new_record:
                     tmp = ownership.with_name(".guidance.json.install-tmp")
                     if tmp.exists() or tmp.is_symlink():
                         raise InstallError(f"Arquivo temporário conflitante: {tmp}")
-                    tmp.write_text(new_record)
+                    with tmp.open("x") as output:
+                        output.write(new_record)
                     tmp.replace(ownership)
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "guidance":
                     raise InstallError("Falha simulada após orientação")
@@ -634,6 +1187,9 @@ def install(args, *, source=ORIGIN):
                     raise InstallError("Falha simulada após launcher")
                 if os.environ.get("MY_AI_SKILLS_FAIL_AT") == "publish":
                     raise InstallError("Falha simulada antes da publicação")
+                if ((os.readlink(active) if active.is_symlink() else None) != old_active
+                        or (not active.is_symlink() and active.exists())):
+                    raise InstallError("Ponteiro ativo mudou durante a preparação; não substituir.")
                 if old_active != str(Path("versions") / args.revision):
                     pointer = data / ".active.install-tmp"
                     if pointer.exists() or pointer.is_symlink():
@@ -641,22 +1197,32 @@ def install(args, *, source=ORIGIN):
                     pointer.symlink_to(Path("versions") / args.revision)
                     pointer.replace(active)
             except Exception:
-                if launcher_record_created:
+                expected_launcher_record = {"schema": 1, "path": str(launcher),
+                                            "sha256": hashlib.sha256(launcher_text(data).encode()).hexdigest(),
+                                            "mode": 0o755}
+                if (launcher_record_created and not launcher_record.is_symlink()
+                        and launcher_record.is_file()
+                        and json.loads(read_utf8(launcher_record)) == expected_launcher_record):
                     launcher_record.unlink()
-                if launcher_created:
+                if (launcher_created and not launcher.is_symlink() and launcher.is_file()
+                        and launcher.read_bytes() == launcher_text(data).encode()
+                        and stat.S_IMODE(launcher.stat().st_mode) == 0o755):
                     launcher.unlink()
-                if ownership.exists() and ownership.read_text() == new_record and new_record != ownership_before:
+                if (not ownership.is_symlink() and ownership.is_file()
+                        and read_utf8(ownership) == new_record and new_record != ownership_before):
                     if ownership_before is None:
                         ownership.unlink()
                     else:
                         ownership.write_text(ownership_before)
-                if agents.exists() and agents.read_text() == new_text and new_text != previous:
-                    if previous:
-                        agents.write_text(previous)
-                    else:
-                        agents.unlink()
+                for instructions, previous, new_text in reversed(guidance_written):
+                    if not instructions.is_symlink() and instructions.is_file() and read_utf8(instructions) == new_text:
+                        if previous is not None:
+                            instructions.write_text(previous)
+                        else:
+                            instructions.unlink()
                 for link in created:
-                    link.unlink()
+                    if link.is_symlink() and os.readlink(link) == str(data / "active/skills" / link.name):
+                        link.unlink()
                 for link, expected in removed:
                     if not link.exists() and not link.is_symlink():
                         link.symlink_to(expected)
@@ -670,8 +1236,9 @@ def install(args, *, source=ORIGIN):
             final = json.loads((active / "manifest.json").read_text())["revision"]
             state = ("partial" if pending else "installed" if not old_manifest else "already current" if
                      old_manifest["revision"] == final and not moved and not created and not removed
-                     and previous == new_text else "updated")
-            print(f"state={state} agent=opencode scope=global previous={old_manifest['revision'] if old_manifest else 'none'} "
+                      and all(previous == new_text for _, previous, new_text in texts)
+                      and ownership_before == new_record else "updated")
+            print(f"state={state} agent={','.join(selection)} scope=global previous={old_manifest['revision'] if old_manifest else 'none'} "
                   f"target={args.revision} active={final}")
             for item in pending:
                 print(f"pending: {item}")
@@ -684,7 +1251,7 @@ def install(args, *, source=ORIGIN):
 
 def main():
     parser = argparse.ArgumentParser(description="Instalação global do AI Engineering Workflow")
-    parser.add_argument("--agent", action="append", required=True, help="opencode")
+    parser.add_argument("--agent", action="append", default=[], help="opencode ou codex; repetível, update preserva seleção")
     parser.add_argument("--revision", required=True, help="SHA completo aprovado")
     parser.add_argument("--project", help="Raiz única do projeto para diagnóstico somente leitura")
     parser.add_argument("--baseline-revision", help="SHA completo da origem das cópias locais antigas")
