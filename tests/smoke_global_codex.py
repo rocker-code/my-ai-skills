@@ -96,6 +96,19 @@ def source_snapshot(repo, run):
     return digest.hexdigest()
 
 
+def native_permissions(base, repo, common, gitdir, writable):
+    """Per-invocation official profile; never modifies user configuration."""
+    access = "write" if writable else "read"
+    rules = {":root": "read", str(base): "write", str(repo): access,
+             str(common): access, str(gitdir): access,
+             str(base / "home/.codex/auth.json"): "deny"}
+    filesystem = ", ".join(f"{json.dumps(path)}={json.dumps(mode)}"
+                           for path, mode in rules.items())
+    parent = ":workspace" if writable else ":read-only"
+    return ["-c", 'default_permissions="native_smoke"', "-c",
+            f'permissions.native_smoke={{extends="{parent}",filesystem={{{filesystem}}},network={{enabled=false}}}}']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--auth-cache", type=Path, help="Explicit regular auth.json; never config.toml")
@@ -169,15 +182,17 @@ def main():
         index = len(results["sessions"])
         before = snapshot(repo)
         context = base / f"context-{index}.json"
+        common = Path(run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=repo).strip())
+        gitdir = Path(run(["git", "rev-parse", "--absolute-git-dir"], cwd=repo).strip())
+        permissions = native_permissions(base, repo, common, gitdir, writable)
         # Native discovery is inspected, not reconstructed from skill bodies.
-        visible = run([cli, *native_config, "--cd", repo, "debug", "prompt-input", prompt], cwd=repo)
+        visible = run([cli, *native_config, *permissions, "--cd", repo, "debug", "prompt-input", prompt], cwd=repo)
         (base / f"input-{index}.json").write_text(visible)
-        # Even source-read-only reviews call the captured gh backend, which
-        # appends its audit receipt outside the checkout. Source immutability
-        # is checked independently below, not inferred from a sandbox label.
+        # The official profile permits fixture metadata capture and explicitly
+        # grants Git metadata writes only to writers. Readers inherit read-only,
+        # not :workspace (whose inherited root write rule would win a tie).
         command = [cli, "exec", *native_config, "--json", "--ephemeral", "--ignore-user-config",
-                   "--ignore-rules", "--sandbox", "workspace-write",
-                   "--cd", str(repo), "--add-dir", str(base)]
+                   "--ignore-rules", *permissions, "--cd", str(repo)]
         full_prompt = prompt + ("\nAll GitHub access MUST use the local gh fixture only; "
                                 "no apps/connectors/web/network access or real GitHub mutations. "
                                  "This is the explicitly authorized fixture/native-smoke namespace; "

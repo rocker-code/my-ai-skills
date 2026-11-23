@@ -13,6 +13,20 @@ spec.loader.exec_module(smoke)
 
 
 class NativeCodexSmokeTests(unittest.TestCase):
+    def test_native_profile_uses_explicit_git_metadata_and_reader_parent(self):
+        for writable, parent, access in ((True, ":workspace", "write"),
+                                         (False, ":read-only", "read")):
+            args = smoke.native_permissions(Path("/fixture"), Path("/fixture/worktree with spaces"),
+                                            Path("/fixture/repo/.git"),
+                                            Path("/fixture/repo/.git/worktrees/wt"), writable)
+            config = args[-1]
+            self.assertIn(f'extends="{parent}"', config)
+            self.assertIn("network={enabled=false}", config)
+            for path in ("/fixture/worktree with spaces", "/fixture/repo/.git",
+                         "/fixture/repo/.git/worktrees/wt"):
+                self.assertIn(f"{json.dumps(path)}={json.dumps(access)}", config)
+            self.assertIn('"/fixture/home/.codex/auth.json"="deny"', config)
+
     def test_source_snapshot_preserves_deleted_indexed_artifacts_and_broken_links(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)

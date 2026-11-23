@@ -198,6 +198,8 @@ Esses resultados validam **planejamento**, não implementação. Suite Python e 
 - Para cumprir a transação coerente de D4, o ownership schema 2 (novo, ainda não publicado) vincula explicitamente a revisão ativa e aceita links anteriores somente quando inventariados no pacote anterior comprovado. Estado interrompido com revisão divergente, links órfãos ou skill anterior ausente bloqueia sem reparo/adopção implícitos. É detalhe de integridade do registro operacional existente, não store/lifecycle novo nem redução do contrato aprovado; schema 1 publicado permanece compatível. Prova focada: 13 testes/exit 0 (`ev-20261123T015259Z-ae54d69f`). Uma edição intermediária de indentação falhou antes da execução (`ev-20261123T015211Z-8f4ca06b`); corrigida no próprio código e refeito o grupo sem mudar asserções.
 - B `651af7167d5800fe5a5378731d8b24be3e3be1d8`: 65 testes focados/exit 0 (`ev-20261123T020151Z-74c6fdd7`), suite preliminar 239/exit 0 (`ev-20261123T020234Z-e7c349ce`), OpenCode cinco skills/exit 0 (`ev-20261123T020359Z-a9e561c8`). A quinta execução Codex (`ev-20261123T020348Z-61960379`) passou discovery/contexto/recovery/Apply, mas Verify não retornou aprovação: alegou lock negado sem executar verify. Eventos mostram também `SMOKE_GH_CALLS=/dev/null` para contornar escrita do backend em sandbox read-only. Não é prova de capacidade faltante do produto nem smoke aprovado. Correção da fixture: sandbox workspace-write limitado à raiz descartável, proibição explícita de fontes/posse nos leitores, snapshots antes/depois inalteráveis e log gh em path literal não redirecionável por ambiente. Não há novo adapter ou redução das asserções de fontes/HEAD; independência continua execução distinta com escopo de leitura, não promessa de sandbox imutável.
 - Sexta execução (`ev-20261123T021230Z-01555003`, B `7ef11d2f4e4c83b0c5748de388318e13caa04819`) passou Verify limpo e Archive/sync reais da issue fixture 1 em doze threads, mas o controlador falhou antes de preparar PR: snapshot usava `git ls-files --cached` e tentava lstat de artefatos já movidos por Archive. Correção local: representar explicitamente a ausência de path indexado no fingerprint, em vez de assumir presença ou ignorar deleções; teste negativo distingue presente/ausente/link quebrado/restaurado. Sem alteração do contrato/instalador ou dispensa de comparação.
+- Sétima execução (`ev-20261123T022616Z-09a48f26`) avançou para Prepare PR real, que comprovou reserva, reutilizou o draft existente e passou unittest/strict validation, mas `git add` falhou por metadata `.git` read-only no sandbox. O writer preservou as fontes e não inventou push/park. [Permissões oficiais](https://learn.chatgpt.com/docs/permissions.md) explicam que `:workspace` protege `.git/.agents/.codex/.aws` mesmo sob um pai gravável; permissões explícitas só na fixture são necessárias. Probes sem modelo: primeira chamada sandbox exigiu `--permission-profile` (`ev-20261123T024053Z-1f809b2c`); segunda mostrou que dotted `-c` preserva aspas da chave path (`ev-20261123T024131Z-38289db2`). Próxima hipótese é passar tabela TOML completa por override, sem editar config real/desabilitar sandbox/regras globais ou mover commit ao controlador.
+- Probe da tabela completa permitiu Git writer, mas detectou herança indevida de `:workspace` no leitor (`ev-20261123T024246Z-02dbdbc2`): regra write herdada vence read no mesmo path. Usar pai `:read-only` para leitores resolveu o negativo (`ev-20261123T024331Z-efdbc85e`). O helper exato agora presente apenas no smoke foi exercitado pelo sandbox real sem modelo: commit/push local exit 0 e escrita de fonte do leitor exit 2 (`ev-20261123T024457Z-3a89f335`); sete negativos focados exit 0 (`ev-20261123T024457Z-408bd95d`). Perfil é override por invocação, rede de comandos desativada, auth.json negado aos comandos e Git comum/privado autorizado somente ao writer. Não é atualização de permissões/config real nem dependência de produção; runtime sem perfil suportado bloqueia a prova em vez de usar full access. Smoke completo ainda pendente.
 
 ### Registro inicial histórico (não é o status atual)
 
@@ -413,6 +415,30 @@ As duas falhas históricas abaixo foram observadas no transcript nativo da sess�
       "simplest_alternative": "Hash de marcador MISSING para entrada indexada ausente, mantendo path e HEAD no fingerprint",
       "choice_rationale": "Preserva detecção de deleção/restauração sem alterar o Archive oficial ou fazer commit artificial durante ele",
       "next_hypothesis": "Snapshot representa transições Git válidas e permite executar preparação fixture real"
+    },
+    {
+      "kind": "attempt", "seq": 18, "obligation": "codex-smoke",
+      "signature": "Permission denied: native git add index.lock under protected metadata",
+      "target": "smoke_global_codex.py --cross-agent-opencode", "class": "fixture/isolation",
+      "hypothesis": "Fingerprint com ausência permite preparar PR após Archive",
+      "change": "Codificar arquivo indexado ausente e provar distinção em teste negativo", "change_target": "test",
+      "observed_effect": "Prepare PR reutilizou draft e passou testes/validação; git add negado pelo sandbox antes de commit/push/park",
+      "result": "fail", "evidence": ["evidence:ev-20261123T022616Z-09a48f26"]
+    },
+    {
+      "kind": "diagnosis", "seq": 19,
+      "group": {"obligation": "codex-smoke", "signature": "Permission denied: native git add index.lock under protected metadata"},
+      "class": "fixture/isolation",
+      "checked": {
+        "phase": "git add durante Prepare PR",
+        "scope": "Git common dir/worktree metadata da fixture; pai gravável não remove proteção .git",
+        "lifecycle": "necessário commit/push nativo, não dispensar preparação",
+        "consumers": "perfil :workspace protege .git; sandbox suporta perfil explícito; override dotted não interpreta chave path entre aspas; leitores devem herdar :read-only"
+      },
+      "runtime_proof": ["evidence:ev-20261123T022616Z-09a48f26", "evidence:ev-20261123T024053Z-1f809b2c", "evidence:ev-20261123T024131Z-38289db2", "evidence:ev-20261123T024246Z-02dbdbc2", "evidence:ev-20261123T024457Z-3a89f335"],
+      "simplest_alternative": "Perfil oficial com exceção de escrita apenas no Git descartável para writer e fontes read-only para leitores",
+      "choice_rationale": "Verificar com sandbox CLI sem modelo antes de novo smoke caro; não usar danger-full-access nem alterar usuário/global",
+      "next_hypothesis": "Tabela TOML completa com pais writer/reader distintos permite somente exceção Git writer documentada e mantém fontes reader protegidas"
     }
   ]
 }
