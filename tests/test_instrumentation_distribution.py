@@ -1,10 +1,17 @@
 """Shared skill references are generated without the personal plugin."""
 import hashlib
+import base64
+import importlib.machinery
+import io
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import sys
+import tarfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCES = {
@@ -37,6 +44,99 @@ def digest_tree(directory):
 
 
 class DistributionTests(unittest.TestCase):
+    def installer(self):
+        return importlib.machinery.SourceFileLoader(
+            "tomli_distribution_installer", str(ROOT / "scripts/install-global")).load_module()
+
+    def test_bundled_tomli_upstream_bytes_license_and_cleanup(self):
+        module = self.installer()
+        payload = base64.b85decode(module.TOMLI_SDIST_B85)
+        self.assertEqual(len(payload), 17662)
+        self.assertEqual(hashlib.sha256(payload).hexdigest(),
+                         "264507556cd8b8c8e7c6ee037cdf443a463f03f4c958e57195e3d369711b8ff6")
+        with tarfile.open(fileobj=io.BytesIO(payload)) as archive:
+            for name, (size, digest) in module.TOMLI_MEMBERS.items():
+                member = archive.getmember("tomli-2.5.0/" + name)
+                self.assertTrue(member.isfile())
+                source = archive.extractfile(member).read()
+                self.assertEqual(len(source), size)
+                self.assertEqual(hashlib.sha256(source).hexdigest(), digest)
+                self.assertIn(digest, (ROOT / "scripts/vendor/TOMLI.md").read_text())
+            license = archive.extractfile("tomli-2.5.0/LICENSE").read().decode()
+        self.assertIn(license.rstrip(), (ROOT / "scripts/vendor/TOMLI.md").read_text())
+        self.assertIn("".join(("# " + line).rstrip() + "\n" for line in license.splitlines()),
+                      (ROOT / "scripts/install-global").read_text())
+        original_path, bytecode = list(sys.path), sys.dont_write_bytecode
+        for fail in (False, True):
+            try:
+                with module.bundled_tomli() as parser:
+                    package = Path(parser.__file__).parent
+                    namespace = parser.__name__
+                    self.assertTrue(package.is_dir())
+                    self.assertEqual(parser.loads("a.b = true"), {"a": {"b": True}})
+                    self.assertFalse(list(package.rglob("*.pyc")))
+                    if fail:
+                        raise RuntimeError("caller failure")
+            except RuntimeError:
+                self.assertTrue(fail)
+            self.assertFalse(package.exists())
+            self.assertFalse(any(n == namespace or n.startswith(namespace + ".") for n in sys.modules))
+            self.assertEqual(sys.path, original_path)
+            self.assertEqual(sys.dont_write_bytecode, bytecode)
+
+    def test_tomli_corruption_rejected_before_archive_or_import(self):
+        module = self.installer()
+        for payload in (b"invalid!", module.TOMLI_SDIST_B85[:-5] + b"00000"):
+            with mock.patch.object(module, "TOMLI_SDIST_B85", payload), \
+                    mock.patch.object(module.tarfile, "open") as archive, \
+                    mock.patch.object(module.importlib.util, "spec_from_file_location") as loader:
+                with self.assertRaisesRegex(module.InstallError, "Parser TOML incorporado inválido"):
+                    with module.bundled_tomli():
+                        self.fail("corrupt payload loaded")
+                archive.assert_not_called()
+                loader.assert_not_called()
+
+    def test_config_read_error_is_bounded_without_exception_values(self):
+        module = self.installer()
+        with mock.patch.object(Path, "open", side_effect=OSError("SECRET_READ_ERROR")):
+            with self.assertRaisesRegex(module.InstallError, "config.toml: leitura") as raised:
+                module.codex_skill_rules(Path("config.toml"))
+        self.assertNotIn("SECRET_READ_ERROR", str(raised.exception))
+
+    def test_standalone_tomli_ignores_ambient_packages_and_cleans_on_parse_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            entry = root / "standalone"
+            shutil.copyfile(ROOT / "scripts/install-global", entry)
+            sentinel = root / "shadow-executed"
+            for name in ("tomli", "tomllib"):
+                (root / (name + ".py")).write_text(
+                    f"from pathlib import Path\nPath({str(sentinel)!r}).touch()\nraise RuntimeError('shadow')\n")
+            config = root / "config.toml"
+            config.write_text('skills.config = [{name="apply-issue",enabled=false}]\n')
+            runner = """
+import importlib.machinery, sys
+from pathlib import Path
+m = importlib.machinery.SourceFileLoader("standalone", sys.argv[1]).load_module()
+config = Path(sys.argv[2])
+assert m.codex_skill_rules(config)[0]["enabled"] is False
+config.write_text('secret="DO_NOT_LEAK"\\na=[')
+try:
+    m.codex_skill_rules(config)
+except m.InstallError as error:
+    assert "DO_NOT_LEAK" not in str(error)
+else:
+    raise AssertionError("malformed config accepted")
+assert not any(n.startswith("_my_ai_skills_tomli_") for n in sys.modules)
+assert not list(Path(sys.argv[3]).glob("my-ai-skills-tomli-*"))
+"""
+            result = subprocess.run([sys.executable, "-B", "-c", runner, str(entry), str(config), str(root)],
+                                    cwd=root, env={**os.environ, "PYTHONPATH": str(root),
+                                                   "TMPDIR": str(root)},
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(sentinel.exists())
+
     def checkout(self, root):
         (root / "scripts").mkdir()
         shutil.copy2(ROOT / "scripts/sync-skill-references", root / "scripts")

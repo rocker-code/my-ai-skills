@@ -291,6 +291,105 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual(failed.returncode, 1)
         self.assertEqual([path.read_bytes() for path in instructions], before)
 
+    def test_codex_semantic_spellings_and_non_rule_controls(self):
+        custom = self.home / ".codex"
+        custom.mkdir()
+        config = custom / "config.toml"
+        forms = (
+            '[[skills.config]]\n{selector} = "{value}"\nenabled = false\n',
+            '  [[skills.config]] # indent\n{selector} = "{value}"\nenabled = false\n',
+            '[[ skills . config ]]\n{selector} = "{value}"\nenabled = false\n',
+            'skills.config = [{{ {selector} = "{value}", enabled = false }}]\n',
+            '[[ "skills" . "config" ]]\n"{selector}" = "{value}"\n"enabled" = false\n',
+        )
+        for selector, value in (("name", "apply-issue"), ("path", "/some/apply-issue/SKILL.md"),
+                                ("name", r"apply\u002dissue"), ("path", r"/some/apply\u002dissue")):
+            for form in forms:
+                with self.subTest(selector=selector, form=form, value=value):
+                    config.write_text(form.format(selector=selector, value=value))
+                    config.chmod(0o600)
+                    before = config.read_bytes()
+                    result = self.install(agents=("codex",))
+                    self.assertEqual(result.returncode, 1, result.stdout)
+                    self.assertIn("desabilitada", result.stderr)
+                    self.assertEqual(config.read_bytes(), before)
+                    self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                    self.assertFalse((self.data / "active").exists())
+        controls = (
+            'model = "personal"\n',
+            'skills.config = [{name="apply-issue", enabled=true}]\n',
+            'skills.config = [{name="apply-issue"}]\n',
+            'skills.config = [{name="other-skill", enabled=false}]\n',
+            '# [[skills.config]]\n# name="apply-issue"\n# enabled=false\n',
+            "notes = '''\n[[skills.config]]\nname=\"apply-issue\"\nenabled=false\n'''\n",
+        )
+        for text in controls:
+            with self.subTest(control=text):
+                config.write_text(text)
+                result = self.install(agents=("codex",))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(config.read_text(), text)
+        config.unlink()
+        self.assertEqual(self.install(agents=()).returncode, 0)
+
+    def test_codex_invalid_config_preserves_multiagent_update_and_secrets(self):
+        self.assertEqual(self.install(agents=("codex", "opencode")).returncode, 0)
+        revision = self.next_revision()
+        config = self.home / ".codex/config.toml"
+        auth = config.with_name("auth.json")
+        auth.write_bytes(b'{"token":"AUTH_SENTINEL"}\r\n')
+        auth.chmod(0o600)
+
+        def state():
+            paths = [self.data / "active", self.data / "guidance.json", auth,
+                     self.home / ".codex/AGENTS.md",
+                     self.home / ".config/opencode/AGENTS.md"]
+            for base in (self.home / ".local/bin", self.home / ".agents/skills",
+                         self.home / ".config/opencode/skills"):
+                paths.extend(sorted(base.iterdir()))
+            return [(str(p), p.lstat().st_mode, os.readlink(p) if p.is_symlink()
+                     else p.read_bytes()) for p in paths]
+
+        before = state()
+        sentinel = b'SECRET_SENTINEL_DO_NOT_LEAK'
+        invalid = (
+            b'secret="' + sentinel + b'"\nskills.config = [',
+            b'secret="' + sentinel + b'"\nsecret="duplicate"',
+            b'secret="' + sentinel + b'"\n#\xff',
+            b'skills = 12',
+            b'skills.config = "wrong"',
+            b'skills.config = [12]',
+            b'skills.config = [{name="apply-issue", enabled="false"}]',
+            b'skills.config = [{path=12, enabled=false}]',
+            b'skills.config = [{enabled=false}]',
+            b'#' + b'x' * (1024 * 1024),
+            b'other=' + b'[' * 2000 + b']' * 2000,
+        )
+        for raw in invalid:
+            with self.subTest(config_prefix=raw[:40]):
+                config.write_bytes(raw)
+                config.chmod(0o600)
+                blocked = self.install(agents=(), revision=revision)
+                self.assertEqual(blocked.returncode, 1, blocked.stdout)
+                self.assertIn("Configuração Codex inválida", blocked.stderr)
+                self.assertNotIn(sentinel.decode(), blocked.stdout + blocked.stderr)
+                self.assertNotIn("AUTH_SENTINEL", blocked.stdout + blocked.stderr)
+                self.assertLess(len(blocked.stderr), 1024)
+                self.assertEqual(config.read_bytes(), raw)
+                self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(state(), before)
+        config.write_text('skills.config = [{name="other",enabled=false}]\n')
+        installed = self.install(agents=(), revision=revision)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+
+    def test_opencode_only_does_not_inspect_codex_toml(self):
+        config = self.home / ".codex/config.toml"
+        config.parent.mkdir()
+        config.write_bytes(b'\xffbroken = [')
+        installed = self.install(agents=("opencode",))
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        self.assertEqual(config.read_bytes(), b'\xffbroken = [')
+
     def test_codex_local_diagnosis_and_explicit_reconciliation(self):
         self.assertEqual(self.install(agents=("codex",)).returncode, 0)
         project = self.root / "codex project"
@@ -588,8 +687,21 @@ class GlobalInstallTests(unittest.TestCase):
                "PUBLIC_LAUNCHER": str(ROOT / "scripts/install.sh"),
                "PUBLIC_ENTRY": str(entry), "PUBLIC_REVISION": self.revision,
                "PUBLIC_SOURCE": str(self.source), "REAL_GIT": shutil.which("git"),
-               "REAL_PYTHON": shutil.which("python3"),
-               "ACTIVE_HELPER": str(self.data / "active/scripts/worktree-reservation")}
+                "REAL_PYTHON": shutil.which("python3"),
+                "ACTIVE_HELPER": str(self.data / "active/scripts/worktree-reservation")}
+        config = self.home / ".codex/config.toml"
+        if "codex" in agents:
+            config.parent.mkdir(parents=True)
+            config.write_text('skills.config = [{name="apply-issue", enabled=false}]\n')
+            blocked = call("sh", str(ROOT / "scripts/install.sh"),
+                           *(arg for agent in agents for arg in ("--agent", agent)),
+                           cwd=self.root, env=env)
+            self.assertEqual(blocked.returncode, 1, blocked.stdout)
+            self.assertIn("desabilitada", blocked.stderr)
+            self.assertFalse((self.data / "active").exists())
+            # Valid noncanonical rule makes the public temp entry load the
+            # bundled parser too, not merely the no-config fast path.
+            config.write_text('skills.config = [{name="other", enabled=false}]\n')
         installed = call("sh", str(ROOT / "scripts/install.sh"),
                          *(arg for agent in agents for arg in ("--agent", agent)), cwd=self.root, env=env)
         self.assertEqual(installed.returncode, 0, installed.stderr)
@@ -600,6 +712,16 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertEqual(listed.returncode, 0, listed.stderr)
         self.assertEqual(json.loads(listed.stdout)["entries"], [])
         next_revision = self.next_revision()
+        if "codex" in agents:
+            before = (self.data / "guidance.json").read_bytes()
+            config.write_text('secret="PUBLIC_SECRET_SENTINEL"\nskills.config = [')
+            blocked = call("sh", str(ROOT / "scripts/update.sh"), cwd=self.root,
+                           env={**env, "PUBLIC_REVISION": next_revision})
+            self.assertEqual(blocked.returncode, 1, blocked.stdout)
+            self.assertNotIn("PUBLIC_SECRET_SENTINEL", blocked.stdout + blocked.stderr)
+            self.assertEqual((self.data / "guidance.json").read_bytes(), before)
+            self.assertEqual((self.data / "active").resolve().name, self.revision)
+            config.write_text('skills.config = [{name="other", enabled=false}]\n')
         updated = call("sh", str(ROOT / "scripts/update.sh"), cwd=self.root,
                        env={**env, "PUBLIC_REVISION": next_revision})
         self.assertEqual(updated.returncode, 0, updated.stderr)
@@ -611,7 +733,8 @@ class GlobalInstallTests(unittest.TestCase):
                          next_revision)
         self.assertEqual(call(str(launcher), "list", "--repository", str(self.source),
                               "--json", cwd=self.root, env=env).returncode, 0)
-        entry.write_text("tampered installer\n")
+        # Tampering only the dependency bytes also changes the external pin.
+        entry.write_text(pinned.stdout.replace('TOMLI_SDIST_B85 = (', 'TOMLI_SDIST_B85 = (b"00000"', 1))
         refused = call("sh", str(ROOT / "scripts/install.sh"), "--revision", next_revision,
                        cwd=self.root, env=env)
         self.assertNotEqual(refused.returncode, 0)
@@ -1143,21 +1266,23 @@ class GlobalInstallTests(unittest.TestCase):
     def test_update_rejects_missing_or_modified_managed_file_with_path(self):
         self.assertEqual(self.install().returncode, 0)
         old = (self.data / "active").resolve()
-        path = old / "scripts/worktree-reservation"
-        original = path.read_bytes()
         revision = self.next_revision()
-        for content in (None, b"modified"):
-            if content is None:
-                path.unlink()
-            else:
-                path.write_bytes(content)
-                path.chmod(0o755)
-            result = self.install(revision=revision)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn(str(path), result.stderr)
-            self.assertEqual((self.data / "active").resolve(), old)
-            path.write_bytes(original)
-            path.chmod(0o755)
+        for relative in ("scripts/worktree-reservation", "scripts/install-global", "scripts/vendor/TOMLI.md"):
+            path = old / relative
+            original, mode = path.read_bytes(), path.stat().st_mode & 0o777
+            for content in (None, b"modified"):
+                with self.subTest(path=relative, missing=content is None):
+                    if content is None:
+                        path.unlink()
+                    else:
+                        path.write_bytes(content)
+                        path.chmod(mode)
+                    result = self.install(revision=revision)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(str(path), result.stderr)
+                    self.assertEqual((self.data / "active").resolve(), old)
+                    path.write_bytes(original)
+                    path.chmod(mode)
 
     def test_removed_skill_reconciliation_and_rollback(self):
         self.assertEqual(self.install().returncode, 0)
