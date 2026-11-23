@@ -30,7 +30,7 @@ Execute o instalador diretamente do GitHub:
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh -s -- --agent opencode
 ```
 
-O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d`, confere seu SHA-256 `0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`.
+O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `7c4cfb4433c4f56b9af463759e8215174b5b9663`, confere seu SHA-256 `93cd9371b602a47c66b6bc3b20be448f6c124fc88b10a9f5d041f611dddc1a5f` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`.
 Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use a [entrada verificada](#entrada-verificada) abaixo para maior garantia.
 
 Para **atualizar para a versão mais recente da `main`**, execute (somente quando quiser atualizar):
@@ -59,9 +59,9 @@ Para não executar um launcher mutável, confira a origem do SHA/digest literal 
 
 ```bash
 ( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
-  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d/scripts/install-global' -o "$tmp" &&
-  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '0a683e0295d67ed63fa439d0a541d0192d5b1846a36051d23b055ba9d0a614de' &&
-  python3 "$tmp" --revision e6e1b5c2c7f83bf6efcb3246ee8526afd5f77c8d --agent codex )
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/7c4cfb4433c4f56b9af463759e8215174b5b9663/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '93cd9371b602a47c66b6bc3b20be448f6c124fc88b10a9f5d041f611dddc1a5f' &&
+  python3 "$tmp" --revision 7c4cfb4433c4f56b9af463759e8215174b5b9663 --agent codex )
 ```
 
 ## Configurar o projeto no agente Web
