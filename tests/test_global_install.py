@@ -485,7 +485,7 @@ class GlobalInstallTests(unittest.TestCase):
         transport = self.root / "transport"
         transport.mkdir()
         pinned = call("git", "show",
-                      "acc97c89d912c249d0656daaa3faabafd3e468d7:scripts/install-global",
+                      "06139455da07e336d6969b66f90194afeb9302b8:scripts/install-global",
                       cwd=ROOT)
         self.assertEqual(pinned.returncode, 0, pinned.stderr)
         entry = transport / "install-global"
@@ -824,8 +824,8 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotIn("npx skills add", routing)
 
     def test_published_recipe_matches_verified_entry_and_parity(self):
-        revision = "acc97c89d912c249d0656daaa3faabafd3e468d7"
-        published = "b6919c4d1a81fcef2af17413f1b099a56e610954fa7060fb620988bdb8419e86"
+        revision = "06139455da07e336d6969b66f90194afeb9302b8"
+        published = "c8d4a9cc367fc40b754374c2fa7e774bd288db1a3806d645835eb65922d195f7"
         # The launcher pins immutable commit A with the finished 2.x installer.
         pinned_entry = subprocess.check_output(
             ["git", "show", f"{revision}:scripts/install-global"], cwd=ROOT)
@@ -851,7 +851,7 @@ class GlobalInstallTests(unittest.TestCase):
     def test_published_recipe_in_disposable_home(self):
         # Transport is mocked, but README pipelines, launcher, digest check,
         # pinned installer and Git snapshot installation execute unchanged.
-        revision = "acc97c89d912c249d0656daaa3faabafd3e468d7"
+        revision = "06139455da07e336d6969b66f90194afeb9302b8"
         curl = self.bin / "curl"
         curl.write_text("#!/bin/sh\n"
                          "case \"$2\" in\n"

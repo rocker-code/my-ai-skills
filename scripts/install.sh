@@ -3,8 +3,8 @@
 # This cannot verify the launcher itself when it is fetched and piped to sh.
 set -eu
 
-entry_revision=d06b4dc7e1d25d80515903544dcb0eb1ce8ace7b
-entry_sha256=36c733d268da960ddb3f468589ab210058d91c6b5c80e9b0177e9ed2f9f84001
+entry_revision=06139455da07e336d6969b66f90194afeb9302b8
+entry_sha256=c8d4a9cc367fc40b754374c2fa7e774bd288db1a3806d645835eb65922d195f7
 
 resolve_main() (
     ref=refs/heads/main

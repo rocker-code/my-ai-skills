@@ -13,7 +13,9 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import selectors
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -65,6 +67,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--auth-cache", type=Path, help="Explicit regular auth.json; never config.toml")
     parser.add_argument("--controller-session", required=True, help="Caller's real native session ID")
+    parser.add_argument("--cross-agent-opencode", action="store_true",
+                        help="Also exercise native OpenCode API/shell recovery; requires that CLI explicitly")
     args = parser.parse_args()
     if not SAFE_ID.fullmatch(args.controller_session):
         parser.error("Invalid controller native session ID")
@@ -83,6 +87,11 @@ def main():
         if not executable:
             raise RuntimeError(f"BLOCKED: missing {name}")
         (tools / name).symlink_to(executable)
+    opencode = shutil.which("opencode") if args.cross_agent_opencode else None
+    if args.cross_agent_opencode:
+        if not opencode:
+            raise RuntimeError("BLOCKED: explicit cross-agent scenario requires OpenCode")
+        (tools / "opencode").symlink_to(opencode)
     env = {key: os.environ[key] for key in ("LANG", "TERM") if key in os.environ}
     env.update(HOME=str(home), CODEX_HOME=str(codex_home),
                XDG_CONFIG_HOME=str(home / ".config"), XDG_DATA_HOME=str(home / ".local/share"),
@@ -109,27 +118,48 @@ def main():
     helper = active / "scripts/worktree-reservation"
     owners = {}
     thread_ids = set()
+    # Supported per-invocation restrictions: keep all GitHub traffic inside
+    # the fixture. ChatGPT apps are otherwise enabled even in an empty HOME.
+    native_config = ["--disable", "apps", "--disable", "browser_use",
+                     "--disable", "browser_use_external", "--disable", "computer_use",
+                     "--disable", "remote_plugin", "-c", 'web_search="disabled"',
+                     "-c", "agents.enabled=false"]
 
     def reservation(command, repo, session, *options):
         return json.loads(run([helper, command, "--path", repo, "--session", session,
                                "--json", *options]))
 
+    def snapshot(repo):
+        paths = run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+                    cwd=repo).split("\0")
+        digest = hashlib.sha256(run(["git", "rev-parse", "HEAD"], cwd=repo).encode())
+        for name in sorted(set(filter(None, paths))):
+            path = repo / name
+            digest.update(name.encode())
+            digest.update(str(path.lstat().st_mode).encode())
+            digest.update(os.readlink(path).encode() if path.is_symlink() else path.read_bytes())
+        return digest.hexdigest()
+
     def native(label, repo, prompt, *, writable=False):
         index = len(results["sessions"])
+        before = snapshot(repo)
         context = base / f"context-{index}.json"
         # Native discovery is inspected, not reconstructed from skill bodies.
-        visible = run([cli, "--cd", repo, "debug", "prompt-input", prompt], cwd=repo)
+        visible = run([cli, *native_config, "--cd", repo, "debug", "prompt-input", prompt], cwd=repo)
         (base / f"input-{index}.json").write_text(visible)
-        command = [cli, "exec", "--json", "--ephemeral", "--ignore-user-config",
+        command = [cli, "exec", *native_config, "--json", "--ephemeral", "--ignore-user-config",
                    "--ignore-rules", "--sandbox", "workspace-write" if writable else "read-only",
                    "--cd", str(repo), "--add-dir", str(base / "project-one" / ".git")]
-        full_prompt = prompt
+        full_prompt = prompt + ("\nAll GitHub access MUST use the local gh fixture only; "
+                                "no apps/connectors/web/network access or real GitHub mutations. "
+                                "Do not read credentials/auth files. No subagents in this controlled smoke.")
         if writable:
             full_prompt += (
                 f"\nBefore ANY write, read {context}. This is the real native thread.started ID "
                 f"observed by the controller, not an invented identity. Verify your reservation "
                 f"using {helper} verify --path {json.dumps(str(repo))} --session <that ID> --json. "
-                "Checkpoint your own writes. Do not infer the old owner's ID. "
+                "Checkpoint your own writes AND verify again after checkpoint before finishing. "
+                "Do not infer the old owner's ID. "
                 "Do not create other worktrees or processes/agents.")
         events = []
         stderr = (base / f"stderr-{index}.log").open("w")
@@ -177,13 +207,19 @@ def main():
                 process.wait(timeout=15)
             stderr.close()
         thread = completed_thread(events, code)
+        assert not any(e.get("item", {}).get("type") in ("mcp_tool_call", "web_search")
+                       for e in events), "Native fixture escaped into external connectors/search"
         thread_ids.add(thread)
         if writable:
             reservation("checkpoint", repo, thread)
+            reservation("verify", repo, thread)
+        else:
+            assert snapshot(repo) == before, "Read-only native execution changed the checkout"
         response = "\n".join(e.get("item", {}).get("text", "") for e in events
                              if e.get("item", {}).get("type") == "agent_message")
         results["sessions"].append({"label": label, "thread_id": thread, "exit_code": code,
                                     "completed": True, "checkout": str(repo),
+                                    "issue": current_issue,
                                     "head": run(["git", "rev-parse", "HEAD"], cwd=repo).strip(),
                                     "events": f"events-{index}.jsonl"})
         return response, visible, events
@@ -298,7 +334,13 @@ def main():
         # Fixture backend captures all gh invocations, not native execution.
         fixture = base / "github.json"
         calls = base / "github-calls.jsonl"
-        fixture.write_text(json.dumps({"prs": [], "issues": [
+        fixture.write_text(json.dumps({"prs": ([{
+            "number": 1, "url": "https://github.com/fixture/native-smoke/pull/1",
+            "state": "OPEN", "isDraft": True, "issue_number": 1,
+            "headRefName": "smoke-issue", "baseRefName": "main",
+            "body": "Closes #1; interrupted draft; tests NOT RUN", "reviews": [],
+            "statusCheckRollup": [], "headRefOid": run(["git", "rev-parse", "HEAD"], cwd=worktree).strip()
+        }] if args.cross_agent_opencode else []), "issues": [
             {"number": i, "title": f"Add value {i}", "state": "OPEN", "comments": [],
              "url": f"https://github.com/fixture/native-smoke/issues/{i}",
              "body": f"Create value_{i}.py exporting VALUE = {i}, with a unittest. "
@@ -312,15 +354,17 @@ def main():
                            "with open(os.environ['SMOKE_GH_CALLS'],'a') as f:f.write(json.dumps(a)+'\\n')\n"
                            "if a[:2]==['issue','list']:out=s['issues']\n"
                            "elif a[:2]==['issue','view']:out=next(x for x in s['issues'] if str(x['number'])==a[2].split('/')[-1])\n"
-                           "elif a[:2]==['pr','list']:out=s['prs']\n"
+                           "elif a[:2]==['pr','list']:out=[x for x in s['prs'] if x.get('issue_number')==int(os.environ['SMOKE_ISSUE_NUMBER'])]\n"
+                           "elif a[:2]==['pr','view']:out=next(x for x in s['prs'] if str(x['number'])==a[2].split('/')[-1])\n"
                            "elif a[:2]==['pr','create']:\n"
-                           " n=len(s['prs'])+1;out={'number':n,'url':f'https://github.com/fixture/native-smoke/pull/{n}','state':'OPEN'};s['prs'].append(out);p.write_text(json.dumps(s))\n"
+                           " n=len(s['prs'])+1;out={'number':n,'url':f'https://github.com/fixture/native-smoke/pull/{n}','state':'OPEN','issue_number':int(os.environ['SMOKE_ISSUE_NUMBER'])};s['prs'].append(out);p.write_text(json.dumps(s))\n"
                            "elif a[:2]==['repo','view']:out={'nameWithOwner':'fixture/native-smoke','defaultBranchRef':{'name':'main'}}\n"
                            "else:raise SystemExit('Fixture unsupported: '+repr(a))\n"
                            "print(json.dumps(out))\n")
         backend.chmod(0o755)
         env.update(SMOKE_GH_STATE=str(fixture), SMOKE_GH_CALLS=str(calls))
         for number in (1, 2):
+            env["SMOKE_ISSUE_NUMBER"] = str(number)
             change = f"fixture-value-{number}"
             current_issue = f"https://github.com/fixture/native-smoke/issues/{number}"
             # Park the completed prior issue before changing the issue binding.
@@ -350,13 +394,94 @@ def main():
             run(["git", "add", f"openspec/changes/{change}"], cwd=worktree)
             run(["git", "commit", "-qm", f"proposal {number}"], cwd=worktree)
             reservation("checkpoint", worktree, owners[str(worktree)])
+            reservation("verify", worktree, owners[str(worktree)])
             plan = run(["git", "rev-parse", "HEAD"], cwd=worktree).strip()
             review, _, _ = native(f"plan-review-{number}", worktree,
                                   f"Read-only independent planning review of exact HEAD {plan}, "
                                   f"change {change}, live fixture issue {current_issue}. "
                                   "Inspect the immutable artifacts and source. If materially sound reply "
                                   "PLAN_APPROVED; otherwise list blockers. No writes/comments.")
-            assert "PLAN_APPROVED" in review
+            assert re.search(r"(?m)^PLAN_APPROVED\s*$", review), review
+            if number == 1 and args.cross_agent_opencode:
+                # Supported native session tools suffice for identity and shell
+                # completion here; this does NOT claim OpenCode model execution.
+                run(["python3", "-c", runner, ROOT / "scripts/install-global", ROOT,
+                     "--agent", "opencode", "--revision", revision])
+                env["OPENCODE_PASSWORD"] = secrets.token_hex(24)
+                server = subprocess.Popen([opencode, "serve", "--hostname", "127.0.0.1", "--port", "0"],
+                                          cwd=worktree, env=env, stdout=subprocess.PIPE,
+                                          stderr=(base / "recovery-server.log").open("w"), text=True)
+                try:
+                    match = re.search(r"http://127\.0\.0\.1:\d+", server.stdout.readline())
+                    if not match:
+                        raise RuntimeError("BLOCKED: private recovery OpenCode server unavailable")
+                    url = match[0]
+
+                    def api(method, path, body=None):
+                        command = [opencode, "--server", url, "api", method, path]
+                        if body is not None:
+                            command += ["--data", json.dumps(body)]
+                        output = run(command, cwd=worktree)
+                        return json.loads(output) if output.strip() else None
+
+                    def native_shell(session_id, command):
+                        api("post", f"/api/session/{session_id}/shell", {"command": command})
+                        deadline = time.monotonic() + 90
+                        while True:
+                            messages = api("get", f"/api/session/{session_id}/message")["data"]
+                            matches = [message for message in messages
+                                       if message.get("type") == "shell" and message.get("command") == command]
+                            if matches and matches[-1]["status"] != "running":
+                                return matches[-1], messages
+                            if time.monotonic() >= deadline:
+                                raise RuntimeError("BLOCKED: native OpenCode shell terminal result unavailable")
+                            time.sleep(0.25)
+
+                    session = api("post", "/api/session", {"location": {"directory": str(worktree)}})["data"]
+                    session_id = session["id"]
+                    assert session["location"]["directory"] == str(worktree)
+                    blocked = subprocess.run([helper, "verify", "--path", worktree, "--session", session_id, "--json"],
+                                             env=env, capture_output=True, text=True, timeout=30)
+                    assert blocked.returncode == 3, "Unknown/new writer must not take over implicitly"
+                    previous = owners[str(worktree)]
+                    run([helper, "handoff", "--path", worktree, "--from-session", previous,
+                         "--to-session", session_id, "--run", "codex-native-smoke", "--json"])
+                    owners[str(worktree)] = session_id
+                    before_status = snapshot(worktree)
+                    for skill in ("resume-workflow", "pr-status"):
+                        api("post", f"/api/experimental/session/{session_id}/skill", {"id": skill, "resume": False})
+                    query = ("set -e\n" + shlex.join([str(helper), "verify", "--path", str(worktree),
+                                                       "--session", session_id, "--json"]) +
+                             f"\nopenspec instructions apply --change {change} --json\n"
+                             "gh pr list --json number,url,state\n")
+                    shell, messages = native_shell(session_id, query)
+                    assert shell["status"] == "exited" and shell["exit"] == 0
+                    assert snapshot(worktree) == before_status
+                    interrupted, messages = native_shell(
+                        session_id, "python3 -c 'import os,signal; os.kill(os.getpid(),signal.SIGINT)'")
+                    assert interrupted["status"] != "running" and interrupted.get("exit") != 0
+                    (base / "opencode-recovery-messages.json").write_text(json.dumps(messages, indent=2))
+                    recovery = {"opencode_session": session_id, "previous_codex_thread": previous,
+                                "checkout": str(worktree), "change": change,
+                                "pr": "https://github.com/fixture/native-smoke/pull/1",
+                                "test_result": "incomplete/interrupted; NOT PASSED",
+                                "history_portable": False, "status_readonly": True,
+                                "opencode_model_execution": False}
+                    (base / "recovery.json").write_text(json.dumps(recovery, indent=2))
+                    response, _, _ = native("cross-agent-recovery-status", worktree,
+                        f"$resume-workflow $pr-status\nRead-only recovery inspection for {current_issue}. "
+                        f"The previous native OpenCode writer returned; inspect {base / 'recovery.json'} "
+                        f"and actual Git/OpenSpec/fixture gh issue view/pr list evidence. Existing change is {change}, "
+                        "existing draft PR is #1. Do not write, transfer ownership, create a change/worktree/PR, "
+                        "or start workers. Only gh issue view/list and pr view/list are supported by this backend; "
+                        "hosted checks/review are NOT RUN. Report incomplete tests and next safe action, "
+                        "no timing analytics or comments. Finish INCOMPLETE_NOT_PASSED.")
+                    assert "INCOMPLETE_NOT_PASSED" in response
+                    assert len(json.loads(fixture.read_text())["prs"]) == 1
+                    results["cross_agent_recovery"] = recovery
+                finally:
+                    server.terminate()
+                    server.wait(timeout=15)
             native(f"apply-{number}", worktree,
                    f"$openspec-apply-change\nExplicitly implement change {change} for {current_issue}. "
                    f"Approved immutable proposal HEAD {plan}; independent native review completed. "
@@ -371,11 +496,16 @@ def main():
             (base / f"tests-{number}.log").write_text(test_output)
             count = re.search(r"Ran (\d+) tests?", test_output)
             assert test.returncode == 0 and count and int(count[1]) > 0, test_output
+            run(["python3", "-c", f"import value_{number}; assert value_{number}.VALUE == {number}"],
+                cwd=worktree)
             report, _, _ = native(f"verify-{number}", worktree,
                    f"$openspec-verify-change\nVerify change {change}, actual code and tests. "
-                   "Run tests as needed. Read-only report, no archive or implementation.",
+                   "Run tests as needed. Read-only report, no archive or implementation. "
+                   "Finish with a standalone VERIFY_CLEAN only if no critical/warning findings "
+                   "and no applicable check is unverified; otherwise report the findings.",
                    writable=False)
             results.setdefault("verify_reports", []).append(report)
+            assert re.search(r"(?m)^VERIFY_CLEAN\s*$", report), report
             native(f"archive-{number}", worktree,
                    f"$openspec-archive-change\nArchive completed change {change}. "
                    "User explicitly selects Sync now (recommended); preserve existing main specs, "
@@ -384,12 +514,13 @@ def main():
                    writable=True)
             archives = list((worktree / "openspec/changes/archive").glob(f"*{change}"))
             assert len(archives) == 1 and not (worktree / f"openspec/changes/{change}").exists()
-            native(f"pr-park-{number}", worktree,
-                   f"Prepare the fixture-only PR for issue {current_issue}; use gh pr list before gh pr create. "
+            pr_response, _, _ = native(f"pr-park-{number}", worktree,
+                   f"$prepare-pr\nPrepare the fixture-only PR for issue {current_issue}; use gh pr list before gh pr create. "
                    "No real push or merge: the GitHub backend is an explicitly disposable fixture. "
                    "Create at most one fixture PR, then explicitly park this issue awaiting independent review. "
                    "No stage/status/hidden comments. No trivial/duplicate evolution issues. "
                    "Return PARKED_FOR_REVIEW; do not start the next issue.", writable=True)
+            assert re.search(r"(?m)^PARKED_FOR_REVIEW\s*$", pr_response), pr_response
             assert len(json.loads(fixture.read_text())["prs"]) == number
             if number == 1:
                 assert not (worktree / "value_2.py").exists()

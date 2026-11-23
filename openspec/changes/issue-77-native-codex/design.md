@@ -180,6 +180,19 @@ Esses resultados validam **planejamento**, não implementação. Suite Python e 
 
 ## Apply handoff (parcial)
 
+### Estado atual (substitui pendências iniciais abaixo)
+
+- Auth isolada resolvida pelo [fallback oficial de cache headless](https://developers.openai.com/codex/auth.md?surface=cli): somente auth.json explícito copiado com permissão restrita e removido ao finalizar; config real intocada. Probe nativo Codex exit 0, thread `01a205d7-9681-7f81-b853-a83d5ce40a6c`, sem ferramentas; prova privada em `/tmp/opencode/issue77-native-probe-mbw28l2_`.
+- Instalador A atual: `06139455da07e336d6969b66f90194afeb9302b8`, digest `c8d4a9cc367fc40b754374c2fa7e774bd288db1a3806d645835eb65922d195f7`. As âncoras anteriores `d8dd884...`, `d06b4dc...` e `acc97c8...` não foram emendadas: novas revisões A incorporaram endurecimento de seleção, preservação CRLF/modos/rechecks de publicação e diagnóstico de skill desabilitada por nome. O launcher posterior fixa A atual literalmente; refs finais de B/HEAD ficam fora deste commit. Merge commit permanece obrigatório; API viva confirmou `allow_merge_commit=true`.
+- Grupos de desenvolvimento: instalador completo 48 testes/exit 0 (`ev-20261123T005353Z-aa800272`), launcher 8/exit 0 (`ev-20261123T005203Z-8157c284`), distribuição 4/exit 0 (`ev-20261123T005212Z-f3f326d8`). Suite ampla no B limpo: 232 testes/exit 0 (`ev-20261123T005710Z-6660bf45`), **não é gate final pós-archive**. Novas alterações posteriores exigem novas provas.
+- Smoke OpenCode nativo: `ev-20261123T004648Z-5123e676`, exit 0, cinco skills oficiais carregadas/invocadas por API em dois projetos/worktree; `/tmp/opencode/smoke-global-opencode-5jzx8baq/results.json`. Não houve execução de modelo nesse smoke; não certifica lifecycle completo/independência Codex.
+- Smoke Codex ainda **BLOCKED/pendente**, não aprovado: primeira tentativa (`ev-20261123T004648Z-acaea6be`) tinha asserção de path incompatível com raízes compactas nativas rN; corrigida por resolver tabela real, sem aceitar paths presumidos. Segunda (`ev-20261123T005353Z-887e90e2`) comprovou cinco skills em três locais, contextos distintos e sete execuções nativas terminadas, mas parou após commit de proposta por checkpoint sem reverify. Diagnóstico: fixture/controlador escreveu depois de checkpoint sem abrir novo intervalo verificado; a recusa do helper estava correta. Corrigido o smoke, não a proteção. Ainda faltam execução completa, retomada/consulta cross-agent e provas finais.
+- Uma falha focada do baseline schema 1 usava modos de diretórios do working tree copiado (ex. 0664) em vez do checkout Git normalizado; corrigida a fixture para reconstruir manifesto do snapshot Git confiável. Grupo completo também revelou fixture de fallback OpenSpec sem launcher no PATH após mudança da ordem segura de preflight; foi corrigido somente o PATH, preservada a asserção de digest adulterado recusado.
+- Terceira execução nativa (`ev-20261123T010347Z-334e49f9`) passou por descoberta, fresh context, proposta e revisão independente (oito threads terminadas) e transferência Codex→sessão OpenCode real. Parou corretamente por shell OpenCode ainda `running` no primeiro GET: API é assíncrona. Smoke agora espera o resultado terminal do comando exato, com prazo finito, antes de avaliar exit; nunca converte dispatch em aprovação.
+- Inspeção dos eventos também revelou apps ChatGPT habilitados por default apesar de HOME vazio: a revisão tentou consultas reais somente leitura ao repo fixture (404). Nenhuma mutação real foi observada. Próximas execuções desabilitam apps, busca/browser/computer-use/remote-plugin e subagentes por opções oficialmente suportadas, além de recusar eventos MCP/web; todo backend GitHub deve passar pelo `gh` fixture capturado. Isso restringe somente o smoke, não o usuário.
+
+### Registro inicial histórico (não é o status atual)
+
 - Apply `ses_dfa33e1cfffeWdMuWMEgF2qi91` confirmou reserva e SHA `2a6572d8271a467118aa61f0e952365783af8626`. Revisão independente desse SHA: sessão `ses_dfa3609e4ffenAb7XCzOZXHb6A`, callback APPROVED informado pelo coordenador; planner parado por callback. Política de teste do checkout não mudou desde o pin.
 - Preflight nativo: Python 3.14.8, OpenSpec 2.1.1, OpenCode v2.3.2, Codex 0.171.0. Sem Composer/npm/M2T/serviços. Fixtures Git/HOME descartáveis; instalação real não alterada.
 - Bloqueio de auth Codex isolada: `/tmp/opencode/issue77-codex-auth-9tra60y2/result-ready.json`, `codex login status` exit 1, `Not logged in`. HOME/CODEX_HOME/XDG novos, sem OPENAI_API_KEY/CODEX_ACCESS_TOKEN; nenhuma credencial real copiada. Invocação de modelo e independência Codex não comprovadas. Precisa autenticação isolada autorizada por mecanismo suportado, não troca de agente nem skip.
@@ -240,6 +253,86 @@ As duas falhas históricas abaixo foram observadas no transcript nativo da sess�
       "kind": "resolution",
       "group": {"obligation": "installer-focused", "signature": "InstallError: falta gh no PATH"},
       "outcome": "passed", "via_seq": 4
+    },
+    {
+      "kind": "attempt", "seq": 5, "obligation": "codex-smoke",
+      "signature": "AssertionError: absolute skill path absent in native compact inventory",
+      "target": "smoke_global_codex.py", "class": "assertion/contract",
+      "hypothesis": "debug prompt-input apresenta cada caminho absoluto completo",
+      "change": "Smoke nativo inicial", "change_target": "test",
+      "observed_effect": "Uma thread real terminou; inventário codifica paths como rN mais tabela de roots",
+      "result": "fail", "evidence": ["evidence:ev-20261123T004648Z-acaea6be"]
+    },
+    {
+      "kind": "attempt", "seq": 6, "obligation": "codex-smoke",
+      "signature": "reservation checkpoint exit 3: verify current baseline before writing/checkpointing",
+      "target": "smoke_global_codex.py", "class": "fixture/isolation",
+      "hypothesis": "Resolver roots compactos permite seguir pelo lifecycle real",
+      "change": "Resolver rN e exigir carregamento real do corpo das cinco skills", "change_target": "test",
+      "observed_effect": "Descoberta em três locais e contexto novo passaram; sete threads terminaram; controle parou após commit sem reverify",
+      "result": "fail", "evidence": ["evidence:ev-20261123T005353Z-887e90e2"]
+    },
+    {
+      "kind": "diagnosis", "seq": 7,
+      "group": {"obligation": "codex-smoke", "signature": "reservation checkpoint exit 3: verify current baseline before writing/checkpointing"},
+      "class": "fixture/isolation",
+      "checked": {
+        "phase": "controlador após retorno Codex e git commit da proposta",
+        "scope": "worktree descartável registrada; sessão nativa real como owner",
+        "lifecycle": "checkpoint fechou intervalo anterior; controlador precisava reverify antes do commit",
+        "consumers": "handoff/commit/checkpoint do smoke; proteção worktree-reservation correta"
+      },
+      "runtime_proof": ["evidence:ev-20261123T005353Z-887e90e2"],
+      "simplest_alternative": "Adicionar verify imediatamente após cada checkpoint e antes da próxima escrita",
+      "choice_rationale": "Não aceitar drift automaticamente nem enfraquecer helper; código de produção não é a causa",
+      "next_hypothesis": "Intervalos de escrita explícitos permitem commit e fresh Apply sem perder proteção"
+    },
+    {
+      "kind": "attempt", "seq": 8, "obligation": "installer-complete",
+      "signature": "AssertionError: digest refusal absent; launcher path missing",
+      "target": "test_global_install.py", "class": "fixture/isolation",
+      "hypothesis": "Fixture de fallback ainda satisfaz pré-requisitos anteriores ao download",
+      "change": "Grupo completo após publicação B", "change_target": "none",
+      "observed_effect": "46/47 passaram; fallback recusou launcher fora do PATH antes de atingir digest",
+      "result": "fail", "evidence": ["evidence:ev-20261123T005212Z-f8047ef4"]
+    },
+    {
+      "kind": "attempt", "seq": 9, "obligation": "installer-complete",
+      "signature": "AssertionError: digest refusal absent; launcher path missing",
+      "target": "test_global_install.py", "class": "fixture/isolation",
+      "hypothesis": "Incluir bin global descartável alcança a mesma fronteira negativa de digest",
+      "change": "Somente PATH da fixture; mesma asserção de digest e não execução", "change_target": "fixture",
+      "observed_effect": "48 testes passaram, incluindo novo negativo de capacidade Codex", "result": "pass",
+      "evidence": ["evidence:ev-20261123T005353Z-aa800272"]
+    },
+    {
+      "kind": "resolution",
+      "group": {"obligation": "installer-complete", "signature": "AssertionError: digest refusal absent; launcher path missing"},
+      "outcome": "passed", "via_seq": 9
+    },
+    {
+      "kind": "attempt", "seq": 10, "obligation": "codex-smoke",
+      "signature": "AssertionError: native OpenCode shell still running on first GET",
+      "target": "smoke_global_codex.py --cross-agent-opencode", "class": "fixture/isolation",
+      "hypothesis": "Reverify após checkpoint permite revisão e retomada nativa",
+      "change": "Intervalos verificados e cenário de retomada por sessão/shell OpenCode", "change_target": "test",
+      "observed_effect": "Oito threads terminaram; proposta/review e handoff passaram; shell assíncrono não tinha resultado terminal no GET imediato",
+      "result": "fail", "evidence": ["evidence:ev-20261123T010347Z-334e49f9"]
+    },
+    {
+      "kind": "diagnosis", "seq": 11,
+      "group": {"obligation": "codex-smoke", "signature": "AssertionError: native OpenCode shell still running on first GET"},
+      "class": "fixture/isolation",
+      "checked": {
+        "phase": "leitura da mensagem shell após POST API 204",
+        "scope": "servidor privado OpenCode no HOME descartável",
+        "lifecycle": "shell nativo despachado, ainda running; não é teste aprovado",
+        "consumers": "native_shell e verificação do teste interrompido"
+      },
+      "runtime_proof": ["evidence:ev-20261123T010347Z-334e49f9"],
+      "simplest_alternative": "Esperar status terminal do comando exato por leitura nativa delimitada",
+      "choice_rationale": "Preservar a asserção de término/exit; não usar sleep fixo nem aceitar running como sucesso",
+      "next_hypothesis": "Resultado terminal real permite distinguir consulta bem-sucedida e teste interrompido sem aprovar este último"
     }
   ]
 }
