@@ -39,7 +39,8 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               native_validation_calls,
                                               input_files, input_digest, effective_input_binding,
                                               effective_input_diff, APPROVED_PROPOSAL, PROMPTS,
-                                              VERIFY_SHA256, VERIFY_GENERATOR_VERSION)
+                                              VERIFY_SHA256, VERIFY_GENERATOR_VERSION,
+                                              t1_handoff_value, t1_serialization_diagnostics)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -1224,7 +1225,7 @@ class T1ProposalProofTest(unittest.TestCase):
             ("last_verified_gate", "NÃO comprovado"), ("blockers", [None]),
             ("proposal_sha", "0" * 40), ("review_sha", "1" * 40),
             ("evidence_scope", "real_candidate"), ("issue", 62), ("run", "other"),
-            ("apply_executed", True), ("contradictory_extra", "bloquear Apply"),
+            ("apply_executed", True), ("write_authorized", True),
             ("limitations", "hide current blockers here"), ("limitations", [None]),
         ):
             self.assertFalse(check(self.handoff_event(**{field: value})))
@@ -1242,6 +1243,74 @@ class T1ProposalProofTest(unittest.TestCase):
         wrong = self.handoff_event()
         wrong["sessionID"] = "ses-other"
         self.assertFalse(check(wrong))
+
+    def test_unknown_extensions_are_quarantined_verbatim_never_trusted_recovery_fields(self):
+        fixture = {"issue": 61, "run": "wf-unit"}
+        for extensions in (
+            {"audit_notes": ["Observed fixture proposal and read-only sources."]},
+            {"contradictory_extra": "bloquear Apply"},  # Meaning requires independent review.
+            {"unrecognized": {"issue": 999, "next_action": "merge", "status": "APPROVED"}},
+            {"opaque": [None, 7, {"ambiguous": ["unknown claim"]}]},
+        ):
+            event = self.handoff_event(**extensions)
+            trace = [event]
+            original = event["part"]["text"]
+            self.assertTrue(t1_handoff(trace, self.session, fixture, self.facts)[0])
+            self.assertEqual(t1_serialization(trace, self.session, fixture, self.facts), "failed")
+            diagnostics = t1_serialization_diagnostics(trace, self.session)
+            self.assertEqual(diagnostics["untrusted_extensions"], extensions)
+            self.assertEqual(diagnostics["extension_keys"], list(extensions))
+            self.assertEqual(diagnostics["raw_handoff"], original)
+            self.assertEqual(diagnostics["raw_handoff_sha256"],
+                             hashlib.sha256(original.encode()).hexdigest())
+            self.assertEqual(diagnostics["legacy_error"], "unexpected_handoff_fields")
+            self.assertEqual(diagnostics["independent_response_event_review"], "required")
+            self.assertEqual(t1_handoff_value(trace, self.session)[0]["issue"], 61)
+            self.assertEqual(event["part"]["text"], original)
+        for extensions in ({"write_authorized": True}, {"write_authorized": 0},
+                           {"opaque": [{"apply_executed": True}]},
+                           {"opaque": {"write_authorized": True}},
+                           {"effects": ["takeover completed"]}):
+            trace = [self.handoff_event(**extensions)]
+            self.assertFalse(t1_handoff(trace, self.session, fixture, self.facts)[0])
+            self.assertTrue(t1_serialization_diagnostics(
+                trace, self.session)["structured_no_effect_conflicts"])
+        # Every required semantic field still needs its own correct typed value.
+        value = json.loads(self.handoff_event()["part"]["text"])
+        for key in value:
+            if key == "ownership_condition":
+                continue  # Ownership is independently mandatory at the phase gate.
+            for changed in ({k: v for k, v in value.items() if k != key}, {**value, key: None}):
+                event = self.handoff_event()
+                event["part"]["text"] = json.dumps({**changed, "opaque": "not an override"})
+                self.assertFalse(t1_handoff([event], self.session, fixture, self.facts)[0], key)
+
+    def test_handoff_parser_keeps_duplicate_byte_depth_count_and_extension_budgets_closed(self):
+        original = self.handoff_event()["part"]["text"]
+        def parse(text):
+            event = self.handoff_event()
+            event["part"]["text"] = text
+            return t1_handoff_value([event], self.session)[0]
+        for text in (
+            original[:-1], "[]", '{"a":1,"a":2}', '{"opaque":{"a":1,"a":2}}',
+            '{"opaque":[{"a":1,"a":2}]}', '{"opaque":NaN}', '{"opaque":Infinity}',
+            '{"opaque":1e999}',
+            '{"opaque":"\\ud800"}', " " * 4097 + original,
+            '{"opaque":' + "[" * 2000 + "0" + "]" * 2000 + "}",
+        ):
+            self.assertIsNone(parse(text))
+        deep = "leaf"
+        for _ in range(10):
+            deep = {"nested": deep}
+        for extension in (
+            {"opaque": deep}, {"opaque": [None] * 33},
+            {f"unknown{i}": None for i in range(17)},
+            {"opaque": "x" * 2050},
+            {"opaque": [[None] * 8 for _ in range(32)]},
+        ):
+            text = self.handoff_event(**extension)["part"]["text"]
+            self.assertLessEqual(len(text.encode()), 4096)  # A distinct inner guard.
+            self.assertIsNone(parse(text))
 
     def test_denied_stateful_verify_is_not_erased_by_valid_handoff_or_equal_snapshots(self):
         for status in ("completed", "error", "cancelled", "running"):
@@ -2166,6 +2235,26 @@ class T1ObservedInventoryTest(unittest.TestCase):
         self.assertEqual(positive["serialization_compliance"], "failed")
         self.assertEqual(positive["read_only_acceptance"], "pending_independent_review")
         self.assertTrue(evaluate({**value, "next_action": "apply-issue"})["read_only_facts_proven"])
+        for extension in (
+            {"audit_notes": ["Read-only fixture observations."]},
+            {"unclassified": "Unresolved claim; reviewer must inspect actual response."},
+            {"unclassified": {"issue": 999, "next_action": "merge", "status": "APPROVED"}},
+            {"scenario_pass": True, "read_only_facts_proven": True},
+        ):
+            result = evaluate({**value, **extension})
+            self.assertTrue(result["read_only_facts_proven"])
+            self.assertTrue(result["source_facts_proven"] and result["semantic_fields_proven"])
+            self.assertEqual(result["read_only_acceptance"], "pending_independent_review")
+            self.assertEqual(result["serialization_compliance"], "failed")
+            self.assertEqual(result["serialization_diagnostics"]["untrusted_extensions"], extension)
+            self.assertFalse(result["scenario_pass"] or result["write_authorized"])
+            self.assertEqual(result["independent_response_event_review"], "required")
+            self.assertFalse(evaluate({**value, **extension}, gates={"native": False})[
+                "read_only_facts_proven"])
+        unsafe = evaluate({**value, "write_authorized": True, "effects": ["takeover completed"]})
+        self.assertTrue(unsafe["source_facts_proven"])  # Do not erase actual source facts.
+        self.assertFalse(unsafe["semantic_fields_proven"] or unsafe["read_only_facts_proven"])
+        self.assertEqual(unsafe["read_only_acceptance"], "blocked")
         for field, wrong in (("phase", "after-write"), ("kind", "unknown"),
                               ("kind", "released-unreserved" if kind == "prior-stopped-owner"
                                else "prior-stopped-owner"),

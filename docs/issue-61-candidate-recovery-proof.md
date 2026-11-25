@@ -2,6 +2,62 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Correção offline O1 — extensão isolada, não falha dos fatos observados
+
+Delegação offline sobre `ee76912245f517166af7b47b1232fdb6bd23e143`, fonte
+`908724380bc8e4719b8f5ad0ed05a887e1baa5e8`, mesmo checkout/run/worker
+`ses_ded18b05dffeNzCsA3V4E54qkk`. Revisão independente informada
+`ses_ded2cde46ffejUezPSz4fYw6cx` aprovou **substantivamente T1 nos inputs
+observados908**, incluindo as dez strings verdadeiras de `sources_verified`;
+não aprovou a fonte nova, o whole run ou os cenários ausentes.
+
+O registro original abaixo permanece literalmente FAILED/blocked, não pending/
+native PASS. Os nove fatos, condição pré-escrita e oito snapshots estavam
+comprovados; a recusa foi da chave adicional no handoff JSON válido3878B.
+Corrigir esse consumidor segundo a separação de fases de a0/e140 não altera
+produto/capacidade nem dispensa fontes. Nenhum campo é removido da resposta,
+nenhum allowlist específico de `sources_verified` ou resposta calculada é criado.
+
+**Política do oráculo:** validar os campos conhecidos/identidades/ação e
+ownership tipado estritamente; reter extensões em
+`serialization_diagnostics.untrusted_extensions`, com suas chaves, resposta
+bruta exata e SHA-256. Nunca espalhar seus dados nos campos confiáveis ou em
+argumentos/instruções de ferramentas. `legacy_error=unexpected_handoff_fields`
+e `serialization_compliance=failed` continuam visíveis. Fatos de fonte e
+semântica conhecida ficam separados no mesmo relatório; elegibilidade técnica
+read-only continua **pending_independent_review**, `scenario_pass=false` e
+`write_authorized=false`, mesmo para extensão aparentemente segura.
+
+Parse continua fechado: 4096B totais, duplicatas em qualquer profundidade,
+não-JSON/números não finitos/surrogates inválidos, depth>8, nodes>256,
+coleções>32, mais de16 extensões ou extensões>2048B são rejeitados.
+Fonte/identidade/owner/condição/ação errados, fato nativo ausente e tentativa
+stateful continuam bloqueando. Claims estruturados explícitos de
+`write_authorized`/`apply_executed` diferentes de false ou `effects` diferente de
+lista vazia conflitam semanticamente, inclusive aninhados. Não há wordlist,
+juiz LLM ou classificação automática de prosa: demais claims ambíguos ficam
+isolados, nunca promovem autorização/aceite e dependem da revisão independente
+de resposta/eventos já exigida; contradição insegura não resolvida impede
+aprovação nessa revisão. Isso não é waiver de blockers arbitrários.
+
+Reutilizados testes de proposta/inventário/boundary e projeção offline separada
+do trace real, preservando hash dos originais e seq56–58. Recibos de projeção,
+negativos e suíte limpa são entregues **fora do commit**.
+Focados offline: 66/66; projeção separada recompõe os nove fatos e preserva
+as dez strings originais em diagnóstico, sem promoção para aprovação. Cópias
+sintéticas demonstram extensão ambígua pending, grant/efeito explícito bloqueado,
+identidade errada, dispatch ausente e stateful negado bloqueados.
+Não há nova tarefa
+concluída: 17/19 permanecem, 3.4/4.3 pendentes. Alteração do harness/oráculo é
+**material F1**, já capturada pelo `resume-effective-inputs-v1`; não muda sua
+regra. Fonte nova requer revisão afetada e autorização separada do pai para
+futuro **run real completo T1/T5/T7**, não replay ou reuso automático de T1.
+Todos os doze whole runs continuam FAILED; T5/T7 NOT RUN no décimo segundo.
+Metadata anterior deny/allow/deny com zero mensagens não prova comportamento
+T5/Verify. Permissões, guard, perfis, prompts, reader, pins/modelo/runtime e
+instalação global permanecem inalterados. Suíte local deste Apply é pre-smoke,
+não gate final de entrega após archive/preparo.
+
 ### Décima segunda observação — T1 rejeita campo estruturado extra, T5/T7 NOT RUN
 
 Novo harness completo explicitamente autorizado após aprovação da emenda

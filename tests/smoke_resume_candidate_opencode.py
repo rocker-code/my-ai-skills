@@ -11,6 +11,7 @@ import copy
 from contextlib import closing
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -31,6 +32,9 @@ CHANGE = "issue-61-opencode-safe-resume"
 APPROVED_PROPOSAL = "a0b4796fb1a2646125c6e62bfa6ca450d2118e7e"
 VERIFY_SHA256 = "3b86fbb9734fdb6b942dd12d0afa4247457aa7f212bb48832eae133f5e66880a"
 VERIFY_GENERATOR_VERSION = "2.1.1"
+T1_HANDOFF_FIELDS = frozenset((
+    "issue", "run", "evidence_scope", "proposal_sha", "review_sha", "last_verified_gate",
+    "apply_executed", "status", "blockers", "limitations", "ownership_condition", "next_action"))
 STRICT_VALIDATE = f"openspec validate {CHANGE} --strict --no-interactive"
 PROMPTS = {
     "T1": (
@@ -631,13 +635,72 @@ def t1_handoff_value(events, session):
         if len(result) != len(pairs):
             raise ValueError("duplicate handoff field")
         return result
+    def reject_constant(value):
+        raise ValueError("non-finite handoff value")
     try:
         if len(text.encode()) > 4096:
             return None, index
-        value = json.loads(text, object_pairs_hook=unique_object)
-    except (ValueError, TypeError):
+        value = json.loads(text, object_pairs_hook=unique_object, parse_constant=reject_constant)
+        if not isinstance(value, dict):
+            return None, index
+        # Bound unknown data as well as known fields. Iteration avoids recursion
+        # in the checker; the decoder's own recursion failure is also closed.
+        pending, count = [(value, 1)], 0
+        while pending:
+            item, depth = pending.pop()
+            count += 1
+            if depth > 8 or count > 256:
+                return None, index
+            if isinstance(item, (dict, list)):
+                if len(item) > 32:
+                    return None, index
+                children = [*item.keys(), *item.values()] if isinstance(item, dict) else item
+                pending.extend((child, depth + 1) for child in children)
+            elif isinstance(item, str):
+                item.encode("utf-8")  # Reject unpaired surrogates, including object keys.
+            elif isinstance(item, float) and not math.isfinite(item):
+                return None, index
+        extensions = {k: v for k, v in value.items() if k not in T1_HANDOFF_FIELDS}
+        if (len(extensions) > 16 or
+                len(json.dumps(extensions, ensure_ascii=False).encode()) > 2048):
+            return None, index
+    except (ValueError, TypeError, RecursionError, UnicodeError):
         return None, index
-    return value if isinstance(value, dict) else None, index
+    return value, index
+
+
+def t1_no_effect_conflicts(value):
+    """Only explicit structured no-effect constraints; never classify free text."""
+    pending, conflicts = [(value, [])], []
+    while pending:
+        item, path = pending.pop()
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if ((key in ("write_authorized", "apply_executed") and child is not False) or
+                        (key == "effects" and (not isinstance(child, list) or child != []))):
+                    conflicts.append([*path, key])
+                pending.append((child, [*path, key]))
+        elif isinstance(item, list):
+            pending.extend((child, [*path, i]) for i, child in enumerate(item))
+    return conflicts
+
+
+def t1_serialization_diagnostics(events, session):
+    """Quarantine bounded extensions verbatim, outside all trusted recovery fields.
+
+    No value here authorizes effects or supplies facts/tool inputs. Meaning of
+    unknown/free-text claims remains the EXISTING independent response/event review.
+    """
+    value, index = t1_handoff_value(events, session)
+    extensions = {k: v for k, v in value.items() if k not in T1_HANDOFF_FIELDS} if value else {}
+    text = events[index].get("part", {}).get("text") if value is not None else None
+    return {"parse_compliance": "bounded" if value is not None else "failed",
+            "legacy_error": "unexpected_handoff_fields" if extensions else None,
+            "untrusted_extensions": extensions, "extension_keys": list(extensions),
+            "raw_handoff": text,
+            "raw_handoff_sha256": hashlib.sha256(text.encode()).hexdigest() if text else None,
+            "structured_no_effect_conflicts": t1_no_effect_conflicts(value),
+            "independent_response_event_review": "required"}
 
 
 def t1_handoff(events, session, fixture, provenance):
@@ -645,7 +708,8 @@ def t1_handoff(events, session, fixture, provenance):
 
     Ownership corroboration and every native gate are checked separately. Textual
     diagnostics (including contradictory prose) MUST still be reviewed independently.
-    Unknown structured claims fail closed rather than being silently ignored.
+    Unknown fields are quarantined by serialization diagnostics, never merged
+    into trusted fields. Their meaning cannot receive automatic approval.
     """
     value, index = t1_handoff_value(events, session)
     if value is None:
@@ -654,8 +718,7 @@ def t1_handoff(events, session, fixture, provenance):
                  "evidence_scope": "controlled_fixture",
                  "proposal_sha": provenance["proposal_sha"], "review_sha": provenance["review_sha"],
                  "last_verified_gate": "proposal_review_validated", "apply_executed": False}
-    diagnostics = {"status", "blockers", "limitations", "ownership_condition", "next_action"}
-    return (set(value) <= set(expected) | diagnostics and
+    return (not t1_no_effect_conflicts(value) and
              all(value.get(key) == item for key, item in expected.items()) and
              value.get("next_action") in ("apply-issue", "reconcile-ownership") and
              value.get("status") in ("RECOVERED", "BLOCKED") and
@@ -751,10 +814,12 @@ def t1_phase_evaluation(events, session, fixture, provenance, ownership, *, fact
                             condition == ownership and condition.get("write_authorized") is False)
     proved = bool(semantic and sources and condition_proved)
     return {"read_only_facts_proven": proved,
+            "source_facts_proven": sources, "semantic_fields_proven": semantic,
             "read_only_acceptance": "pending_independent_review" if proved else "blocked",
             "ownership_condition_proven": condition_proved,
             "write_authorized": False,
             "serialization_compliance": t1_serialization(events, session, fixture, provenance),
+            "serialization_diagnostics": t1_serialization_diagnostics(events, session),
             "independent_response_event_review": "required",
             "scenario_pass": False, "facts": facts}
 
