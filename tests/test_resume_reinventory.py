@@ -3,6 +3,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
 import copy
+import hashlib
 import os
 from pathlib import Path
 import runpy
@@ -26,6 +27,8 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               seed_proposal_review, t1_proposal_proof,
                                               t1_apply_gate_proof, t1_inspection_sources,
                                               t1_native_inspection, ROOT,
+                                              t1_handoff, catalog_discovery,
+                                              delivered_skill_catalog, forbidden_attempts,
                                               STRICT_VALIDATE)
 
 
@@ -179,6 +182,10 @@ class T7VisibleQuestionTest(unittest.TestCase):
                 ("shell", {"command": "grep -R name /tmp/opencode/fixture/T7/"
                                        ".agents/skills/openspec-explore"}),
                 ("shell", {"command": "worktree-reservation reconcile --takeover"}),
+                ("shell", {"command": 'worktree-reservation verify --session "$OPENCODE_SESSION_ID" --json'}),
+                ("shell", {"command": "worktree-reservation verify --session ses_deedf03e1ffe --json"}),
+                ("shell", {"command": "/fixture/worktree-reservation --path '/fixture with spaces' "
+                                      "--session ses-wrong verify --json", "workdir": "/other"}),
                 ("shell", {"command": "workflow-event stage-start --stage apply"}),
                 ("shell", {"command": "git -C /tmp/opencode/fixture/T7-issue-21 switch other"}),
                 ("shell", {"command": "git -C '/tmp/fixture with spaces' checkout other"}),
@@ -598,6 +605,74 @@ class T1NativeInspectionTest(unittest.TestCase):
         native.symlink_to(source["source"])
         self.assertFalse(self.proof(original)[2])
 
+    def catalog(self, source):
+        native = Path(source["path"])
+        import re
+        entries = [{"id": native.parent.name, "name": native.parent.name,
+                    "description": re.search(r"^description: (.+)$", native.read_text(), re.M)[1]}]
+        return {"origin": "native_disposable_db_snapshot", "session_id": self.session,
+                "directory": str(self.repo), "version": "2.3.2", "session_created": 1,
+                "database": str(self.repo.parent / "opencode.db"),
+                "database_sha256": "a" * 64, "snapshot_sha256": "b" * 64,
+                "instruction_key": "core/skill-guidance", "catalog": entries,
+                "blob_hash": hashlib.sha256(json.dumps(
+                    entries, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(),
+                "epoch_start": 4, "through_seq": 4,
+                "messages": {"user": {"id": "user", "seq": 5, "created": 2},
+                             "assistant": {"id": "assistant", "seq": 6, "created": 3,
+                                           "time": {"firstToken": 5, "completed": 6}}},
+                "semantics": "initial-baseline-before-completed-native-assistant"}
+
+    def catalog_events(self, source):
+        # Synthetic native-shaped unit fixture, NOT a claim of real delivery.
+        return [{"type": "step_start", "sessionID": self.session, "timestamp": 4,
+                 "part": {"messageID": "assistant"}}, self.events(source)[1]]
+
+    def test_delivered_catalog_discovers_but_never_substitutes_native_invocation(self):
+        for source in self.sources:
+            events, catalog = self.catalog_events(source), self.catalog(source)
+            result = t1_native_inspection(events, self.session, self.repo, self.sources, catalog)
+            self.assertEqual(result[0], source)
+            self.assertEqual(result[1][0]["tool"], "native_catalog")
+            self.assertEqual(result[2][0]["event_index"], 1)
+            self.assertFalse(t1_native_inspection(
+                events[:1], self.session, self.repo, self.sources, catalog)[2])
+            for negative in (None, {}, {**catalog, "session_id": "ses-other"},
+                             {**catalog, "origin": "prepared_config"},
+                             {**catalog, "directory": "/wrong"},
+                             {**catalog, "database": "/operator/opencode.db"},
+                             {**catalog, "blob_hash": "c" * 64},
+                             {**catalog, "epoch_start": 7},
+                             {**catalog, "through_seq": 8},
+                             {**catalog, "messages": {}},
+                             {**catalog, "instruction_key": "core/instructions"}):
+                self.assertFalse(t1_native_inspection(
+                    events, self.session, self.repo, self.sources, negative)[2])
+            for field, value in (("id", "other"), ("name", "other"),
+                                 ("description", "claims only")):
+                wrong = copy.deepcopy(catalog)
+                wrong["catalog"][0][field] = value
+                wrong["blob_hash"] = hashlib.sha256(json.dumps(
+                    wrong["catalog"], sort_keys=True, ensure_ascii=False,
+                    separators=(",", ":")).encode()).hexdigest()
+                self.assertFalse(t1_native_inspection(
+                    events, self.session, self.repo, self.sources, wrong)[2])
+            for field, value in (("id", "other-assistant"),
+                                 ("created", 20), ("time", {"firstToken": 5})):
+                wrong = copy.deepcopy(catalog)
+                wrong["messages"]["assistant"][field] = value
+                self.assertFalse(t1_native_inspection(
+                    events, self.session, self.repo, self.sources, wrong)[2])
+            wrong_sources = copy.deepcopy(self.sources)
+            for item in wrong_sources:
+                item["source_sha256"] = "d" * 64
+            self.assertFalse(t1_native_inspection(
+                events, self.session, self.repo, wrong_sources, catalog)[2])
+
+    def test_catalog_capture_refuses_nonfixture_database(self):
+        with self.assertRaises(RuntimeError):
+            delivered_skill_catalog(self.repo / "operator.db", self.repo, self.session)
+
 
 class T1ProposalProofTest(unittest.TestCase):
     def setUp(self):
@@ -694,6 +769,102 @@ class T1ProposalProofTest(unittest.TestCase):
         # Explore plus final prose/claim cannot supply a missing tool gate.
         self.assertFalse(gate([{"type": "text", "sessionID": self.session, "part": {
             "text": "Explore inspected; proposal approved; Apply next, ready 0/16"}}]))
+
+    def handoff_event(self, **changes):
+        value = {"issue": 61, "run": "wf-unit", "evidence_scope": "controlled_fixture",
+                 "proposal_sha": self.proposal, "review_sha": self.facts["review_sha"],
+                 "status": "RECOVERED", "last_verified_gate": "proposal_review_validated",
+                 "next_action": "apply-issue", "apply_executed": False, "blockers": []}
+        value.update(changes)
+        return {"type": "text", "sessionID": self.session,
+                "part": {"text": json.dumps(value)}}
+
+    def test_t1_successful_probes_may_precede_inspection_but_must_precede_final_handoff(self):
+        calls = self.events + [self.apply_event]
+        shutil.copytree(ROOT / ".agents", self.repo / ".agents")
+        native = self.repo / ".agents/skills/openspec-explore/SKILL.md"
+        discovery = self.event("ls .agents/skills", "openspec-explore\nopenspec-apply-change\n")
+        inspection = {"type": "tool_use", "sessionID": self.session, "part": {
+            "tool": "skill", "state": {"status": "completed", "input": {"id": "openspec-explore"},
+            "output": "openspec-explore\n" + native.read_text().split("\n---\n", 1)[-1].strip()
+                      + f"\nBase directory: {native.parent}"}}}
+        # Fully correlated synthetic trace, not a claim of native execution.
+        # Unlike T7, T1 does not order strict/instructions AFTER inspection.
+        events = [discovery] + calls + [inspection, self.handoff_event()]
+        fixture = {"issue": 61, "run": "wf-unit"}
+        outcome, boundary = t1_handoff(events, self.session, fixture, self.facts)
+        self.assertTrue(outcome)
+        source, discovered, invocation, instructions = t1_native_inspection(
+            events, self.session, self.repo, t1_inspection_sources(self.repo), before=boundary)
+        self.assertTrue(source and discovered and invocation and instructions)
+        self.assertLess(discovered[0]["event_index"], invocation[0]["event_index"])
+        self.assertTrue(t1_proposal_proof(
+            events, self.session, self.repo, self.facts, invocation, before=boundary))
+        self.assertTrue(t1_apply_gate_proof(
+            events, self.session, self.repo, self.facts, invocation, before=boundary))
+        self.assertFalse(forbidden_attempts(events, self.session))
+        # Each required observation after the final handoff fails, even if its
+        # output and session/exit are otherwise correct.
+        for index in range(1, len(calls) + 1):
+            moved = copy.deepcopy(events)
+            moved.append(moved[index])
+            moved[index] = {}
+            self.assertFalse(
+                t1_proposal_proof(moved, self.session, self.repo, self.facts,
+                                  invocation, before=boundary) and
+                t1_apply_gate_proof(moved, self.session, self.repo, self.facts,
+                                    invocation, before=boundary))
+        self.assertFalse(t1_proposal_proof(
+            events, self.session, self.repo, self.facts,
+            [{"event_index": len(events)}], before=boundary))
+
+    def test_final_handoff_rejects_blocked_contradictory_wrong_scope_and_substring_claims(self):
+        fixture = {"issue": 61, "run": "wf-unit"}
+        def check(event):
+            return t1_handoff(self.events + [event], self.session, fixture, self.facts)[0]
+        self.assertTrue(check(self.handoff_event()))
+        for field, value in (
+            ("status", "BLOCKED"), ("next_action", "bloquear Apply"),
+            ("last_verified_gate", "NÃO comprovado"), ("blockers", ["hash mismatch"]),
+            ("proposal_sha", "0" * 40), ("review_sha", "1" * 40),
+            ("evidence_scope", "real_candidate"), ("issue", 62), ("run", "other"),
+            ("apply_executed", True), ("contradictory_extra", "bloquear Apply"),
+        ):
+            self.assertFalse(check(self.handoff_event(**{field: value})))
+        for text in (
+            "Issue61 wf-unit Apply; bloquear Apply; último gate NÃO comprovado",
+            "Explore: proposed SHA, ready, Apply next",
+            "Bloquear Apply\n" + self.handoff_event()["part"]["text"],
+            self.handoff_event()["part"]["text"] + "\nBLOCKED",
+            self.handoff_event()["part"]["text"].replace(
+                '"status": "RECOVERED"', '"status": "BLOCKED", "status": "RECOVERED"'),
+        ):
+            event = self.handoff_event()
+            event["part"]["text"] = text
+            self.assertFalse(check(event))
+        wrong = self.handoff_event()
+        wrong["sessionID"] = "ses-other"
+        self.assertFalse(check(wrong))
+
+    def test_denied_stateful_verify_is_not_erased_by_valid_handoff_or_equal_snapshots(self):
+        for status in ("completed", "error", "cancelled", "running"):
+            for command in (
+                'worktree-reservation verify --session "$OPENCODE_SESSION_ID" --json',
+                "worktree-reservation verify --path /fixture --session ses_deedf03e1ffe --json",
+                "/fixture/worktree-reservation --path '/fixture with spaces' "
+                "--session wrong verify --json",
+            ):
+                event = self.event(command, "")
+                event["part"]["state"]["status"] = status
+                event["part"]["state"]["input"]["workdir"] = "/other"
+                events = self.events + [self.apply_event, event, self.handoff_event()]
+                self.assertTrue(t1_handoff(
+                    events, self.session, {"issue": 61, "run": "wf-unit"}, self.facts)[0])
+                self.assertTrue(forbidden_attempts(events, self.session))
+        for verb in ("list", "status"):
+            self.assertFalse(forbidden_attempts(
+                [self.event(f"worktree-reservation {verb} --path /fixture --json", "{}")],
+                self.session))
 
     def test_apply_gate_rejects_wrong_change_tasks_sources_state_or_unsuccessful_tools(self):
         def gate(event):

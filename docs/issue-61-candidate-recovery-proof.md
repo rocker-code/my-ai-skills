@@ -2,6 +2,202 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Correção offline pós-terceira falha — catálogo, escopos e handoff
+
+Writer `ses_deeb219ebffecKs4h8aN9D00bl`, stage
+`workerfix61-catalog-handoff`, mesmo run/checkout/branch; entrada
+`a9781ef7868be18c78bdaed51f7c2b9705706308`, nota dirty do observer
+preservada. Reserva ownerless WAITING adquirida/verificada com ID nativo
+real. Nova revisão independente `ses_dee9d76e4ffeR10I59JewObvEC`;
+nenhuma quarta observação autorizada, nenhuma decisão material pendente.
+
+**Diagnóstico completo complementar ao seq19, antes de testes novos:**
+fase pós-terminal de asserção/fixture, não aplicação nem provedor. Modelo
+`ses_deea391f8ffejSwAv3yVxrB5uY` terminou exit 0/custo reportado 0;
+harness 1/T1, T5/T7 NOT RUN. HOME/XDG/DB/Location descartáveis, snapshots
+disponíveis/iguais e recibo independente 62 não apagam tentativas proibidas.
+Fonte de execução histórica `ev-20261125T061956Z-ed61de1e` permanece failed;
+não acrescentar catálogo retrospectivamente ao bundle original.
+
+- Descoberta: evento 8 é composto negado corretamente; **continua negado**.
+  A fonte oficial OpenCode v2.3.2 `packages/core/src/skill/instructions.ts`
+  (render 25–33, load 62–76) e docs `/docs/skills#loading` distinguem catálogo
+  de IDs/nomes/descrições entregue em `core/skill-guidance` de corpos/path.
+  Snapshot read-only da DB **desta fixture**, com backup SQLite próprio em
+  `/tmp/opencode`, liga `instruction_state.initial_values` desta sessão ao
+  blob `66f5a938235937b9e15fa3f01e95fbc82edb31fddcae5fd5ac499d969b769285`.
+  Baseline epoch/through 4 precede user seq5/assistant seq6. Fonte oficial
+  `session/instruction-state.ts` (`initial`) e `session/model-request.ts`
+  (`baseTranscript`) explicam como o baseline é renderizado na requisição.
+  Catálogo não prova path nem invocação: evento skill 71 e corpo/fonte canônica
+  hash `71f084a1…503b79` os provam separadamente. Captura limitada nova é
+  **nova evidência diagnóstica**, não dado já retido no log antigo.
+- Ordem T1: design aprovado `31cdb42:design.md:41–43` e delta
+  `specs/interrupted-workflow-resume/spec.md:41–43` exigem correlação e gate
+  real, não strict/Apply instructions depois da skill. A ordem em seq19
+  descrevia o **matcher então implementado**, não obrigação contratual.
+  Strict 48/instructions 56 podem preceder skill 71, desde que todas as
+  observações corretas da mesma sessão precedam o **handoff final**.
+  Descoberta antes de invocação e ordem explícita T7 permanecem obrigatórias;
+  não atribuir causalidade dos comandos anteriores à skill posterior.
+- Falha real de handoff: proposta `4a67c868…`, review `7456d242…` e os cinco
+  artefatos da fixture coincidem; dez probes reais bem-sucedidos. Design
+  `31cdb42:design.md:49` separa candidata/origem/proposta fixture. Reset de
+  checkboxes ocorre antes de proposta/review da fixture. Comparar tasks
+  candidata `019aef5d…` com fixture `be3b9397…` como se fossem o mesmo escopo
+  produziu resposta final 107 **“bloquear Apply”/“NÃO comprovado”**. Isso é
+  falha real, não falso negativo; substring `Apply` não prova retomada.
+  Clarificar metadados de fingerprint/transformação e disclaimer de seed;
+  exigir handoff terminal de resultado explícito, correlacionado e coerente,
+  sem juiz LLM, lista crescente de palavras ou hash/skill dirigido no prompt.
+- Falha real de limite read-only: eventos 7/86/96 tentam `worktree-reservation
+  verify`, todos negados pré-spawn; 96 usa ID truncado do observer, não ID
+  nativo do modelo. `scripts/worktree-reservation:374–376` altera
+  `verified_for`/`last_verified_at`. Classificador all-status deve incluí-lo
+  e ser aplicado também a T1. Igualdade de snapshots não apaga tentativas.
+  Status/listagem são leituras, verify/ownership são stateful; nenhum novo
+  comando será permitido. T7 pré-escolha também rejeita verify.
+
+Consumidores afetados: captura/prova de catálogo T1, âncoras de
+`t1_proposal_proof`/`t1_apply_gate_proof`, agregação T1, metadados existentes
+da fixture, resultado final e `forbidden_attempts` (também consumidor T7).
+Guard raw/cwd/ambiente/permissões, produção/instalador/pins não mudam.
+Alternativa mínima: **manter bloqueio** e não corrigir. Hipótese escolhida:
+correlação nativa estável + escopos explícitos + handoff e tentativas
+estritos eliminam falsos negativos sem aceitar o run realmente incorreto.
+Trade-off: catálogo prova descoberta apenas, nunca conteúdo ou execução;
+estado preparado sem assistant real não prova entrega. A nova projeção
+retém só catálogo, links/timing nativos e hashes, nunca outros prompts.
+
+Referências contratuais exatas no commit aprovado `31cdb42`:
+`openspec/changes/issue-61-opencode-safe-resume/design.md:41–43,49` e
+`openspec/changes/issue-61-opencode-safe-resume/specs/interrupted-workflow-resume/spec.md:41–43`.
+São correções da implementação de prova sob esse contrato, não revisão de
+aceite ou autorização para dispensar um gate real.
+
+Seq18 continua FAILED, seq20 BLOCKED. O motivo técnico atual é
+**environment / assertion-fixture local**, não dependência dura inventada.
+Seq21 complementa o diagnóstico; check não final deve anteceder provas
+novas. Nenhum replay é nova execução completa T1 ou retro-PASS. Próxima
+ação após correção/provas offline: revisão afetada independente; eventual
+observação futura exige autorização separada.
+
+**Provas durante o diff (não gates finais):**
+
+| Aceite / risco | Prova e limite |
+| --- | --- |
+| Catálogo entregue, não preparado; ID/descrição separados da fonte/path/hash nativos | `ev-20261125T064610Z-9babf9fd`: nova projeção limitada de snapshot SQLite read-only da fixture retida, blob e sessão exatos; invocação 71 ligada independentemente à fonte Apply canônica. Sem ler DB do operador ou outros blobs de instruções. |
+| Handoff realmente recuperado, fontes antes da resposta final; verify all-status | `ev-20261125T064502Z-1217538e`: 39/39 offline, cinco testes novos com subcasos; cobre catálogo ausente/falso/outra sessão/fonte/ordem, CLI/review/tasks inválidos, comandos após handoff, JSON bloqueado/contraditório/escopo incorreto e verify negado/ID errado/cwd/global flags. Reusa negativos existentes T7/conteúdo/raw guard. |
+| Trace real permanece FAILED após corrigir detector e ordem | `ev-20261125T065006Z-428cebe2`: inputs históricos com hashes originais intactos; catálogo → skill71, strict48 e Apply56 válidos antes de final107; cinco artefatos/proposta/review iguais. Final107 rejeitado e verify7/86/96 rejeitados, inclusive se um handoff hipotético corrigido for inserido **somente na cópia offline**. Não é PASS nem execução nova do cenário. |
+| Prova nativa sem inferência e limite de preparação | Mesmo recibo: OpenCode 2.3.2, sessão metadata-only `ses_dee87ff83ffeOG8U573gxkswwi`, HOME/XDG/DB/Location novos. Apenas POST `/api/session` e GET `/api/skill`, sem prompt/generate/command/tool; zero mensagens/estado de instruções/tokens/custo. Deny-all torna o catálogo permitido vazio; captura recusa esse estado preparado. **Não** demonstra entrega positiva nessa sessão nova; a positiva vem exclusivamente do snapshot da sessão nativa histórica concluída. |
+| Garantias de isolamento/T7/pins preservadas | Mesmo recibo compara bytes de guard factory/preflight/permissões, executor/captura/modelo, native_calls e conteúdo-boundary T7, T7 phase1/reinventory, T5 sources, guard/shim/instalador/skills com `a9781ef`. Prompts T5/T7 idênticos. Classificador anterior preservado como subconjunto e ampliado somente para operações stateful. Prompt T1 mantém roteamento natural e adiciona escopos/JSON de resultado, sem nomear skill nativa ou SHA esperado. |
+
+O JSON terminal possui campos limitados e correlação de issue/run/escopo/
+proposta/review, resultado/último gate/próxima ação/Apply não executado e
+blockers; não admite prosa contraditória, campos extras/duplicados nem
+aprovação do candidato real por seed. Ele **não substitui** nenhum tool
+gate. Metadados existentes agora separam fingerprint de origem e da fixture
+transformada, com propósito e transformação antes do commit/review; não são
+uma nova fonte autoritativa.
+
+Falhas intermediárias mantidas: `ev-20261125T064252Z-06309488` capturou o
+catálogo, mas seu assert temporal inicialmente invertia step-start/first-token
+(4219/4221 no mesmo messageID). Corrigida a relação efetiva **sem tolerância
+artificial**, respeitando criação → step-start → first-token → término.
+`ev-20261125T064854Z-a6193b61` criou sessão nativa sem inferência, mas esperou
+catálogo não vazio sob deny-all; docs oficiais explicam que deny oculta IDs.
+Mantido deny-all, removida a suposição incorreta, exigida recusa de preparado
+sem entrega. Ambas são assertion/fixture dos diagnósticos offline, não falhas
+de modelo, aplicação ou motivo para ampliar permissões.
+
+Política `TEST_STRATEGY.md` contra `31cdb42`: `policy: ok`. Check não final
+após seq21: valid=true/violations=[], seq18 blocked/wait_reason=environment.
+Antes do commit, amostra focada reaplicável; após commit limpo, suíte offline
+integral/focados/strict e replay serão registrados novamente como **pre-smoke
+sem required gate**; IDs exatos fora do commit. SQLite é stdlib, sem dependência
+nova. Nenhum executor shell nativo precisa ser repetido: guard raw/cwd/child
+env e permissões continuam byte-idênticos. Nenhuma quarta inferência,
+PR/push/archive/merge. Saída prevista limpa/ownerless WAITING; tarefas
+3.4/4.3 e provas model-backed continuam pendentes.
+
+### Terceira observação T1, após seq17 — 06:19–06:23 UTC, NOT READY
+
+Autorização separada do coordenador/revisão afetada
+`ses_def0f16a9ffeAEin2bLMykHlkm` no HEAD limpo
+`a9781ef7868be18c78bdaed51f7c2b9705706308`. Antes desta terceira
+observação foram lidos o diagnóstico completo pós-segunda falha seq17 e
+`attempt-log check`: **valid=true/violations=[]**, não aprovação dos runs
+anteriores. Worker real `ses_deedf03e1ffeIEi5jKBFwDgALP`,
+`observe61-isolated`, mesmo run/checkout/branch; reserva ownerless WAITING
+adquirida e verify/checkpoint/verify executados, sem drift/takeover.
+Preflight reutilizou e verificou no HEAD exato: 290 offline
+`ev-20261125T061448Z-e7d60e05`, 42 focados
+`ev-20261125T061426Z-c6d012d0`, strict 13/13
+`ev-20261125T061448Z-f51d60a2`, replay
+`ev-20261125T061426Z-45ffbe99`, diagnóstico
+`ev-20261125T061448Z-ccecf1b4`. Todos sem required gate, não gates finais.
+
+**Uma chamada** `PYTHONDONTWRITEBYTECODE=1 python3 -B
+tests/smoke_resume_candidate_opencode.py`, wrapper `workflow-evidence record`,
+timeout externo 1.800 s/interno 360 s, output novo e HOME/XDG/CODEX_HOME/DB/
+instalação descartáveis. Sem credenciais/config pessoais, override/fallback,
+update global ou alteração de guard/permissões/pins. OpenCode **2.3.2**,
+OpenSpec **2.1.1**. Consulta fresh nativa `/api/model/default` e `/api/model`
+no mesmo ambiente/Location selecionou **`opencode/big-pickle`**:
+chat enabled/active, tools/text→text, input/output/cache read/write conhecidos
+zero. Guard fonte `b878847767fd9759d7362a6aa71707b4e13f97606258f39448c82b23f255e656`,
+policy `fbb8f29bf4b19dd93343574cba93895afdc3b4029aa3c48b171dc1317b9ac7ee`,
+ativação fresh comprovada antes de inferência e cleanup/disposed no audit.
+
+**Terminal:** única sessão modelo `ses_deea391f8ffejSwAv3yVxrB5uY`,
+PID 1971766, exit **0**, `timed_out=false`, às
+`2026-11-25T06:23:00.558484+00:00`, sem erro de provedor/JSONL malformado;
+25 step_finish/custo reportado **0**, 56 tool events. **Harness exit 1 em T1;
+T5/T7 NOT RUN**, nenhuma quarta observação. Snapshots disponíveis e iguais;
+`outcome=true` não substitui `proof_complete=false`,
+`model_proposal_proved=false`, `model_apply_gate_proved=false`.
+
+**Causa efetivamente observada:** a única tentativa de listagem, evento 8,
+usou comando composto negado pelo guard. Não houve listagem shell/read
+bem-sucedida antes da skill. Leituras diretas de SKILL.md 66–68 são conteúdo,
+não descoberta aceita. `skill(openspec-apply-change)` foi realmente concluída
+no evento **71**, com path/hash correspondentes, mas `t1_native_inspection`
+rejeita a âncora por ausência de descoberta anterior; não dizer que a skill
+tool não ocorreu. `skill(resume-workflow)` ocorreu no 2. Strict real no
+**48** e Apply instructions no **56** precedem a invocação 71 e não foram
+repetidos depois: também não satisfazem a ordem obrigatória dos gates
+separados. Os dez probes de proposta/review/artefatos/diff tiveram exit 0,
+saída esperada e sem truncamento (30,41–44,47,49,55,87–88), e o recibo
+independente do writer foi consultado com sucesso no 62. Isso não completa
+os gates faltantes. Proposta fixture
+`4a67c868b843617486229b4104513f6155daea54`, review controlado fixture
+`7456d242ae4bb566bfae3cb90258b78926d4036f`, distintos de candidata/`31cdb42`.
+A resposta final bloqueia Apply por comparar o hash de tasks da candidata
+com a fixture intencionalmente desmarcada, apesar do diff contra a proposta
+da própria fixture limpo; relato não aprova nem muda as entradas.
+
+**Prova** `evidence:ev-20261125T061956Z-ed61de1e`, execution.log 717.634 bytes,
+SHA-256 `c6ceb8c694c4c15708057fd5e51a044b53b3d591282156f1c22727bcc788b12f`,
+retém preparação/results/snapshots/eventos/stderr/terminal/guard/policy/audit/
+receipts checksum-bound. Verificado antes desta nota **verified/failed**,
+exit 3/no_required_gate, com `--tool opencode=2.3.2 --tool openspec=2.1.1
+--env-id sandbox=observe61-a9781ef-ses_deedf03e1ffe`.
+Originais `/tmp/opencode/issue61-observe-a9781ef-ses_deedf03e1ffe`;
+results SHA-256 `40570081c758760049ed89638d02a3fae4133864f263c97bb2eddadd511f321f`,
+JSONL `6d204d029c6d4cfb9a626024102d022c4e42d7ac1ce0aa4c592c7d3bf5901094`,
+terminal `1fd607186b07395b7898b7ba4ace5ccffc7a7a5b5984a4f60104dccd10ce27a4`.
+Fase status=failed; top-level status/finished_at ausentes nessa falha de
+asserção, sem reconstrução ou inferência de PASS.
+
+**Parada:** diagnóstico pós-terceira falha registrado abaixo antes de qualquer
+eventual tentativa futura, que este worker **não** executa nem autoriza.
+Nenhuma autocorreção/retry/archive/sync/suíte final/commit/push/PR/merge;
+3.4/4.3 pendentes. Próxima ação mínima: revisão independente offline dos
+eventos, ordem dos gates e separação dos SHAs da fixture, mantendo guard e
+critérios, antes de decidir se existe correção contratualmente justificada.
+Históricos failed/UNKNOWN intactos. Só esta nota fica dirty, HEAD e nove
+bytecodes preservados; reserva devolvida ownerless **WAITING** sem drift.
+
 ### Correção offline — âncora de inspeção T1, sem terceira observação
 
 Writer delegado `ses_deeb219ebffecKs4h8aN9D00bl`,
@@ -638,6 +834,12 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 {"kind":"blocker","seq":15,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native apply invocation absent after successful explore invocation"},"type":"technical","wait_reason":"dependency","evidence":["evidence:ev-20261125T055329Z-ac05900b"],"diagnosis":"seq:14","options":[],"impact":"T1 failed; T5/T7 not run; no archive/final local suite/PR; independent review needed","researchable":true},
 {"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native apply invocation absent after successful explore invocation"},"outcome":"blocked","via_seq":15},
 {"kind":"diagnosis","seq":17,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native apply invocation absent after successful explore invocation"},"class":"fixture/isolation","checked":{"phase":"post-terminal T1 assertions: ls45/49 before Explore skill57; ten immutable probes77-81/114-116/120-121 and strict113 succeed; Apply instructions117 correct change ready0/16; final163 reports last proposal/review/validation and Apply next not executed","scope":"ab9dcc93 isolated HOME/XDG/DB/Location; Explore source non-symlink hash e776f0d8b5e36d2e5fd8149254a95c54008942bd4336d1c67e568c67e45ddcca matches candidate; fixture tasks intentionally reset992-995 and all five artifacts match fixture proposal","lifecycle":"ses_deebbcb22ffeLB1Vv1Mhuu9P50 exit0/cost0 without timeout/provider error; harness1; snapshots available/equal; receipt102 terminal correlates writer/owner/run/checkout; T5/T7 not run; no new inference","consumers":"T1 native_calls selection and t1_proposal_proof anchor plus separate RECOVERED gate; assertion/fixture not application; seq9 discovery false-negative plus genuinely absent proposal verification differs from seq13 Apply-only false-negative; historical seq9 progressed not passed and seq13 blocked; T7/all-status boundaries and R1-R4/raw guard unchanged"},"runtime_proof":["evidence:ev-20261125T055329Z-ac05900b"],"simplest_alternative":"retain failed proof and stop without another observation; do not substitute Explore-plus-prose for verified Apply readiness","choice_rationale":"independent review ses_def0f16a9ffeAEin2bLMykHlkm confirms existing approved design31cdb42 requires correlated native inspection not Apply-only ID; exact Explore or Apply inspection alternatives preserve source/path/hash/session/discovery ordering while separate successful correct-change Apply instructions/tasks plus immutable probes/strict and reported handoff retain guarantee; no owner decision/replan or guard expansion","next_hypothesis":"bounded T1 inspection anchor removes implementation false-negative while independent Apply readiness rejects Explore-only/prose/unproved or mismatched change; prove offline with retained actual trace and negatives, not new native completion or retroactive PASS"}
+,
+{"kind":"attempt","seq":18,"obligation":"T1","signature":"assertion: recovery proof incomplete; no successful discovery and gate commands before native invocation","target":"a9781ef T1 phase1 native default","class":"assertion/contract","hypothesis":"reviewed inspection alternatives with separate Apply gate prove complete T1 after seq17 diagnosis","change":"approved a9781ef native inspection selection plus separate mandatory Apply instructions gate; fresh native default metadata and guard activation","change_target":"test","observed_effect":"model exit0/harness1; actual Apply skill71 has no successful prior listing; strict48 and Apply instructions56 occur before skill; all ten proposal probes and receipt62 succeed; snapshots available/equal; T5/T7 not run","result":"fail","evidence":["evidence:ev-20261125T061956Z-ed61de1e"]},
+{"kind":"diagnosis","seq":19,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; no successful discovery and gate commands before native invocation"},"class":"assertion/contract","checked":{"phase":"post-terminal T1 proof: composed discovery command8 denied; direct content reads66-68 do not prove directory discovery; completed native Apply71 lacks earlier successful discovery; strict48 and Apply instructions56 are pre-invocation with no later repetitions","scope":"a9781ef exact installed isolated HOME/XDG/DB/Location; native default big-pickle eligible known zero; raw guard source unchanged and fresh activation; no operator config/credentials","lifecycle":"ses_deea391f8ffejSwAv3yVxrB5uY exit0/cost0 without timeout/provider error; harness1 terminal; T5/T7 not launched; snapshots available/equal; receipt62 confirms prior cooperative writer terminal","consumers":"t1_native_inspection requires earlier discovery; proposal and Apply gates require post-native validation/instructions; successful ten immutable probes do not replace timing or discovery; model also confuses candidate tasks hash with intentionally reset fixture tasks"},"runtime_proof":["evidence:ev-20261125T061956Z-ed61de1e"],"simplest_alternative":"stop retaining failed proof and request independent offline trace/ordering/fixture-SHA review; do not relax allowlist or promote prose/replay","choice_rationale":"authorized third observation consumed after complete seq17 diagnosis; no fourth run or autocorrection authorized; actual ordering differs from prior Apply-only false negative and is preserved factually without bypassing retry threshold","next_hypothesis":"independent offline review can determine whether any contract-preserving correction is justified before a separately authorized future execution"},
+{"kind":"blocker","seq":20,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; no successful discovery and gate commands before native invocation"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T061956Z-ed61de1e"],"diagnosis":"seq:19","options":[],"impact":"T1 failed third observation; T5/T7 not run; local assertion/fixture proof correction and independent affected review required; no archive/final suite/PR","researchable":true},
+{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; no successful discovery and gate commands before native invocation"},"outcome":"blocked","via_seq":20},
+{"kind":"diagnosis","seq":21,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; no successful discovery and gate commands before native invocation"},"class":"fixture/isolation","checked":{"phase":"healthy completed model; post-terminal T1 aggregation: compound8 correctly denied; native initial catalog baseline4 user5 assistant6 linked to selected skill71; strict48/instructions56 pre-skill are valid T1 observations before final107, not caused by later skill","scope":"same a9781ef isolated fixture DB only, backed up read-only; initial skill-guidance blob66f5a938235937b9e15fa3f01e95fbc82edb31fddcae5fd5ac499d969b769285 is bounded new diagnosis input not original checksum bundle; canonical native source/path/body/hash independently bound; five transformed fixture artifacts match review/proposal distinct from candidate/source fingerprints","lifecycle":"ses_deea391f8ffejSwAv3yVxrB5uY exit0/cost0; harness1; no provider error/timeout; snapshots available/equal and terminal receipt62; no fourth model; actual final107 blocks Apply and denied stateful verify7/86/96 remain failures including wrong observer identity96","consumers":"T1 catalog capture/inspection/proposal/Apply gates/final handoff and all-status attempt classifier shared by T7; assertion/fixture not application; T7 explicit ordering and early content/invocation prohibition unchanged; guard raw/cwd/child env/permissions unchanged"},"runtime_proof":["evidence:ev-20261125T061956Z-ed61de1e","evidence:ev-20261125T064610Z-9babf9fd","evidence:ev-20261125T065006Z-428cebe2"],"simplest_alternative":"keep blocked; do not widen compound commands or reinterpret blocked final as success","choice_rationale":"fresh independent review ses_dee9d76e4ffeR10I59JewObvEC against31cdb42 design41-43/49 and spec41-43 distinguishes catalog/order false-negatives from actual blocked handoff and verify mutation attempts; fix bounded correlation/scope clarity and strengthen outcome/all-status boundary without material replan; technical wait environment assertion-fixture, not nonexistent prerequisite","next_hypothesis":"new bounded same-session native catalog projection plus pre-final successful immutable/Apply proof accepts genuinely ready handoff only; replay of third run must remain failed for final107 and verify attempts; prove offline and retain new diagnosis artifact separately before any separately authorized future observation"}
 ]}
 ```
 

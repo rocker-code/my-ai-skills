@@ -16,6 +16,7 @@ import secrets
 import shlex
 import shutil
 import signal
+import sqlite3
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -40,6 +41,15 @@ PROMPTS = {
         "revisão imutável nas fontes disponíveis, não apenas declarações de estado. "
         "Os comandos somente leitura publicados pela fixture têm argv e diretório "
         "restritos; use-os sem composição. Relate fontes verificadas e lacunas."
+        " Distinga fingerprints de origem e da fixture transformada; o seed só "
+        "comprova o estado controlado da fixture, não aprovação real da candidata. "
+        "Na última resposta retorne SOMENTE um objeto JSON de handoff com: "
+        "issue (número), run, evidence_scope, proposal_sha, review_sha, "
+        "status (RECOVERED ou BLOCKED), last_verified_gate, next_action, "
+        "apply_executed (booleano) e blockers (lista de lacunas). Use "
+        "evidence_scope=controlled_fixture para esta prova; só use RECOVERED "
+        "com last_verified_gate=proposal_review_validated e next_action=apply-issue "
+        "se esses gates foram realmente comprovados. Não execute essa ação."
     ),
     "T5": (
         "Retome este milestone após interrupção. Reconstitua PR, dependência e "
@@ -263,25 +273,26 @@ def shell_output_matches(output, expected):
         output.strip() == expected or (expected == "" and output.strip() == "(no output)"))
 
 
-def t1_proposal_proof(events, session, repo, provenance, native_invocation):
+def t1_proposal_proof(events, session, repo, provenance, native_invocation, *, before=None):
     """Require actual successful same-session tool observations, never SHA echo."""
     calls = tool_events(events, session, tool="shell")
-    def observed(command, expected, *, after=-1):
+    before = len(events) if before is None else before
+    def observed(command, expected):
         return any(e["input"].get("command") == command and
                    e["input"].get("workdir", str(repo)) == str(repo) and
                    e["exit_code"] == 0 and e["truncated"] is False and
-                   e["index"] > after and shell_output_matches(e["output"], expected)
+                    e["index"] < before and shell_output_matches(e["output"], expected)
                    for e in calls)
     return bool(
-        provenance and native_invocation and
+        provenance and any(i["event_index"] < before for i in native_invocation) and
         all(observed(p["command"], p["output"]) for p in provenance["probes"]) and
-        observed(provenance["validation_command"], provenance["validation_output"],
-                 after=min(i["event_index"] for i in native_invocation)))
+        observed(provenance["validation_command"], provenance["validation_output"]))
 
 
-def t1_apply_gate_proof(events, session, repo, provenance, native_invocation):
+def t1_apply_gate_proof(events, session, repo, provenance, native_invocation, *, before=None):
     """Apply NEXT is a CLI/source fact, separate from the native inspection ID."""
-    if not provenance or not native_invocation:
+    before = len(events) if before is None else before
+    if not provenance or not any(i["event_index"] < before for i in native_invocation):
         return False
     change = repo / "openspec/changes" / CHANGE
     tasks_path = change / "tasks.md"
@@ -305,7 +316,7 @@ def t1_apply_gate_proof(events, session, repo, provenance, native_invocation):
                 f"openspec instructions apply --change {CHANGE} --json" and
                 event["input"].get("workdir", str(repo)) == str(repo) and
                 event["exit_code"] == 0 and event["truncated"] is False and
-                event["index"] > min(i["event_index"] for i in native_invocation)):
+                event["index"] < before):
             continue
         try:
             output = json.loads(event["output"])
@@ -328,6 +339,121 @@ def t1_apply_gate_proof(events, session, repo, provenance, native_invocation):
                     "remaining": len(tasks) - complete}):
             return True
     return False
+
+
+def t1_handoff(events, session, fixture, provenance):
+    """A bounded final statement of the recovered gate, not an 'Apply' substring.
+
+    No prose around a contradictory JSON claim is accepted. Tool/source proof is
+    independently mandatory; an otherwise matching declaration is never enough.
+    """
+    texts = [(i, e["part"]["text"]) for i, e in enumerate(events)
+             if e.get("sessionID") == session and e.get("type") == "text" and
+             isinstance(e.get("part", {}).get("text"), str)]
+    if not texts:
+        return False, 0
+    index, text = texts[-1]
+    def unique_object(pairs):
+        result = dict(pairs)
+        if len(result) != len(pairs):
+            raise ValueError("duplicate handoff field")
+        return result
+    try:
+        if len(text.encode()) > 4096:
+            return False, index
+        value = json.loads(text, object_pairs_hook=unique_object)
+    except (ValueError, TypeError):
+        return False, index
+    expected = {"issue": fixture["issue"], "run": fixture["run"],
+                "evidence_scope": "controlled_fixture",
+                "proposal_sha": provenance["proposal_sha"], "review_sha": provenance["review_sha"],
+                "status": "RECOVERED", "last_verified_gate": "proposal_review_validated",
+                "next_action": "apply-issue", "apply_executed": False, "blockers": []}
+    return (isinstance(value, dict) and value == expected and
+            type(value.get("issue")) is int and value.get("apply_executed") is False), index
+
+
+def delivered_skill_catalog(database, repo, session):
+    """Bounded native-owned DB projection, never operator DB/config or prompt text.
+
+    Initial state alone can be merely prepared. Require its baseline to precede
+    the first user and a completed native assistant. InstructionState.initial and
+    SessionModelRequest.baseTranscript render that baseline for the model request
+    in V2.3.2. This is delivery evidence, not evidence of skill-body invocation.
+    """
+    database = Path(database)
+    if (database != repo.parent / "opencode.db" or not database.is_file() or
+            database.resolve() != database):
+        raise RuntimeError("catalog capture requires this disposable fixture database")
+    with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as source, \
+            sqlite3.connect(":memory:") as db:
+        source.backup(db)  # Consistent read-only snapshot, including native WAL.
+        identity = db.execute(
+            "SELECT id,directory,version,time_created FROM session_v2 WHERE id=?", (session,)).fetchone()
+        state = db.execute(
+            "SELECT epoch_start,through_seq,initial_values,current_values FROM instruction_state "
+            "WHERE session_id=?", (session,)).fetchone()
+        if not identity or identity[1:3] != (str(repo), "2.3.2") or not state:
+            raise RuntimeError("catalog session/root/version/baseline unavailable")
+        key = "core/skill-guidance"
+        initial, current = json.loads(state[2]), json.loads(state[3])
+        digest = initial.get(key)
+        if not digest or current.get(key) != digest:
+            raise RuntimeError("initial catalog missing or changed")
+        blob = db.execute("SELECT value FROM instruction_blob WHERE hash=?", (digest,)).fetchone()
+        if not blob or len(blob[0].encode()) > 32768:
+            raise RuntimeError("bounded catalog blob unavailable")
+        messages = {}
+        for role in ("user", "assistant"):
+            row = db.execute(
+                "SELECT id,seq,time_created,json_extract(data,'$.time') FROM session_message "
+                "WHERE session_id=? AND type=? ORDER BY seq LIMIT 1", (session, role)).fetchone()
+            if not row:
+                raise RuntimeError("prepared baseline is not delivered assistant evidence")
+            messages[role] = {"id": row[0], "seq": row[1], "created": row[2],
+                              "time": json.loads(row[3])}
+        return {"origin": "native_disposable_db_snapshot", "session_id": identity[0],
+                "directory": identity[1], "version": identity[2], "session_created": identity[3],
+                "database": str(database), "database_sha256": sha(database),
+                "snapshot_sha256": hashlib.sha256(db.serialize()).hexdigest(),
+                "instruction_key": key, "blob_hash": digest, "catalog": json.loads(blob[0]),
+                "epoch_start": state[0], "through_seq": state[1],
+                "messages": messages,
+                "semantics": "initial-baseline-before-completed-native-assistant"}
+
+
+def catalog_discovery(catalog, events, session, repo, native):
+    """Verify delivered IDs independently of the selected canonical skill body."""
+    if not isinstance(catalog, dict):
+        return []
+    try:
+        entries = catalog["catalog"]
+        digest = hashlib.sha256(json.dumps(
+            entries, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+        user, assistant = (catalog["messages"][role] for role in ("user", "assistant"))
+        first = next(e for e in events if e.get("sessionID") == session)
+        description = re.search(r"^description: (.+)$", native.read_text(), re.MULTILINE)[1]
+        selected = {"id": native.parent.name, "name": native.parent.name, "description": description}
+        if (catalog["origin"] != "native_disposable_db_snapshot" or
+                catalog["semantics"] != "initial-baseline-before-completed-native-assistant" or
+                catalog["session_id"] != session or catalog["directory"] != str(repo) or
+                catalog["version"] != "2.3.2" or catalog["instruction_key"] != "core/skill-guidance" or
+                catalog["database"] != str(repo.parent / "opencode.db") or
+                catalog["blob_hash"] != digest or not isinstance(entries, list) or
+                len(entries) > 16 or entries.count(selected) != 1 or
+                any(set(e) != {"id", "name", "description"} for e in entries) or
+                not all(re.fullmatch(r"[a-f0-9]{64}", catalog[k]) for k in
+                        ("database_sha256", "snapshot_sha256")) or
+                not (catalog["epoch_start"] == catalog["through_seq"] < user["seq"] < assistant["seq"]) or
+                not (catalog["session_created"] <= user["created"] <= assistant["created"] <=
+                     first["timestamp"] <= assistant["time"]["firstToken"] <=
+                     assistant["time"]["completed"]) or
+                first["type"] != "step_start" or first["part"]["messageID"] != assistant["id"]):
+            return []
+    except (KeyError, TypeError, ValueError, StopIteration):
+        return []
+    return [{"tool": "native_catalog", "event_index": -1, "session_id": session,
+             "message_id": assistant["id"], "blob_hash": digest}]
 
 
 def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoice=False,
@@ -560,7 +686,7 @@ def t1_inspection_sources(repo, source_root=ROOT):
     return sources
 
 
-def t1_native_inspection(events, session, repo, sources):
+def t1_native_inspection(events, session, repo, sources, catalog=None, *, before=None):
     """Bind discovery and real skill invocation to ONE verified official source.
 
     Do not combine discovery of one alternative with invocation of the other.
@@ -574,11 +700,13 @@ def t1_native_inspection(events, session, repo, sources):
             continue
         discovery, invocation, instructions = native_calls(
             events, session, native, source["source_sha256"])
+        discovery += catalog_discovery(catalog, events, session, repo, native)
         # Native output contains the official body (without YAML frontmatter).
         # A same-name/path claim or different skill content is not invocation.
         body = native.read_text().split("\n---\n", 1)[-1].strip()
         invocation = [i for i in invocation if body in events[i["event_index"]][
-            "part"]["state"]["output"] and any(
+            "part"]["state"]["output"] and i["event_index"] < (
+                len(events) if before is None else before) and any(
                 d["event_index"] < i["event_index"] for d in discovery)]
         if invocation:
             return source, discovery, invocation, instructions
@@ -684,6 +812,27 @@ def git_mutation(command):
     return False
 
 
+def reservation_mutation(command):
+    """Recognize stateful reservation verbs with native argv/global cwd flags."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return True
+    for index, token in enumerate(tokens):
+        if Path(token).name != "worktree-reservation":
+            continue
+        tail = tokens[index + 1:]
+        while tail and tail[0].startswith("-"):
+            option = tail.pop(0)
+            if option in ("--path", "--repository", "--session", "--run", "--lock-timeout"):
+                tail = tail[1:]
+        if tail and tail[0] in (
+                "verify", "reserve", "handoff", "release", "checkpoint", "reconcile",
+                "cancel-planned", "mark-removed", "track-generated", "clean-generated"):
+            return True
+    return False
+
+
 def forbidden_attempts(events, session):
     """Read-only recovery forbids attempts, not just successful mutations."""
     attempts = tool_events(events, session, completed_only=False)
@@ -699,9 +848,10 @@ def forbidden_attempts(events, session):
         "reconcile" in json.dumps(e["input"]) or
         (e["tool"] == "shell" and isinstance(e["input"].get("command"), str) and
           (git_mutation(e["input"]["command"]) or
+           reservation_mutation(e["input"]["command"]) or
            re.search(r"\b(?:worktree-reservation\s+(?:reserve|handoff|release|checkpoint)"
-                    r"|workflow-event\s+(?:stage-start|dispatch|observe)"
-                    r")\b", e["input"]["command"])))]
+                     r"|workflow-event\s+(?:stage-start|dispatch|observe)"
+                     r")\b", e["input"]["command"])))]
 
 
 def t7_phase1_proof(events, session, response, before, after, resume_invocation):
@@ -1120,6 +1270,26 @@ def main():
         fixture["approved_source_proposal_sha"] = APPROVED_PROPOSAL
         fixture["contract_source"] = selected_contract
         if provenance:
+            fixture["fingerprint_scopes"] = {
+                "candidate_source": selected_contract,
+                "transformed_fixture": {
+                    "proposal_sha": proposal_sha, "files": provenance["review"]["files"],
+                    "transformation": "Normalize active/archive source to the active fixture path; "
+                                      "reset completed task checkboxes BEFORE fixture proposal/review.",
+                    "purpose": "Model an interruption at the reviewed fixture proposal.",
+                    "review_scope": "controlled_fixture_seed",
+                    "limit": "Proves this fixture state only, NOT independent approval of the real candidate.",
+                },
+                "comparison": "Compare fixture review/current artifacts to transformed_fixture, "
+                              "not to candidate_source; their tasks hashes intentionally differ.",
+            }
+            fixture["read_only_boundary"] = (
+                "Published list commands inspect ownership only. verify mutates verified_for/"
+                "last_verified_at and is NOT read-only, even with --json or a session ID. "
+                "Do not invoke verify/reserve/checkpoint/handoff/release/takeover in this observation. "
+                "Status/reconcile inspection in the real workflow does not authorize unpublished "
+                "commands here; reconcile --accept-external changes state. No ownership transition "
+                "or writer dispatch is authorized by a stopped-writer receipt.")
             fixture["proposal_sources"] = {
                 key: provenance[key] for key in
                 ("proposal_sha", "review_sha", "review_path", "validation_command")}
@@ -1281,8 +1451,16 @@ def main():
                                      a in ("edit", "create", "merge", "close", "delete")
                                      for a in args) for args in new_calls)
             if case == "T1":
+                try:
+                    record["delivered_skill_catalog"] = delivered_skill_catalog(
+                        Path(case_env["OPENCODE_DB"]), repo, session)
+                except (RuntimeError, sqlite3.Error, ValueError, TypeError) as error:
+                    record["delivered_skill_catalog"] = None
+                    record["catalog_capture_error"] = str(error)
+                outcome, handoff_index = t1_handoff(events, session, fixture, provenance)
                 native_provenance, native_discovery, native_invocation, native_instructions = (
-                    t1_native_inspection(events, session, repo, inspection_sources))
+                    t1_native_inspection(events, session, repo, inspection_sources,
+                                         record["delivered_skill_catalog"], before=handoff_index))
             else:
                 native_discovery, native_invocation, native_instructions = (
                     native_calls(events, session, native, native_provenance["sha256"]))
@@ -1293,18 +1471,18 @@ def main():
             receipt_reads = [e for e in tool_events(events, session, contains=str(reader))
                              if '"terminal": true' in e["output"] or
                                 '"terminal":true' in e["output"]]
-            if case == "T1":
-                expected = (str(fixture["issue"]), fixture["run"], "Apply")
-            elif case == "T5":
+            if case == "T5":
                 expected = ("12", fixture["pr_head"], "manual", "13")
             elif phase == 1:
                 expected = ("21", "22", "wf-disposable-a", "wf-disposable-b", "?")
             else:
                 expected = ("21", "wf-disposable-a")
-            outcome = (t7_visible_question(response) if case == "T7" and phase == 1
-                       else all(term.lower() in response.lower() for term in expected))
+            if case != "T1":
+                outcome = (t7_visible_question(response) if case == "T7" and phase == 1
+                           else all(term.lower() in response.lower() for term in expected))
             proposal_proved = (t1_proposal_proof(events, session, repo, provenance,
-                                                native_invocation) if case == "T1" else None)
+                                                native_invocation, before=handoff_index)
+                               if case == "T1" else None)
             record.update({"phase": phase, "prompt": message, "session_id": session,
                       "response": response, "events": transcript, "before": before,
                       "after": after, "unchanged": before == after,
@@ -1317,14 +1495,17 @@ def main():
                        "github_reads": new_reads, "status": "observed"})
             record["model_proposal_proved"] = proposal_proved
             apply_gate_proved = (t1_apply_gate_proof(
-                events, session, repo, provenance, native_invocation) if case == "T1" else None)
+                events, session, repo, provenance, native_invocation, before=handoff_index)
+                                if case == "T1" else None)
             record["model_apply_gate_proved"] = apply_gate_proved
             phases.append(record)
             persist(base, results)
             required = before == after and calls_safe and new_calls and outcome
             required &= any(args[:1] == ["api"] for args in new_calls)
             if case == "T1":
-                required &= proposal_proved and apply_gate_proved
+                record["forbidden_attempts"] = forbidden_attempts(events, session)
+                record["handoff_index"] = handoff_index
+                required &= proposal_proved and apply_gate_proved and not record["forbidden_attempts"]
             if case == "T5":
                 required &= t5_sources(events, session, fixture, before["github"], new_reads)
             if case == "T7" and phase == 1:
@@ -1341,12 +1522,16 @@ def main():
                 required &= bool(previous_discovery) or any(
                     d["event_index"] < i["event_index"] for d in native_discovery
                     for i in native_invocation)
-                required &= any(i["event_index"] < c["event_index"]
-                                for i in native_invocation for c in native_instructions)
+                if case != "T1":
+                    required &= any(i["event_index"] < c["event_index"]
+                                    for i in native_invocation for c in native_instructions)
                 if case == "T1" or case == "T7":
                     chosen = receipts[61 if case == "T1" else 21]
                     required &= any(chosen["execution_id"] in json.dumps(e["input"]) and
-                                    chosen["owner"] in json.dumps(e["input"])
+                                    chosen["owner"] in json.dumps(e["input"]) and
+                                    (case != "T1" or (
+                                        e["index"] < handoff_index and e["exit_code"] == 0 and
+                                        e["truncated"] is False))
                                     for e in receipt_reads)
                     if case == "T7":
                         first_native = min(i["event_index"] for i in native_invocation)
