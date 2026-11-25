@@ -17,6 +17,7 @@ import shlex
 import shutil
 import signal
 import sqlite3
+import stat
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -274,8 +275,119 @@ def shell_output_matches(output, expected):
         output.strip() == expected or (expected == "" and output.strip() == "(no output)"))
 
 
-def t1_proposal_proof(events, session, repo, provenance, native_invocation, *, before=None):
-    """Require actual successful same-session tool observations, never SHA echo."""
+def artifact_comparison_prerequisites(repo, env, provenance):
+    """Bounded fixture conditions for native Git diff, NOT universal diff proof.
+
+    Harness-owned Git/physical observations, captured before AND after the turn.
+    Model-observed commit/review/comparison/strict are independently required.
+    Use the existing native child Git environment; never inspect operator config.
+    """
+    env = {key: env[key] for key in (
+        "HOME", "PATH", "LANG", "TERM", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+        "XDG_CACHE_HOME", "XDG_STATE_HOME", "RESUME_GH_ROOT", "RESUME_RUNTIME_ROOT",
+        "OPENSPEC_TELEMETRY", "PYTHONDONTWRITEBYTECODE") if key in env}
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
+               GIT_OPTIONAL_LOCKS="0", GIT_PAGER="cat", PAGER="cat",
+               GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.fsmonitor",
+               GIT_CONFIG_VALUE_0="false")
+    result = {"verified": False, "repo": str(repo)}
+    try:
+        proposal, review = provenance["proposal_sha"], provenance["review_sha"]
+        scope = f"openspec/changes/{CHANGE}"
+        contract = {"files": provenance["review"]["files"]}
+        paths = sorted(contract["files"])
+        if "HOME" not in env or not all(
+                Path(env[key]).resolve().is_relative_to(repo.parent.resolve())
+                for key in ("HOME", "XDG_CONFIG_HOME") if key in env):
+            raise ValueError("private fixture Git HOME/config required")
+        if (not {scope + "/" + name for name in ("proposal.md", "design.md", "tasks.md")} <=
+                set(paths) or not all(p.startswith(scope + "/") for p in paths) or
+                not any(p.startswith(scope + "/specs/") and p.endswith("/spec.md") for p in paths)):
+            raise ValueError("required reviewed artifact set/scope mismatch")
+        review_output = git(repo, env, "show", f"{review}:{provenance['review_path']}")
+        if (json.loads(review_output) != provenance["review"] or
+                provenance["review"]["proposal_sha"] != proposal or
+                provenance["review"]["decision"] != "approved"):
+            raise ValueError("immutable review/proposal binding mismatch")
+        git(repo, env, "merge-base", "--is-ancestor", proposal, review)
+        git(repo, env, "merge-base", "--is-ancestor", review, "HEAD")
+        if git(repo, env, "config", "--bool", "--get", "core.filemode") != "true":
+            raise ValueError("core.filemode must be true")
+        conversion = subprocess.run(
+            ["git", "config", "--get-regexp",
+             r"^(core\.(autocrlf|eol|attributesfile)|filter\..*|diff\..*\.(textconv|command)|diff\.external)$"],
+            cwd=repo, env=env, capture_output=True, text=True)
+        if conversion.returncode not in (0, 1):
+            raise ValueError("conversion config query failed")
+        # The fixture has no conversion setup; do not infer arbitrary filter or
+        # attribute semantics. An explicit false autocrlf is equivalent to none.
+        settings = conversion.stdout.splitlines()
+        if any(line.lower() != "core.autocrlf false" for line in settings):
+            raise ValueError("conversion config outside bounded fixture conditions")
+        attributes = git(repo, env, "check-attr", "--all", "-z", "--", *paths)
+        if attributes:
+            raise ValueError("applicable attributes outside bounded fixture conditions")
+        tree = {}
+        for entry in git(repo, env, "ls-tree", "-r", "-z", proposal, "--", scope).split("\0"):
+            if entry:
+                header, path = entry.split("\t")
+                mode, kind, blob = header.split()
+                if mode != "100644" or kind != "blob":
+                    raise ValueError("reviewed artifacts must be regular 100644 blobs")
+                tree[path] = (mode, blob)
+        index = {}
+        for entry in git(repo, env, "ls-files", "--stage", "-z", "--", *paths).split("\0"):
+            if entry:
+                header, path = entry.split("\t")
+                mode, blob, stage = header.split()
+                if stage != "0" or path in index:
+                    raise ValueError("unmerged/duplicate artifact index entry")
+                index[path] = (mode, blob)
+        flags = git(repo, env, "ls-files", "-v", "-z", "--", *paths).split("\0")
+        if (set(tree) != set(paths) or index != tree or
+                {entry for entry in flags if entry} != {"H " + p for p in paths}):
+            raise ValueError("artifact tracking/blob/mode/skip-or-assume flag mismatch")
+        artifacts = {}
+        for path in paths:
+            physical = repo / path
+            mode = physical.lstat().st_mode
+            if (not stat.S_ISREG(mode) or mode & 0o111 or physical.resolve() != physical):
+                raise ValueError("physical artifact type/mode mismatch")
+            committed = subprocess.check_output(
+                ["git", "show", f"{proposal}:{path}"], cwd=repo, env=env)
+            digest = hashlib.sha256(committed).hexdigest()
+            if digest != contract["files"][path] or sha(physical) != digest:
+                raise ValueError("physical/proposal/review artifact hash mismatch")
+            artifacts[path] = {"mode": tree[path][0], "blob": tree[path][1], "sha256": digest}
+        result.update(verified=True, proposal_sha=proposal, review_sha=review,
+                      head=git(repo, env, "rev-parse", "HEAD"), scope=scope,
+                      artifacts=artifacts, review_output=review_output,
+                      tracking_flags=sorted(e for e in flags if e),
+                      filemode=True, conversion_settings=settings, attributes=attributes)
+    except (KeyError, TypeError, ValueError, OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        result["error"] = str(error)
+    return result
+
+
+def t1_proposal_proof(events, session, repo, provenance, native_invocation, *, before=None,
+                      artifact_states=None):
+    """Native scoped comparison under verified conditions; body reads optional."""
+    if (not provenance or not artifact_states or len(artifact_states) != 2 or
+            not artifact_states[0] or artifact_states[0] != artifact_states[1]):
+        return False
+    state = artifact_states[0]
+    if (state.get("verified") is not True or state.get("repo") != str(repo) or
+            state.get("scope") != f"openspec/changes/{CHANGE}" or
+            state.get("proposal_sha") != provenance["proposal_sha"] or
+            state.get("review_sha") != provenance["review_sha"] or
+            state.get("filemode") is not True or state.get("attributes") != "" or
+            not isinstance(state.get("conversion_settings"), list) or
+            any(line.lower() != "core.autocrlf false" for line in state["conversion_settings"]) or
+            state.get("tracking_flags") != sorted("H " + p for p in provenance["review"]["files"]) or
+            any(a.get("mode") != "100644" for a in state.get("artifacts", {}).values()) or
+            {p: a["sha256"] for p, a in state.get("artifacts", {}).items()} !=
+            provenance["review"]["files"]):
+        return False
     calls = tool_events(events, session, tool="shell")
     before = len(events) if before is None else before
     def observed(command, expected):
@@ -284,9 +396,19 @@ def t1_proposal_proof(events, session, repo, provenance, native_invocation, *, b
                    e["exit_code"] == 0 and e["truncated"] is False and
                     e["index"] < before and shell_output_matches(e["output"], expected)
                    for e in calls)
+    # These are roles in the native provenance chain, not a quota of body
+    # locators. Keep every body command available for optional inspection.
+    proposal, review = provenance["proposal_sha"], provenance["review_sha"]
+    required = [
+        (["git", "show", "--format=%H", "--no-patch", proposal], proposal),
+        (["git", "merge-base", "--is-ancestor", proposal, review], ""),
+        (["git", "merge-base", "--is-ancestor", review, "HEAD"], ""),
+        (["git", "show", f"{review}:{provenance['review_path']}"], state["review_output"]),
+        (["git", "diff", "--exit-code", proposal, "--", state["scope"]], ""),
+    ]
     return bool(
         provenance and any(i["event_index"] < before for i in native_invocation) and
-        all(observed(p["command"], p["output"]) for p in provenance["probes"]) and
+        all(observed(shlex.join(command), output) for command, output in required) and
         observed(provenance["validation_command"], provenance["validation_output"]))
 
 
@@ -637,7 +759,7 @@ def disposable_opencode_shim(bin_dir, cli):
     return shim
 
 
-def snapshot(repo, worktrees, gh_root, reservation, env, openspec):
+def snapshot(repo, worktrees, gh_root, reservation, env, openspec, *, provenance=None):
     statuses = {}
     for path in worktrees:
         state = checked_json([str(reservation), "status", "--path", str(path), "--json"],
@@ -649,14 +771,17 @@ def snapshot(repo, worktrees, gh_root, reservation, env, openspec):
     context = checked_json([openspec, "context", "--json"], cwd=repo, env=env)
     changes = checked_json([openspec, "list", "--json"], cwd=repo, env=env)
     assert context["root"]["path"] == str(repo) and changes["root"]["path"] == str(repo)
-    return {"git": inventory(repo, env),
+    result = {"git": inventory(repo, env),
             "checkout_git": {path.name: inventory(path, env) for path in worktrees},
             "reservation": statuses,
             "github": json.loads((gh_root / "state.json").read_text()),
             "registry": json.loads((repo / ".git/ai-workflow/worktrees.json").read_text()),
             "runtime": json.loads((Path(env["RESUME_RUNTIME_ROOT"]) / "receipts.json").read_text()),
-            "openspec": {"context": context, "list": changes},
-            }
+             "openspec": {"context": context, "list": changes},
+             }
+    if provenance is not None:
+        result["artifact_comparison"] = artifact_comparison_prerequisites(repo, env, provenance)
+    return result
 
 
 def native_calls(events, session, native, expected_sha256=None):
@@ -1336,6 +1461,10 @@ def main():
                 ("proposal_sha", "review_sha", "review_path", "validation_command")}
             fixture["proposal_sources"]["commands"] = [
                 p["command"] for p in provenance["probes"]]
+            fixture["proposal_sources"]["inspection_note"] = (
+                "Artifact body reads are optional inspection locators. Native commit/"
+                "ancestry/immutable-review/full-change comparison and strict/Apply gates "
+                "remain mandatory; no body-read command quota.")
         evidence.write_text(json.dumps(fixture, indent=2) + "\n")
         git(repo, env, "add", "-A")
         git(repo, env, "-c", "user.name=Smoke", "-c",
@@ -1408,7 +1537,8 @@ def main():
         git(repo, env, "add", "-A")
         git(repo, env, "-c", "user.name=Smoke", "-c",
             "user.email=smoke@example.org", "commit", "-qm", "runtime reader locator")
-        before = snapshot(repo, worktrees, gh_root, reservation, case_env, openspec)
+        before = snapshot(repo, worktrees, gh_root, reservation, case_env, openspec,
+                          provenance=provenance)
         calls_before = (gh_root / "calls.jsonl").read_text().splitlines()
         reads_before = (gh_root / "reads.jsonl").read_text().splitlines()
         if case == "T7":
@@ -1481,6 +1611,8 @@ def main():
                 record["native_inspection_candidates"] = inspection_sources
 
             def launch():
+                if case == "T1" and not before["artifact_comparison"]["verified"]:
+                    raise RuntimeError("artifact comparison prerequisites not verified; no inference")
                 shell_guard_preflight(cli, repo, case_env, guard)
                 persist(base, results)
                 model = model_preflight(cli, repo, case_env, record["model_preflight"],
@@ -1493,7 +1625,8 @@ def main():
 
             events, response, session, transcript = prepared_phase(
                 base, results, case, record, launch,
-                lambda: snapshot(repo, worktrees, gh_root, reservation, case_env, openspec))
+                lambda: snapshot(repo, worktrees, gh_root, reservation, case_env, openspec,
+                                 provenance=provenance))
             after = record["after"]
             calls_after = (gh_root / "calls.jsonl").read_text().splitlines()
             reads_after = (gh_root / "reads.jsonl").read_text().splitlines()
@@ -1533,7 +1666,9 @@ def main():
                 outcome = (t7_visible_question(response) if case == "T7" and phase == 1
                            else all(term.lower() in response.lower() for term in expected))
             proposal_proved = (t1_proposal_proof(events, session, repo, provenance,
-                                                native_invocation, before=handoff_index)
+                                                native_invocation, before=handoff_index,
+                                                artifact_states=(before.get("artifact_comparison"),
+                                                                 after.get("artifact_comparison")))
                                if case == "T1" else None)
             record.update({"phase": phase, "prompt": message, "session_id": session,
                       "response": response, "events": transcript, "before": before,

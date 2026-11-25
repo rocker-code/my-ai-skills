@@ -30,6 +30,7 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               t1_handoff, catalog_discovery,
                                               delivered_skill_catalog, forbidden_attempts,
                                               read_only_locators, disposable_shell_guard,
+                                              artifact_comparison_prerequisites,
                                               STRICT_VALIDATE)
 
 
@@ -720,6 +721,15 @@ class T1ProposalProofTest(unittest.TestCase):
         self.apply_event = self.event(
             f"openspec instructions apply --change {CHANGE} --json",
             json.dumps(self.apply_output))
+        self.fixture_env = {"HOME": str(self.repo / "home"),
+                            "XDG_CONFIG_HOME": str(self.repo / "home/.config"),
+                            "PATH": os.environ["PATH"], "PYTHONDONTWRITEBYTECODE": "1"}
+        (self.repo / "home").mkdir()
+        state = artifact_comparison_prerequisites(self.repo, self.fixture_env, self.facts)
+        self.assertTrue(state["verified"], state)
+        self.artifact_states = (state, copy.deepcopy(state))
+        self.body_commands = {shlex.join(["git", "show", f"{self.proposal}:{p}"])
+                              for p in self.facts["review"]["files"]}
 
     def event(self, command, output):
         return {"type": "tool_use", "sessionID": self.session, "part": {
@@ -728,10 +738,12 @@ class T1ProposalProofTest(unittest.TestCase):
                 "metadata": {"metadata": {"exit": 0, "truncated": False}},
                 "output": output}}}
 
-    def proof(self, events=None, invocation=None):
+    def proof(self, events=None, invocation=None, artifact_states=None):
         return t1_proposal_proof(self.events if events is None else events,
                                  self.session, self.repo, self.facts,
-                                 self.invocation if invocation is None else invocation)
+                                  self.invocation if invocation is None else invocation,
+                                  artifact_states=self.artifact_states
+                                  if artifact_states is None else artifact_states)
 
     def test_correlated_commit_all_artifacts_review_and_strict_observations(self):
         self.assertTrue(self.proof())
@@ -742,6 +754,18 @@ class T1ProposalProofTest(unittest.TestCase):
         self.assertEqual(self.facts["review"]["source_approved_proposal"], "b" * 40)
         self.assertFalse(self.proof(invocation=[]))
         self.assertFalse(self.proof(invocation=[{"event_index": len(self.events)}]))
+        core = [e for e in self.events
+                if e["part"]["state"]["input"]["command"] not in self.body_commands]
+        self.assertTrue(self.proof(events=core))  # No body-read quota.
+        self.assertFalse(self.proof(events=core, artifact_states=(None, None)))
+        wrong = copy.deepcopy(self.artifact_states[1])
+        wrong["head"] = "c" * 40
+        self.assertFalse(self.proof(events=core, artifact_states=(self.artifact_states[0], wrong)))
+        for field, value in (("filemode", False), ("attributes", "text"),
+                             ("tracking_flags", []), ("conversion_settings", ["core.autocrlf true"])):
+            wrong = copy.deepcopy(self.artifact_states[0])
+            wrong[field] = value
+            self.assertFalse(self.proof(events=core, artifact_states=(wrong, copy.deepcopy(wrong))))
 
     def test_sha_echo_declarative_files_and_ready_instructions_are_not_proof(self):
         for tool, inp, output in (
@@ -781,7 +805,8 @@ class T1ProposalProofTest(unittest.TestCase):
                 "part": {"text": json.dumps(value)}}
 
     def test_t1_successful_probes_may_precede_inspection_but_must_precede_final_handoff(self):
-        calls = self.events + [self.apply_event]
+        calls = [e for e in self.events
+                 if e["part"]["state"]["input"]["command"] not in self.body_commands] + [self.apply_event]
         shutil.copytree(ROOT / ".agents", self.repo / ".agents")
         native = self.repo / ".agents/skills/openspec-explore/SKILL.md"
         discovery = self.event("ls .agents/skills", "openspec-explore\nopenspec-apply-change\n")
@@ -800,7 +825,8 @@ class T1ProposalProofTest(unittest.TestCase):
         self.assertTrue(source and discovered and invocation and instructions)
         self.assertLess(discovered[0]["event_index"], invocation[0]["event_index"])
         self.assertTrue(t1_proposal_proof(
-            events, self.session, self.repo, self.facts, invocation, before=boundary))
+            events, self.session, self.repo, self.facts, invocation, before=boundary,
+            artifact_states=self.artifact_states))
         self.assertTrue(t1_apply_gate_proof(
             events, self.session, self.repo, self.facts, invocation, before=boundary))
         self.assertFalse(forbidden_attempts(events, self.session))
@@ -812,12 +838,12 @@ class T1ProposalProofTest(unittest.TestCase):
             moved[index] = {}
             self.assertFalse(
                 t1_proposal_proof(moved, self.session, self.repo, self.facts,
-                                  invocation, before=boundary) and
+                                  invocation, before=boundary, artifact_states=self.artifact_states) and
                 t1_apply_gate_proof(moved, self.session, self.repo, self.facts,
                                     invocation, before=boundary))
         self.assertFalse(t1_proposal_proof(
             events, self.session, self.repo, self.facts,
-            [{"event_index": len(events)}], before=boundary))
+            [{"event_index": len(events)}], before=boundary, artifact_states=self.artifact_states))
 
     def test_final_handoff_rejects_blocked_contradictory_wrong_scope_and_substring_claims(self):
         fixture = {"issue": 61, "run": "wf-unit"}
@@ -923,25 +949,26 @@ class T1ProposalProofTest(unittest.TestCase):
     def test_missing_mismatched_failed_other_session_or_cwd_sources_fail(self):
         original = copy.deepcopy(self.events)
         for index in range(len(original)):
+            optional = original[index]["part"]["state"]["input"]["command"] in self.body_commands
             with self.subTest(source=index):
-                self.assertFalse(self.proof(events=original[:index] + original[index + 1:]))
+                self.assertEqual(self.proof(events=original[:index] + original[index + 1:]), optional)
                 for field, value in (("status", "error"), ("status", "cancelled"),
                                      ("output", "declaration only " + self.proposal)):
                     wrong = copy.deepcopy(original)
                     wrong[index]["part"]["state"][field] = value
-                    self.assertFalse(self.proof(events=wrong))
+                    self.assertEqual(self.proof(events=wrong), optional)
                 wrong = copy.deepcopy(original)
                 wrong[index]["part"]["state"]["metadata"]["metadata"]["exit"] = 1
-                self.assertFalse(self.proof(events=wrong))
+                self.assertEqual(self.proof(events=wrong), optional)
                 wrong = copy.deepcopy(original)
                 wrong[index]["sessionID"] = "ses-other"
-                self.assertFalse(self.proof(events=wrong))
+                self.assertEqual(self.proof(events=wrong), optional)
                 for field, value in (("workdir", "/wrong"), ("command", "git show HEAD"),
                                      ("command", original[index]["part"]["state"]["input"]["command"]
                                       + "; true")):
                     wrong = copy.deepcopy(original)
                     wrong[index]["part"]["state"]["input"][field] = value
-                    self.assertFalse(self.proof(events=wrong))
+                    self.assertEqual(self.proof(events=wrong), optional)
         review_index = 3
         for field, value in (("proposal_sha", "c" * 40), ("decision", "pending"),
                              ("files", {}), ("reviewer", "unknown"),
@@ -956,7 +983,109 @@ class T1ProposalProofTest(unittest.TestCase):
         self.assertFalse(self.proof(events=wrong))
         wrong = copy.deepcopy(original)
         wrong[4]["part"]["state"]["output"] += "\nchanged artifact"
-        self.assertFalse(self.proof(events=wrong))
+        # Auxiliary body output is not this predicate's evidence. Actual
+        # physical-byte changes are rejected by real repository checks below.
+        self.assertTrue(self.proof(events=wrong))
+
+    def test_exact_scope_and_immutable_native_chain_cannot_be_replaced_by_empty_diff(self):
+        core = [e for e in self.events
+                if e["part"]["state"]["input"]["command"] not in self.body_commands]
+        diff_index = next(i for i, e in enumerate(core)
+                          if e["part"]["state"]["input"]["command"].startswith("git diff "))
+        for scope in ("missing-empty-directory", f"openspec/changes/{CHANGE}/tasks.md", ""):
+            wrong = copy.deepcopy(core)
+            wrong[diff_index]["part"]["state"]["input"]["command"] = (
+                f"git diff --exit-code {self.proposal} -- {scope}").rstrip()
+            self.assertFalse(self.proof(events=wrong))
+        # Same fixture, real comparison can succeed for a WRONG empty scope.
+        self.git("diff", "--exit-code", self.proposal, "--", "missing-empty-directory")
+        for field, value in (("proposal_sha", self.facts["review_sha"]),
+                             ("review_sha", self.proposal)):
+            wrong = copy.deepcopy(self.facts)
+            wrong[field] = value
+            self.assertFalse(artifact_comparison_prerequisites(
+                self.repo, self.fixture_env, wrong)["verified"])
+        wrong = copy.deepcopy(self.facts)
+        wrong["review"]["files"] = {}
+        self.assertFalse(artifact_comparison_prerequisites(
+            self.repo, self.fixture_env, wrong)["verified"])
+
+    def test_real_artifact_bytes_index_mode_type_and_flags_are_prerequisites(self):
+        relative = f"openspec/changes/{CHANGE}/design.md"
+        path = self.repo / relative
+        content = path.read_bytes()
+        def capture():
+            return artifact_comparison_prerequisites(self.repo, self.fixture_env, self.facts)
+        def changed_bytes():
+            old = path.stat()
+            path.write_bytes(b"!" + content[1:])
+            os.utime(path, ns=(old.st_atime_ns, old.st_mtime_ns))
+        def tracked_delete():
+            path.unlink()
+            self.git("add", "--update", "--", relative)
+        def executable():
+            path.chmod(0o755)
+            self.git("add", "--", relative)
+        def symlink():
+            path.unlink()
+            path.symlink_to(path.with_name("proposal.md"))
+        for mutation in (changed_bytes, path.unlink, tracked_delete, executable, symlink):
+            with self.subTest(mutation=mutation.__name__):
+                try:
+                    mutation()
+                    after = capture()
+                    self.assertFalse(after["verified"])
+                    self.assertFalse(self.proof(artifact_states=(self.artifact_states[0], after)))
+                finally:
+                    if path.is_symlink():
+                        path.unlink()
+                    path.write_bytes(content)
+                    path.chmod(0o644)
+                    self.git("add", "--", relative)
+                self.assertTrue(capture()["verified"])
+        for flag, clear in (("--assume-unchanged", "--no-assume-unchanged"),
+                            ("--skip-worktree", "--no-skip-worktree")):
+            with self.subTest(flag=flag):
+                try:
+                    self.git("update-index", flag, "--", relative)
+                    self.git("diff", "--exit-code", self.proposal, "--", f"openspec/changes/{CHANGE}")
+                    self.assertFalse(capture()["verified"])
+                finally:
+                    self.git("update-index", clear, "--", relative)
+                self.assertTrue(capture()["verified"])
+
+    def test_conversion_configuration_and_attributes_rejected_inventory_still_separate(self):
+        def capture():
+            return artifact_comparison_prerequisites(self.repo, self.fixture_env, self.facts)
+        for key, value in (("core.filemode", "false"), ("core.autocrlf", "true"),
+                           ("filter.fixture.clean", "cat")):
+            with self.subTest(config=key):
+                try:
+                    self.git("config", key, value)
+                    self.assertFalse(capture()["verified"])
+                finally:
+                    if key == "core.filemode":
+                        self.git("config", key, "true")
+                    else:
+                        self.git("config", "--unset", key)
+                self.assertTrue(capture()["verified"])
+        attributes = self.repo / ".gitattributes"
+        try:
+            attributes.write_text("openspec/** text eol=crlf\n")
+            self.assertFalse(capture()["verified"])
+        finally:
+            attributes.unlink()
+        # Untracked/ignored bytes are NOT covered by scoped Git diff. They are
+        # still in the existing inventory and full before/after equality gate.
+        (self.repo / ".gitignore").write_text("ignored.data\n")
+        for name in ("local.data", "ignored.data"):
+            (self.repo / name).write_text("before")
+        before = inventory(self.repo, self.fixture_env)
+        for name in ("local.data", "ignored.data"):
+            (self.repo / name).write_text("after")
+        self.git("diff", "--exit-code", self.proposal, "--", f"openspec/changes/{CHANGE}")
+        self.assertTrue(capture()["verified"])
+        self.assertNotEqual(inventory(self.repo, self.fixture_env), before)
 
 
 class ReadOnlyGitHubTest(unittest.TestCase):

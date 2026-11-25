@@ -2,6 +2,113 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Correção offline pós-quinta falha — equivalência Git limitada
+
+Writer `ses_deeb219ebffecKs4h8aN9D00bl`, stage
+`workerfix61-artifact-equivalence`, mesmo checkout/branch/run; entrada limpa
+`49f47082e98e01e9e2f38b9ade219499fe1189dd`, sucessor somente documental
+de `3c85548`. Reserva ownerless WAITING adquirida/verificada com ID nativo
+real; nove ignorados e histórico preservados. Revisão independente recebida
+de `ses_dee9d76e4ffeR10I59JewObvEC`; nenhuma sexta inferência autorizada.
+Política `TEST_STRATEGY.md` contra `31cdb42`: ok.
+
+**ANNOTATED CORRECTION ao significado de seq31, sem apagar histórico:**
+a ausência dos cinco `git show <proposal>:<artifact>` é factual; tratá-los
+como quota contratual obrigatória não é. Em
+`31cdb42:openspec/changes/issue-61-opencode-safe-resume/design.md:33,35,41–43,61`
+e no delta `specs/interrupted-workflow-resume/spec.md:41–47`, o contrato
+exige fontes/proposta/review/artefatos realmente correlacionados, invocação
+nativa e gate seguinte comprovado, sem Apply executado. Não exige cinco
+leituras separadas de corpos nem nova revisão semântica das features.
+S253–260 publica esses locators úteis; S277–290 indevidamente exige **todos**
+como se disponibilidade de inspeção fosse obrigação adicional.
+
+**Diagnóstico completo complementar pós-quinta falha:** fase de seleção/
+agregação de prova depois do terminal; assertion/fixture, não aplicação,
+provedor, autorização ou falta de produto. Fonte
+`ev-20261125T074809Z-c869767e`, sessão
+`ses_dee52cf22ffeF4k4USxgA4K3at`: modelo exit0/custo reportado0,
+harness1/T1; T5/T7 NOT RUN, sem timeout/erro de provedor. HOME/XDG/DB/
+Location descartáveis, snapshots disponíveis/iguais, sem tentativas
+stateful. Recibo21 real, Apply22 ready/correto, strict39, invocação53 e
+handoff57 RECOVERED coerente já ocorreram.
+
+A sessão observou proposta37, ancestralidades47/48, review Git imutável50
+e **diff49 real**: `git diff --exit-code
+0ac18eb710d2476f53dc3983e5a3ed0582940f53 --
+openspec/changes/issue-61-opencode-safe-resume`, exit0, sem truncamento,
+cwd/sessão corretos, antes do handoff. Review
+`69f5523e3ba2e4402749fdbe5dc010702ab80844` aprova essa proposta e seus
+cinco fingerprints. Não é declaração de diff nem metadata preparada.
+Sob condições Git verificadas, esse confronto equivale à integridade dos
+artefatos revisados; o JSON RECOVERED não é necessariamente falso sob o
+contrato, embora o resultado **armazenado continue FAILED**.
+
+A revisão independente verificou no repositório retido: cinco artefatos
+necessários presentes/regular100644, blobs/modes de proposal/index iguais,
+bytes físicos/SHA256 iguais ao review, nenhum skip-worktree/assume-unchanged,
+core.filemode=true e nenhuma conversão/atributo aplicável. Isso é diagnóstico
+independente, **não** novas observações feitas pelo modelo. A correção deve
+verificar essas condições programaticamente em cada fixture futura **antes
+e depois** do turno, retendo-as nos snapshots e exigindo igualdade; nunca
+transformar a conferência histórica isolada em garantia universal.
+
+Consumidores afetados: preparação da proposta/review, snapshot T1,
+`t1_proposal_proof` e descrição dos locators de inspeção. Manter observações
+efetivas de commit/ancestralidade/review/diff no escopo exato, strict, Apply
+context/tasks/progress, catálogo/invocação/ordem pré-handoff, receipt,
+outcome e limites stateful/T7. Corpos continuam disponíveis na mesma
+allowlist, **opcionais**, sem quota. Nenhuma nova chamada precisa ser
+permitida ao modelo. Pré-requisitos são leituras Git do harness no mesmo
+ambiente seguro da fixture, não novo wrapper, serviço ou fonte declarativa.
+
+Alternativa mínima: manter bloqueio. Escolha: aceitar a cadeia nativa
+existente somente com presença/tracking/modes/flags/config/atributos/
+fingerprints realmente verificados e estáveis. Diff genérico não cobre
+path vazio/errado, ausentes não rastreados, ignored, conversões ou flags
+de índice; esses casos devem reprovar a admissão/equivalência quando
+aplicáveis. Inventário/snapshots existentes continuam cobrindo untracked/
+ignored e demais dimensões, não atribuir essa cobertura a Git diff.
+Trade-off: remove quota de comandos sem reduzir a prova de integridade.
+
+Seq29 resolveu apenas captura/setup; seq30 permanece FAILED, seq31/32 e
+seus fatos são preservados. Seq33 registra esta correção anotada antes de
+provas novas; check não final antes delas. Replay com pré-requisitos
+verificados agora é **diagnóstico de equivalência**, não nova execução
+nativa completa, retro-PASS ou reescrita do bundle antigo. Flags/config
+não capturados naquela época não devem ser inventados como snapshot
+histórico. Tarefas3.4/4.3, T5/T7 e gate model-backed permanecem pendentes.
+Sem decisão material de owner/replan, sexta inferência, PR/push/archive/
+merge. Após provas offline, revisão afetada independente primeiro.
+
+**Provas durante o diff, não gates finais:**
+
+| Aceite / risco | Prova e limite |
+| --- | --- |
+| Cadeia nativa efetiva sem quota de corpos, com condições verificadas/estáveis | `ev-20261125T082230Z-c458534e`: 53/53 focados (retomada + raw guard). Positivo correlaciona source nativa, commit/ancestralidades/review/diff/strict/Apply e JSON pré-handoff sem body calls. Declaração de pré-requisito ausente/falso/stale não basta. |
+| Integridade de artefatos não reduzida ao remover asserts de body strings | Mesmo grupo, três testes novos de Git real: path errado/vazio, proposta/review incorretos, set requerido vazio, bytes físicos modificados com tamanho/mtime preservados, arquivo ausente/deleção rastreada, modo executável, symlink, assume-unchanged/skip-worktree, core.filemode false, autocrlf/filter e atributos. Git diff vazio em escopo inexistente/flags/arquivos não rastreados não autoriza equivalência. |
+| Preservação/migração de negativos | Negativos antigos de sessão/cwd/exit/truncamento/saída/commit/review/strict continuam obrigatórios para a cadeia usada. Os asserts específicos que tratavam body locator como obrigatório passam a reconhecer sua opcionalidade; payload auxiliar não é prova usada. A proteção contra alteração real de bytes/modo/tipo passa pelos novos checks de repositório antes/depois, não por uma string sintética. Inventário existente continua detectando untracked/ignored separadamente. Nenhum teste removido/skipado. |
+| Quinta execução como diagnóstico condicional de equivalência | `ev-20261125T082230Z-23808ff3`: snapshots atuais reais usando `snapshot` existente com nova projeção de pré-requisitos; oito dimensões iguais. Proposal/index modes/blobs e SHA256 físicos dos cinco artefatos coincidem com review; flags H, filemode true, sem conversão/atributo. Bytes/index também conferem com os snapshots históricos. A cadeia37/47/48/49/50 + strict39 é suficiente **sob essas condições agora verificadas**; receipt21/Apply22/native53/final57 continuam efetivos. |
+| Histórico e isolamento preservados | Mesmo recibo retém os três checksums originais e model_proposal_proved=false/proof_complete=false/status=failed. Não injeta tools/flags/config no bundle antigo, não relança modelo e não declara T1/T5/T7 completos. Limite explícito: config/flags anteriores ao run não foram capturados; checagem atual não os fabrica. |
+| Raw guard/comandos/pins invariáveis | Mesmo recibo compara permissões geradas com a lista original byte-a-byte e preserva funções antigas exceto snapshot/proposal predicate/main, além de prompts, reader, guard/shim/instalador/skills oficiais. `seed_proposal_review` e todos os comandos de corpos permanecem idênticos/disponíveis. Nenhum comando novo é permitido ou publicado para contornar o gate. |
+
+Os pré-requisitos futuros são capturados pelo harness no ambiente Git
+privado/sanitizado que corresponde ao child existente, dentro de cada
+snapshot T1. Falha prévia impede inferência; falha posterior ou diferença
+entre snapshots reprova a prova. Captura inclui root/proposal/review/HEAD,
+mapping mode/blob/SHA256, flags de tracking, core.filemode, atributos e
+configuração relevante. Não é metadata do modelo nem substitui seus
+comandos observados. T5/T7 não ganham esse gate ou nova ordem.
+
+`ev-20261125T081512Z-b28d5c45` (45/45 retomada) e
+`ev-20261125T081925Z-81617b23` foram provas anteriores da mesma correção,
+com diff, também não gates finais. Check não final após seq33 mantém
+valid=true/violations=[]/BLOCKED/environment. Antes do retorno, executar
+novamente focados, suíte offline integral, strict e diagnóstico no HEAD
+limpo como pre-smoke sem required gate; IDs ficam fora do commit. Sem nova
+dependência (stat/Git existentes), executor nativo, inferência, arquivo de
+guard/policy alterado, PR/push/archive/merge. Saída limpa/ownerless WAITING.
+
 ### Quinta observação nativa — 07:48–07:51 UTC, NOT READY
 
 Continuação explicitamente autorizada pelo coordenador após a recusa
@@ -1175,7 +1282,8 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"attempt","seq":30,"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff","target":"77b0242 T1 phase1 native default","class":"assertion/contract","hypothesis":"reviewed complete locators plus unchanged proposal/artifact probes allow complete grounded T1 proof","change":"explicitly authorized one model observation on doc-only successor77b0242 of reviewed3c85548; capture invocation corrected without source/guard/matcher changes","change_target":"test","observed_effect":"model exit0/cost0 and harness1; exact receipt21 and Apply22 succeed, native Apply53/catalog/discovery and strict39 plus five non-artifact provenance probes succeed; all five git-show artifact observations absent; final57 RECOVERED but model_proposal_provedfalse/proof_completefalse; snapshots available/equal; forbidden_attempts empty; T5/T7 NOT RUN","result":"fail","evidence":["evidence:ev-20261125T074809Z-c869767e"]}
 ,{"kind":"diagnosis","seq":31,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff"},"class":"assertion/contract","checked":{"phase":"post-terminal aggregate t1_proposal_proof: five git-show proposal artifact commands have zero matching tool attempts; commit37/ancestry47-48/review50/diff49/strict39 successful before final57; actual receipt21/Apply22/native53 and delivered catalog independently proved","scope":"exact77b0242 installed with credential-free disposable HOME/XDG/CODEX_HOME/DB/Location; only operational capture exclusion removed; source/guard/pins unchanged from independently reviewed3c85548; all commands published in recovery-evidence read11; no quotes/cwd denial of missing five reads","lifecycle":"ses_dee52cf22ffeF4k4USxgA4K3at pid3471029 terminal exit0 at07:51:04.112762Z, no timeout/provider error/malformed JSONL; 12step_finish cost0; harness1 T1 then stop; T5/T7 never launched; snapshots available/equal; final RECOVERED not complete provenance proof","consumers":"t1_proposal_proof mandatory same-session successful tool observations of five immutable artifacts; metadata/review hashes/diff/fixture preparation and outcome true cannot substitute; missing artifact mechanism genuinely differs from seq22 denied Apply and unobserved receipt, both now successful; denied compound read-only commands remain denied, no stateful attempt detected"},"runtime_proof":["evidence:ev-20261125T074809Z-c869767e"],"simplest_alternative":"stop retaining failed proof for independent offline review; never accept JSON RECOVERED, prepared facts or zero diff as replacements for missing tool observations","choice_rationale":"one actual authorized observation consumed after fresh guard/default-model eligibility; capture prelaunch was not inference; no automatic sixth model, source fix, permission expansion, quote normalization or archive/PR allowed","next_hypothesis":"independent review can assess why published five artifact commands were not observed and whether any contract-preserving correction is justified, without executing another model"}
 ,{"kind":"blocker","seq":32,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T074809Z-c869767e"],"diagnosis":"seq:31","options":[],"impact":"T1 fifth model observation failed; T5/T7 NOT RUN; tasks3.4/4.3 pending; no archive/final gate/PR; independent offline proof review required","researchable":true}
-,{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff"},"outcome":"blocked","via_seq":32}
+ ,{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff"},"outcome":"blocked","via_seq":32}
+ ,{"kind":"diagnosis","seq":33,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff"},"class":"fixture/isolation","checked":{"phase":"healthy model completed; post-terminal proof-selection overconstraint: body locators253-260 required wholesale277-290; proposal37/ancestry47-48/immutable review50/exact full scope actual diff49/strict39 all successful untruncated same-session/cwd pre-final57; receipt21/Apply22/native53/RECOVERED57 real","scope":"77b0242 isolated installed source unchanged from3c85548; review pins same proposal/all required artifact hashes; independent current repository check finds regular100644 tracked blobs/modes/physical hashes equal, no skip/assume flags, filemode true/no applicable conversion attributes; current diagnosis is not extra model observations or a fabricated historic before-snapshot","lifecycle":"ses_dee52cf22ffeF4k4USxgA4K3at model exit0/cost0, harness1 T1; no provider/timeout failure; snapshots available/equal; forbidden_attempts empty; T5/T7 not run; no sixth model; stored fifth failure retained","consumers":"fixture preparation/snapshot T1 and t1_proposal_proof required-versus-optional locators; programmatic prerequisites before/after future read-only turn plus existing inventory; actual native comparison/review probes remain mandatory; guard/reader/permissions/model selection/pins/T7 boundaries unchanged"},"runtime_proof":["evidence:ev-20261125T074809Z-c869767e","evidence:ev-20261125T082230Z-23808ff3"],"simplest_alternative":"keep blocked; do not infer universal integrity from empty diff or JSON RECOVERED","choice_rationale":"fresh independent review ses_dee9d76e4ffeR10I59JewObvEC against approved31cdb42 design33/35/41-43/61 and spec41-47 corrects seq31 semantic claim without erasure/replan; no five-body-call contract; recognize exact native Git comparison only under programmatically verified immutable required-artifact/tracking/config/inventory prerequisites stable before/after","next_hypothesis":"real Git fixture negatives and retained fifth trace equivalence diagnosis prove bounded integrity without optional body-read quota; original failed result and missing historical prerequisites remain historical limits; independent affected review before any separately authorized future observation"}
 ]}
 ```
 
