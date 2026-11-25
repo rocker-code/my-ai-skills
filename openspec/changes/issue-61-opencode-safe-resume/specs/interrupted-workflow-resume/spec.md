@@ -2,58 +2,66 @@
 
 ## Purpose
 
-Safely recover a previously started issue or milestone from a new OpenCode session using persisted, verifiable evidence.
+Retomar com segurança uma issue ou milestone em sessão nova por fontes duráveis e verificáveis, preservando trabalho, ownership, escopo e resultados desconhecidos.
 
 ## ADDED Requirements
 
 ### Requirement: Recover from a new session without prior chat
 
-The workflow SHALL recognize a natural request to continue interrupted development and SHALL identify a unique repository and execution scope from durable evidence before starting mutating actions. If multiple plausible candidates exist, it MUST request the minimal disambiguation and MUST NOT guess a scope.
+O workflow SHALL reconhecer pedido natural de retomada e identificar repositório e escopo únicos por evidência durável antes de mutações. Havendo candidatos plausíveis múltiplos, MUST pedir somente a desambiguação necessária e MUST NOT escolher por recência.
 
 #### Scenario: Single issue is uniquely identified
-- **WHEN** a new OpenCode session is opened in a known checkout with one evidenced interrupted issue
-- **THEN** the agent identifies that issue, its verified last stage and next safe action before delegating the same issue to the existing orchestrator
+- **WHEN** uma sessão OpenCode nova recebe pedido natural em checkout com uma issue interrompida identificada por evidência
+- **THEN** descobre a entrada de retomada, identifica issue, último estágio comprovado e próxima ação segura, reutilizando a mesma proposta/branch/worktree/PR antes de encaminhar ao coordenador existente
 
 #### Scenario: Ambiguous candidates
-- **WHEN** multiple issues or milestones could match “continue de onde parou”
-- **THEN** the agent displays the candidates and pauses before a modifying action, without selecting one from recency alone
+- **WHEN** dois pares issue/run são igualmente plausíveis para “continue de onde parou”
+- **THEN** o agente termina com uma pergunta neutra visível que identifica ambos e pausa sem seleção, takeover, dispatch, escrita ou invocação de skill OpenSpec nativa; descoberta por listagem é permitida, mas tentativas de invocação ou leitura de conteúdo nativo, mesmo failed/cancelled, não são permitidas antes da escolha
 
 #### Scenario: Explicit choice after ambiguous pause in the same session
-- **WHEN** the agent has paused on two equally plausible issue/run candidates and the user explicitly chooses one issue/run in that same OpenCode session
-- **THEN** the agent SHALL re-inventory the checkout, both reservations and ledgers and check independent stopped-writer evidence before any ownership transition; if safe, it SHALL invoke the applicable native OpenSpec 2.0 skill read-only in that same session, with discovery and invocation events tied to its canonical path/hash and session ID, and SHALL recheck both reservations and ledgers, Git, OpenSpec and GitHub without dispatch or writes. Before the explicit choice the agent MAY discover native skills read-only but MUST NOT invoke one; it SHALL pause after one question. Without a safe writer determination or observable post-choice invocation the proof SHALL remain blocked, not PASS
+- **WHEN** após a pausa o usuário escolhe explicitamente issue/run na mesma sessão OpenCode
+- **THEN** o agente SHALL reinventariar ambos os checkouts, reservas e fontes Git/GitHub/OpenSpec, consultar prova independente do writer escolhido e só depois invocar a skill OpenSpec 2.x nativa aplicável em modo read-only no mesmo ID de sessão; SHALL reconferir ambos os estados sem takeover, dispatch ou escrita, correlacionando descoberta/invocação a origem/path/hash e sessão; sem segurança ou evento nativo observável a prova permanece bloqueada, não PASS
 
 ### Requirement: Preserve work and verify ownership
 
-The workflow SHALL reuse verified existing branches/worktrees/OpenSpec/PRs. It MUST inspect staged, unstaged, untracked and relevant ignored data and MUST NOT perform writer takeover without grounded stopped-writer evidence and helper reconciliation.
+O workflow SHALL reutilizar branches/worktrees/OpenSpec/PRs verificados e inspecionar commits únicos, staged, unstaged, untracked e ignored relevantes. MUST NOT tomar posse sem prova fundamentada de writer parado e reconciliação do helper.
 
 #### Scenario: Interrupted dirty worktree
-- **WHEN** a checkout contains partially written/staged/untracked changes
-- **THEN** it is preserved, reconciled and reused or explicitly retained with a blocker, never reset or replaced
+- **WHEN** há alterações locais parciais ou crash antes de checkpoint
+- **THEN** conteúdo/índice/commits e dados ignorados relevantes são preservados e o checkout é reconciliado/reutilizado ou retido com bloqueio, sem reset, substituição ou limpeza indiscriminada
 
 #### Scenario: Active or uncertain owner
-- **WHEN** the previous writer remains active or ownership evidence is inconclusive
-- **THEN** writing is blocked for that checkout; no automatic takeover is attempted
+- **WHEN** writer anterior está ativo ou a posse é inconclusiva
+- **THEN** escrita é bloqueada naquele checkout sem takeover automático, mesmo com registry antigo, ausente ou incompleto
 
 #### Scenario: Null PID without terminal runtime proof
-- **WHEN** a reservation has no PID or a fixture merely describes the writer as stopped without independent terminal runtime evidence for its execution
-- **THEN** the agent does not claim the writer has stopped and blocks ownership transition and Apply pending authoritative evidence
+- **WHEN** uma reserva contém `pid:null` ou a fixture apenas afirma parada sem prova terminal independente da execução
+- **THEN** o agente não declara writer parado e bloqueia transição/Apply; recibo de outro owner/run/checkout/execução também não autoriza posse
+
+#### Scenario: T1 has grounded terminal evidence
+- **WHEN** a issue tem proposta/revisão comprovadas em commit fixo e recibo terminal independente correlacionado ao writer e checkout
+- **THEN** a sessão nova identifica Apply no commit validado como próxima ação sem executá-lo na prova read-only, comprova descoberta/invocação nativa e mantém reservas e artefatos inalterados; o recibo de término não substitui validação/revisão nem concessão explícita de posse
 
 ### Requirement: Continue only from verified gates
 
-The workflow SHALL reconstruct verified status from current GitHub, Git/OpenSpec and runtime evidence. Missing callbacks, stale tests and interrupted commands MUST NOT be treated as successful gates, and unchanged valid gates SHOULD be reused.
+O workflow SHALL reconstruir estado por GitHub/Git/OpenSpec, reservas, runtime suportado e provas de teste acessíveis. MUST reutilizar prova ainda válida e MUST NOT converter falta de callback/relatório, teste interrompido ou resultado de outro SHA/execução em aprovação. MUST NOT exigir coletor, ledger de comentários ou registro substituto.
 
 #### Scenario: Test process interrupted without an authoritative result
-- **WHEN** a test command stops without an accessible final report/exit confirmation
-- **THEN** the result is recorded as unknown and only affected verification is rerun after safe preflight
+- **WHEN** comando de teste não tem término e relatório exigidos acessíveis
+- **THEN** o resultado permanece UNKNOWN e somente obrigações incompletas/invalidadas são reexecutadas após posse/preflight/diagnóstico seguros, preservando falhas históricas e limites da evidência recuperada
+
+#### Scenario: Native invocation proof is inconclusive
+- **WHEN** há somente arquivo de skill, leitura direta, CLI isolado, stub ou resposta narrativa sem evento nativo de invocação correlacionado
+- **THEN** a prova de integração nativa fica bloqueada com causa exata, sem fabricar comandos legados ou declarar PASS por presença de arquivo
 
 ### Requirement: Respect original scope and recovery limits
 
-The workflow SHALL preserve explicit issue/milestone boundaries and known merge mode, SHALL NOT create duplicate implementation artifacts, and MUST disclose missing local-only data instead of claiming it was restored.
+O workflow SHALL preservar limites explícitos de issue/milestone e modo de merge conhecido, sem duplicar artefatos. Merge MUST permanecer retido se a autorização original é desconhecida. MUST informar dados locais perdidos/indisponíveis em vez de alegar restauração.
 
 #### Scenario: Existing PR and blocked dependency in milestone
-- **WHEN** a milestone includes an existing PR and a dependent issue
-- **THEN** the orchestrator rechecks the PR on its current head and does not prematurely start the consumer
+- **WHEN** milestone tem PR existente, modo manual e consumidor dependente bloqueado
+- **THEN** o coordenador reconcilia PR/head/checks efetivos, preserva modo manual e dependência, não duplica PR nem despacha consumidor e mantém uma única issue ativa
 
 #### Scenario: Lost local machine
-- **WHEN** GitHub and committed artifacts survive but uncommitted local files were lost
-- **THEN** only retained artifacts are reconstructed and the local-only loss is reported
+- **WHEN** GitHub/Git/backup sobrevivem, mas checkout/registry ou arquivos locais não persistidos se perderam
+- **THEN** somente artefatos disponíveis são recuperados, perdas/limites e próxima ação são explicitados, e registry ausente não concede posse implícita

@@ -15,4 +15,4 @@ O agente selecionado SHALL descobrir as skills e a orientação global para aces
 
 #### Scenario: Pedido natural de retomada após interrupção
 - **WHEN** uma pessoa inicia nova sessão OpenCode após interrupção e pede para continuar de onde parou
-- **THEN** a orientação global disponibiliza a skill de retomada para reconstruir primeiro o estado verificável, sem alterar instruções locais ou conceder novas permissões
+- **THEN** a orientação global disponibiliza a skill de retomada da revisão instalada para reconstruir primeiro o estado verificável, sem depender de histórico de chat, alterar instruções locais ou conceder novas permissões; a instalação/atualização pública preserva manifesto, bytes da skill, symlink ativo e instruções preexistentes, sem modificar integração de agente não selecionado
