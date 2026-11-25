@@ -279,6 +279,57 @@ def t1_proposal_proof(events, session, repo, provenance, native_invocation):
                  after=min(i["event_index"] for i in native_invocation)))
 
 
+def t1_apply_gate_proof(events, session, repo, provenance, native_invocation):
+    """Apply NEXT is a CLI/source fact, separate from the native inspection ID."""
+    if not provenance or not native_invocation:
+        return False
+    change = repo / "openspec/changes" / CHANGE
+    tasks_path = change / "tasks.md"
+    task_command = shlex.join(["git", "show", f"{provenance['proposal_sha']}:"
+                               f"openspec/changes/{CHANGE}/tasks.md"])
+    task_source = next((p["output"] for p in provenance["probes"]
+                        if p["command"] == task_command), "")
+    tasks = []
+    for line, text in enumerate(task_source.splitlines(), 1):
+        match = re.fullmatch(r"\s*-\s+\[([ xX])\]\s+(.+)", text)
+        if match:
+            tasks.append({"id": str(len(tasks) + 1), "description": match[2],
+                          "done": match[1].lower() == "x",
+                          "sourcePath": str(tasks_path), "line": line})
+    complete = sum(t["done"] for t in tasks)
+    if not tasks or complete == len(tasks):
+        return False
+    expected_files = {str(repo / p) for p in provenance["review"]["files"]}
+    for event in tool_events(events, session, tool="shell"):
+        if not (event["input"].get("command") ==
+                f"openspec instructions apply --change {CHANGE} --json" and
+                event["input"].get("workdir", str(repo)) == str(repo) and
+                event["exit_code"] == 0 and event["truncated"] is False and
+                event["index"] > min(i["event_index"] for i in native_invocation)):
+            continue
+        try:
+            output = json.loads(event["output"])
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(output, dict):
+            continue
+        context = output.get("contextFiles")
+        if not (isinstance(context, dict) and all(
+                isinstance(paths, list) and all(isinstance(p, str) for p in paths)
+                for paths in context.values())):
+            continue
+        if (output.get("changeName") == CHANGE and output.get("changeDir") == str(change) and
+                output.get("schemaName") == "spec-driven" and output.get("state") == "ready" and
+                output.get("taskTrackingConfigured") is True and
+                {p for paths in context.values() for p in paths} == expected_files and
+                context.get("tasks") == [str(tasks_path)] and
+                output.get("tasks") == tasks and output.get("progress") == {
+                    "total": len(tasks), "complete": complete,
+                    "remaining": len(tasks) - complete}):
+            return True
+    return False
+
+
 def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoice=False,
                           provenance=None):
     """V2 ordered rules (last match wins), not a shell sandbox.
@@ -491,6 +542,47 @@ def native_calls(events, session, native, expected_sha256=None):
         discovery = [d for d in discovery if d["event_index"] < min(
             i["event_index"] for i in invocation)]
     return discovery, invocation, instructions
+
+
+def t1_inspection_sources(repo, source_root=ROOT):
+    """Only these two official read-only inspection alternatives satisfy T1."""
+    sources = []
+    for name in ("openspec-explore", "openspec-apply-change"):
+        native = repo / ".agents/skills" / name / "SKILL.md"
+        source = source_root / ".agents/skills" / name / "SKILL.md"
+        if (not native.is_file() or not source.is_file() or
+                native.resolve() != native or source.resolve() != source or
+                sha(native) != sha(source)):
+            continue
+        sources.append({"path": str(native), "resolved": str(native.resolve()),
+                        "sha256": sha(native), "source": str(source),
+                        "source_sha256": sha(source), "symlink": False})
+    return sources
+
+
+def t1_native_inspection(events, session, repo, sources):
+    """Bind discovery and real skill invocation to ONE verified official source.
+
+    Do not combine discovery of one alternative with invocation of the other.
+    This proves inspection only; immutable proposal and Apply gates stay separate.
+    """
+    for source in sources:
+        native = Path(source["path"])
+        if (native != repo / ".agents/skills" / native.parent.name / "SKILL.md" or
+                native.parent.name not in ("openspec-explore", "openspec-apply-change") or
+                source not in t1_inspection_sources(repo)):
+            continue
+        discovery, invocation, instructions = native_calls(
+            events, session, native, source["source_sha256"])
+        # Native output contains the official body (without YAML frontmatter).
+        # A same-name/path claim or different skill content is not invocation.
+        body = native.read_text().split("\n---\n", 1)[-1].strip()
+        invocation = [i for i in invocation if body in events[i["event_index"]][
+            "part"]["state"]["output"] and any(
+                d["event_index"] < i["event_index"] for d in discovery)]
+        if invocation:
+            return source, discovery, invocation, instructions
+    return None, [], [], []
 
 
 def tool_events(events, session, *, tool=None, contains=None, completed_only=True):
@@ -995,8 +1087,11 @@ def main():
         tasks.write_text(tasks.read_text().replace("- [x]", "- [ ]"))
         assert "opencode" in (repo / ".agents/skills/.openspec-target").read_text().splitlines()
         assert not (repo / ".opencode/commands").exists()
-        native = repo / ".agents/skills/openspec-apply-change/SKILL.md"
-        assert native.is_file() and "generatedBy: \"2.0.0\"" in native.read_text()
+        native_names = (("openspec-explore", "openspec-apply-change") if case == "T1" else
+                        ("openspec-apply-change",))
+        for name in native_names:
+            native = repo / ".agents/skills" / name / "SKILL.md"
+            assert native.is_file() and "generatedBy: \"2.0.0\"" in native.read_text()
         validation = run([openspec, "validate", CHANGE, "--strict", "--no-interactive"],
                          cwd=repo, env=env)
         git(repo, env, "add", "-A")
@@ -1103,11 +1198,14 @@ def main():
         reads_before = (gh_root / "reads.jsonl").read_text().splitlines()
         if case == "T7":
             native = repo / ".agents/skills/openspec-explore/SKILL.md"
-        native_provenance = {"path": str(native), "resolved": str(native.resolve()),
+        native_provenance = None if case == "T1" else {
+                             "path": str(native), "resolved": str(native.resolve()),
                              "sha256": sha(native), "source_sha256":
                              sha(ROOT / ".agents/skills" / native.parent.name / "SKILL.md"),
                              "symlink": native.is_symlink()}
-        assert native_provenance["sha256"] == native_provenance["source_sha256"]
+        if native_provenance:
+            assert native_provenance["sha256"] == native_provenance["source_sha256"]
+        inspection_sources = t1_inspection_sources(repo) if case == "T1" else None
         phases = []
         session = None
         prompts = [prompt]
@@ -1157,6 +1255,8 @@ def main():
                       "fixture_proposal_facts": provenance,
                       "permissions": permissions, "previous_session_id": session,
                       "model_preflight": {}}
+            if case == "T1":
+                record["native_inspection_candidates"] = inspection_sources
 
             def launch():
                 shell_guard_preflight(cli, repo, case_env, guard)
@@ -1180,8 +1280,12 @@ def main():
             calls_safe = all(not any(a == "--method" or a.startswith("body=") or
                                      a in ("edit", "create", "merge", "close", "delete")
                                      for a in args) for args in new_calls)
-            native_discovery, native_invocation, native_instructions = (
-                 native_calls(events, session, native, native_provenance["sha256"]))
+            if case == "T1":
+                native_provenance, native_discovery, native_invocation, native_instructions = (
+                    t1_native_inspection(events, session, repo, inspection_sources))
+            else:
+                native_discovery, native_invocation, native_instructions = (
+                    native_calls(events, session, native, native_provenance["sha256"]))
             resume_invocation = tool_events(events, session, tool="skill",
                                             contains="resume-workflow") + [
                 e for e in tool_events(events, session, tool="read",
@@ -1212,12 +1316,15 @@ def main():
                        "runtime_reads": receipt_reads, "outcome": outcome,
                        "github_reads": new_reads, "status": "observed"})
             record["model_proposal_proved"] = proposal_proved
+            apply_gate_proved = (t1_apply_gate_proof(
+                events, session, repo, provenance, native_invocation) if case == "T1" else None)
+            record["model_apply_gate_proved"] = apply_gate_proved
             phases.append(record)
             persist(base, results)
             required = before == after and calls_safe and new_calls and outcome
             required &= any(args[:1] == ["api"] for args in new_calls)
             if case == "T1":
-                required &= proposal_proved
+                required &= proposal_proved and apply_gate_proved
             if case == "T5":
                 required &= t5_sources(events, session, fixture, before["github"], new_reads)
             if case == "T7" and phase == 1:

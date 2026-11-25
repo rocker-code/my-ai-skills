@@ -2,6 +2,173 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Correção offline — âncora de inspeção T1, sem terceira observação
+
+Writer delegado `ses_deeb219ebffecKs4h8aN9D00bl`,
+`workerfix61-inspection-anchor`, run `wf-20261116T064328Z-45cb0ecc`,
+mesmo checkout/branch, entrada `ab9dcc93ddcc9f293f23209576d5659f8ec4d963`.
+Reserva ownerless WAITING adquirida e verificada com ID nativo próprio;
+nota dirty factual da segunda observação preservada integralmente. Os nove
+bytecodes e os 38 commits anteriores continuam preservados. Política
+`protocol/TEST_STRATEGY.md` comparada com `31cdb42`: `policy: ok`;
+`openspec context/list --json` confirmam root e 14/16, sem init/update.
+
+**Diagnóstico completo pós-segunda falha, antes de qualquer terceira T1:**
+a revisão independente `ses_def0f16a9ffeAEin2bLMykHlkm` e a releitura dos
+eventos de `ev-20261125T055329Z-ac05900b` identificam sobre-restrição da
+implementação, não mudança do contrato aprovado. Design `31cdb42:41–43,61`
+e delta `specs/interrupted-workflow-resume/spec.md:41–43` exigem inspeção
+nativa correlacionada, proposta/review imutáveis e Apply como próximo gate,
+**sem executar Apply**; não exigem somente o ID `openspec-apply-change`.
+A skill oficial Explore local (`SKILL.md:15–17`) permite inspeção read-only
+e é uma postura, não uma troca do próximo gate.
+
+Fase efetiva: comparação de asserções **após** término do modelo em T1;
+escopo: HOME/XDG/DB/Location descartáveis da candidata `ab9dcc93`, sem
+config/credenciais pessoais; lifecycle: modelo
+`ses_deebbcb22ffeLB1Vv1Mhuu9P50` exit 0, custo reportado 0, sem timeout/erro
+de provedor; harness exit 1, T5/T7 NOT RUN. Snapshots disponíveis e iguais
+não são aprovação de tentativas. Consumidores: seleção T1 de
+`native_calls`, âncora temporal de `t1_proposal_proof` e gate agregado.
+Nenhum defeito de aplicação/produção foi demonstrado.
+
+Na execução fonte, descoberta 45/49 precede a skill tool Explore 57, origem
+não symlink/hash `e776f0d8b5e36d2e5fd8149254a95c54008942bd4336d1c67e568c67e45ddcca`
+igual à fonte candidata. Os dez probes 77–81/114–116/120–121 e strict 113
+tiveram exit 0, saída integral correta; Apply instructions 117 identifica o
+change correto, `ready`, 0/16 e tasks da fixture. Recibo independente 102
+correlaciona writer/owner/run/checkout e terminal. Resposta 163 identifica
+última proposta/review/validação e Apply próximo, não executado. Tasks da
+fixture são desmarcadas em `:992–995`: seu SHA distinto do source é esperado;
+os cinco artefatos coincidem com a proposta **da fixture**. Não expandir
+comandos para satisfazer lacunas declaradas pelo modelo.
+
+Seq9 teve dois mecanismos reais: listagem de diretório excluída e ausência
+de verificação efetiva da proposta/review/strict pelo modelo. Seq13 já tem
+essas fontes verificadas, mas a âncora Apply-only exclui a inspeção Explore.
+São mecanismos distintos, não renomeação para contornar limite. Seq9 é
+histórico **PROGRESSED**, nunca passed; seq13 continua **BLOCKED**. HTTP 400
+e observer Dell UNKNOWN continuam intactos.
+
+Alternativa mínima compatível: manter bloqueio sem corrigir. Hipótese
+escolhida: aceitar **somente** `openspec-explore` ou `openspec-apply-change`
+como inspeção T1, cada qual vinculada à fonte/path/hash/sessão e descoberta
+anterior; manter skill tool real, nunca read/CLI/prosa. Separadamente exigir
+Apply instructions bem-sucedido do change/tasks corretos, mais todos os
+probes imutáveis e strict pós-inspeção e relato Apply próximo. Explore com
+prosa sozinha não prova RECOVERED. Trade-off: remove falso negativo sem
+trocar inspeção por handoff nem afrouxar segurança. T7 e guard/permissões,
+prompts, pins e fontes R1–R4 não precisam mudar.
+
+O seq17 abaixo registra este diagnóstico antes de testes/replay da correção;
+`attempt-log check` não final deve ser executado antes deles. Replay offline
+não é nova execução nativa/model-backed nem retroaprovação do run falho.
+Sem inferência autorizada neste writer; revisão afetada e eventual observação
+nova cabem separadamente ao coordenador.
+
+**Provas da correção durante o diff, não gates finais:**
+
+| Aceite/risco afetado | Menor prova / resultado |
+| --- | --- |
+| Duas alternativas exatas, fonte/path/hash/sessão/ordem próprios; read/prosa/skill alheia não substituem invocação | `ev-20261125T061101Z-3d4b49a7`: 34/34 em `test_resume_reinventory.py` (inclui cinco testes novos, com subcasos). Mesmo resultado inicial em `ev-20261125T060901Z-8094b2cf`. |
+| Apply próximo não se deduz de Explore nem de `ready` declarativo | Mesmo grupo: gate separado exige CLI exit 0, sem truncamento, sessão/cwd/ordem corretos, change/schema/contextFiles exatos, tarefas com id/descrição/linha/sourcePath/done e progresso correspondentes ao tasks imutável. Proposta/review/cinco artefatos/strict e relato Apply continuam gates adicionais. |
+| Regressão observada no trace retido, sem fabricar execução | `ev-20261125T061141Z-267e3387`: replay offline dos inputs reais com os três hashes históricos conferidos, Explore 57 após descoberta 45/49; checks de proposta e Apply separados verdadeiros; 12 negativos rejeitados (ausência/invocação/sessão/skill/ordem/descoberta/strict/review/Apply não comprovado/change/tasks/prosa). Inputs originais inalterados, registro histórico failed/false intacto. |
+| Preservação R1–R4/T7/pins sem nova superfície shell | Mesmo replay compara bytes com `ab9dcc93`: `native_calls`, permissões, guard factory/preflight, detector all-status, T7 phase1/reinventory, T5 sources, modelo/execução/captura, `t1_proposal_proof`, prompts e arquivos guard/shim/instalador/skills idênticos. Guard `b8788477…`, instalador `93cd9371…`. Não há justificativa para repetir executor nativo nem expandir guard/comandos. |
+
+O primeiro replay `ev-20261125T061101Z-67b3f88c` falhou **somente** na
+asserção de byte-identidade: um espaço de indentação em
+`t1_proposal_proof` diferia do baseline. A comparação AST/source localizou
+esse único delta entre as definições preservadas; restaurado o byte original,
+o replay acima passou. Não era falha de modelo, CLI, permissão ou aplicação.
+O log recuperável do replay aprovado contém script e inputs reais, não só
+locators `/tmp`; nenhuma prova histórica foi reclassificada.
+
+`attempt-log check` não final após seq17: exit 0, `valid=true`,
+`violations=[]`, seq9 `progressed`, seq13 `blocked`, `wait_reason=dependency`.
+Isso valida estrutura/diagnóstico, **não** autoriza inferência ou libera
+entrega. No HEAD limpo após o commit, registrar novamente focados completos
+(retomada + raw guard), suíte offline integral e strict como **pre-smoke**,
+sem required gate; IDs exatos ficam no retorno ao coordenador, fora do commit.
+Suite discovery/Python stdlib e Node da fixture são os consumidores offline;
+sem Magento/M2T/lockfile de aplicação ou dependência nova. T1 permanece
+FAILED/NOT PROVEN, T5/T7 NOT RUN, tarefas 3.4/4.3 pendentes. Estado de saída:
+checkout limpo e reserva ownerless WAITING, sem push/PR/archive/merge.
+
+### Nova observação revisada — 05:53–05:57 UTC, NOT READY
+
+Autorização separada do coordenador após revisão afetada
+`ses_def0f16a9ffeAEin2bLMykHlkm` do HEAD limpo
+`ab9dcc93ddcc9f293f23209576d5659f8ec4d963`, não retry automático de
+`ea49c81` nem aprovação retroativa de `ev-20261125T051622Z-335af867`.
+Worker real `ses_deedf03e1ffeIEi5jKBFwDgALP`, `observe61-isolated`,
+mesmo run `wf-20261116T064328Z-45cb0ecc`/checkout/branch; reserva
+ownerless WAITING adquirida, verify/checkpoint/verify executados.
+Reutilizadas provas do HEAD exato: offline 285
+`ev-20261125T054618Z-96deec76`, focados 37
+`ev-20261125T054751Z-1dab0487`, executor nativo 12 allow/21 reject
+`ev-20261125T054618Z-3ee0cff6`, strict 13/13
+`ev-20261125T054618Z-7630f32a`; todas verificadas com os respectivos
+tool IDs, sem required gate, não suíte final.
+
+Uma chamada efetiva `PYTHONDONTWRITEBYTECODE=1 python3 -B
+tests/smoke_resume_candidate_opencode.py`, sem argumentos, em wrapper
+`workflow-evidence record`, timeout externo 1.800 s/interno 360 s.
+HOME/XDG/CODEX_HOME/DB/instalação descartáveis, manifesto no HEAD exato,
+sem credenciais/config pessoal/override/fallback/update global.
+OpenCode **2.3.2**, OpenSpec **2.1.1**. Fonte nativa fresh
+`/api/model/default`, cruzada com `/api/model` no mesmo Location/ambiente:
+**`opencode/big-pickle`**, enabled/active chat, tools/text→text e todos os
+preços input/output/cache read/write conhecidos zero.
+Guard fonte SHA-256
+`b878847767fd9759d7362a6aa71707b4e13f97606258f39448c82b23f255e656`,
+policy `bee531e2b2619ff67dcaa429c0fa05496319a5d2b93e3c668e7d5be2f2444345`;
+ativação fresh exata antes de inferência e setup/active/cleanup do modelo
+no audit. Rejeições permanecem pré-spawn; allowlist não foi alterada.
+
+**Terminal:** modelo `ses_deebbcb22ffeLB1Vv1Mhuu9P50`, PID 1512799,
+exit **0**, `timed_out=false`, às `2026-11-25T05:57:29.505964+00:00`;
+sem erro de provedor/JSONL malformado. 28 `step_finish`, custo reportado **0**,
+102 tool events. **Harness exit 1 em T1; T5/T7 NOT RUN**, nenhum segundo
+modelo. Snapshots before/after disponíveis e iguais em todas as dimensões;
+`outcome=true`, mas `proof_complete=false`, `model_proposal_proved=false`.
+
+**Achado factual, sem corrigir detector:** descoberta shell eventos 45/49;
+`skill(resume-workflow)` evento 2 e **`skill(openspec-explore)` evento 57**
+bem-sucedidos. O matcher T1 está vinculado ao path/hash/name de
+**`openspec-apply-change`**, cuja invocação não ocorreu (`native_invocation=[]`);
+ler seu arquivo e executar CLI não substituem a skill tool. Todos os dez
+probes de commit/ancestralidade/review/cinco artefatos/diff realmente tiveram
+exit 0, saída esperada, sem truncamento (77–81, 114–116, 120–121).
+Strict canônico no 113 também exit 0/saída esperada após Explore.
+O agregado de proveniência ainda rejeita por falta da invocação vinculada,
+não por ausência daqueles probes. Recibo independente correlacionado do
+writer foi consultado no 102, terminal true/exit 0. Proposta fixture
+`f885370afc0913c9bf6e11e18748cc3476e9be89`, review controlado fixture
+`ee5cc33c19fb6351822053996121056f2fe279ae`, distintos da candidata e `31cdb42`.
+Relato do modelo também aponta diferenças entre hashes de tasks da candidata
+e da fixture com tarefas desmarcadas; não alterá-los ou expandir comandos.
+Revisão independente deve confrontar skill aplicável read-only e matcher
+pinado antes de qualquer correção; este worker não decide aceitação por prosa.
+
+**Prova** `evidence:ev-20261125T055329Z-ac05900b`, execution.log 788.387 bytes,
+SHA-256 `37ca4658fec659560a303e9f79546b1e01bbf0df6567ddd8ed48f94f8dcfeca4`,
+retém preparação/results/snapshots/eventos/stderr/terminal/guard/policy/audit/
+receipts checksum-bound. Verificado antes desta nota: `verified/failed`,
+exit 3 `no_required_gate`, com `--tool opencode=2.3.2 --tool openspec=2.1.1
+--env-id sandbox=observe61-ab9dcc9-ses_deedf03e1ffe`.
+Originais `/tmp/opencode/issue61-observe-ab9dcc9-ses_deedf03e1ffe`;
+results SHA-256 `bf3284f428652d2f6e19087f9d073bdd79847d5b83d64bee9c871a8b6da5e786`,
+JSONL `a7f9811717c024ed9c234e43d4389e43ae3941f7cdb99e828eb2e6ddd9b7dbf5`,
+terminal `f106ac4c2afa9a282796d394eef451feafa22b17ce6b50303d176103a9a5bad3`.
+Fase `status=failed`; top-level status/finished_at ausentes nessa falha de
+asserção, preservados sem inferir PASS.
+
+**Parada:** sem autocorreção/retry, archive/sync, suíte final, commit,
+push/PR/merge. 3.4/4.3 continuam pendentes; histórico 400 e Dell UNKNOWN
+intactos. Próxima ação: revisão independente dos eventos e da vinculação da
+skill aplicável. Só esta nota fica dirty, HEAD preservado; reserva devolvida
+ownerless **WAITING**, sem drift, nove bytecodes preservados.
+
 ### Correção offline T1 — descoberta e proveniência, sem nova inferência
 
 Writer delegado `ses_deecfd284ffeAQqQpQZa0BoTGX`,
@@ -465,7 +632,12 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 {"kind":"diagnosis","seq":10,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha"},"class":"assertion/contract","checked":{"phase":"post-terminal T1 proof assertions, not provider/bootstrap; directory read event31 excluded by glob/shell discovery matcher; response lacks fixture proposal prefix","scope":"same isolated HOME/XDG/DB/Location and exact installed ea49c81 candidate; no operator credentials or model override","lifecycle":"native ses_deeddc510ffe4gvwkMrfPETB0I exit0 without timeout/provider error; outer harness exit1 and no next scenario; snapshots available/equal","consumers":"native_calls and T1 outcome matcher; successful natural resume skill, native Apply skill, instructions and independent writer receipt do not satisfy missing criteria"},"runtime_proof":["evidence:ev-20261125T051622Z-335af867"],"simplest_alternative":"retain failure and independently inspect directory-listing discovery semantics plus missing proposal correlation without another model","choice_rationale":"approved one-observation budget consumed; no guard relaxation, autocorrection, fallback or second observation authorized","next_hypothesis":"independent evidence review can distinguish discovery detector mismatch from response-correlation failure before any separately reviewed fix"},
 {"kind":"blocker","seq":11,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha"},"type":"technical","wait_reason":"dependency","evidence":["evidence:ev-20261125T051622Z-335af867"],"diagnosis":"seq:10","options":[],"impact":"T1 failed proof; T5/T7 not run; tasks 3.4/4.3 pending; no archive/final delivery suite/PR; independent event review needed","researchable":true},
 {"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha"},"outcome":"blocked","via_seq":11},
-{"kind":"diagnosis","seq":12,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha"},"class":"fixture/isolation","checked":{"phase":"post-terminal assertion plus model source inspection: directory event31 genuinely discovers before skill57; proposal commit/review uninspected; strict63/69/133 denied exact argv","scope":"same historical isolated fixture; actual Git ancestor and five artifact hashes independently checked; factual verification is separate from model-observed evidence","lifecycle":"historical model exit0 and harness exit1 preserved; no new inference; offline native bridge exits successfully with zero messages/tokens/cost; no dispatcher claim","consumers":"native_calls directory detector and T1 provenance matcher; raw tool/shell hooks unchanged; T7 prechoice content and failed/cancelled guard unchanged"},"runtime_proof":["evidence:ev-20261125T051622Z-335af867","evidence:ev-20261125T053935Z-6d9799ef","evidence:ev-20261125T053809Z-b1276c50"],"simplest_alternative":"retain failed proof; never drop final-SHA echo alone or substitute OpenSpec ready for immutable review","choice_rationale":"approved design requires real commit/artifact/validation/review correlation, not literal final response SHA; add exact bounded read-only sources and require same-session successful probes; fixture review explicitly controlled seed not real candidate approval","next_hypothesis":"after affected independent review, a separately authorized observation may prove native directory discovery and all immutable provenance probes plus strict canonical command; offline proof does not approve T1"}
+{"kind":"diagnosis","seq":12,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha"},"class":"fixture/isolation","checked":{"phase":"post-terminal assertion plus model source inspection: directory event31 genuinely discovers before skill57; proposal commit/review uninspected; strict63/69/133 denied exact argv","scope":"same historical isolated fixture; actual Git ancestor and five artifact hashes independently checked; factual verification is separate from model-observed evidence","lifecycle":"historical model exit0 and harness exit1 preserved; no new inference; offline native bridge exits successfully with zero messages/tokens/cost; no dispatcher claim","consumers":"native_calls directory detector and T1 provenance matcher; raw tool/shell hooks unchanged; T7 prechoice content and failed/cancelled guard unchanged"},"runtime_proof":["evidence:ev-20261125T051622Z-335af867","evidence:ev-20261125T053935Z-6d9799ef","evidence:ev-20261125T053809Z-b1276c50"],"simplest_alternative":"retain failed proof; never drop final-SHA echo alone or substitute OpenSpec ready for immutable review","choice_rationale":"approved design requires real commit/artifact/validation/review correlation, not literal final response SHA; add exact bounded read-only sources and require same-session successful probes; fixture review explicitly controlled seed not real candidate approval","next_hypothesis":"after affected independent review, a separately authorized observation may prove native directory discovery and all immutable provenance probes plus strict canonical command; offline proof does not approve T1"},
+{"kind":"attempt","seq":13,"obligation":"T1","signature":"assertion: recovery proof incomplete; native apply invocation absent after successful explore invocation","target":"ab9dcc93 T1 phase1 native default","class":"assertion/contract","hypothesis":"separately reviewed discovery and provenance fixes enable complete T1 observed proof","change":"approved ab9dcc93 directory discovery and immutable proposal probes; current native model metadata revalidated","change_target":"test","observed_effect":"native exit0, harness1; discovery and all ten proposal probes plus strict succeed; skill Explore invoked but designated Apply absent; snapshots available/equal; T5/T7 not run","result":"fail","evidence":["evidence:ev-20261125T055329Z-ac05900b"]},
+{"kind":"diagnosis","seq":14,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native apply invocation absent after successful explore invocation"},"class":"assertion/contract","checked":{"phase":"post-terminal native_calls matches Apply path/hash/name; actual skill Explore at57; strict113 and all provenance probes succeeded but aggregate requires designated invocation","scope":"new isolated HOME/XDG/DB at installed ab9dcc93; no personal credentials/config; exact raw guard activation and native default zero pricing","lifecycle":"ses_deebbcb22ffeLB1Vv1Mhuu9P50 terminal exit0 without timeout/provider error; harness exit1; no next scenario; snapshots available/equal","consumers":"T1 native matcher and t1_proposal_proof invocation anchor; successful read/CLI and prose do not substitute skill tool"},"runtime_proof":["evidence:ev-20261125T055329Z-ac05900b"],"simplest_alternative":"retain failed proof and independently compare applicable read-only native skill with pinned matcher before any change","choice_rationale":"one new observation consumed; no self-correction or second model authorized; retain all failed episodes and raw streams","next_hypothesis":"independent contract/event review can resolve designated Apply versus observed Explore without altering guard or inventing PASS"},
+{"kind":"blocker","seq":15,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native apply invocation absent after successful explore invocation"},"type":"technical","wait_reason":"dependency","evidence":["evidence:ev-20261125T055329Z-ac05900b"],"diagnosis":"seq:14","options":[],"impact":"T1 failed; T5/T7 not run; no archive/final local suite/PR; independent review needed","researchable":true},
+{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native apply invocation absent after successful explore invocation"},"outcome":"blocked","via_seq":15},
+{"kind":"diagnosis","seq":17,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native apply invocation absent after successful explore invocation"},"class":"fixture/isolation","checked":{"phase":"post-terminal T1 assertions: ls45/49 before Explore skill57; ten immutable probes77-81/114-116/120-121 and strict113 succeed; Apply instructions117 correct change ready0/16; final163 reports last proposal/review/validation and Apply next not executed","scope":"ab9dcc93 isolated HOME/XDG/DB/Location; Explore source non-symlink hash e776f0d8b5e36d2e5fd8149254a95c54008942bd4336d1c67e568c67e45ddcca matches candidate; fixture tasks intentionally reset992-995 and all five artifacts match fixture proposal","lifecycle":"ses_deebbcb22ffeLB1Vv1Mhuu9P50 exit0/cost0 without timeout/provider error; harness1; snapshots available/equal; receipt102 terminal correlates writer/owner/run/checkout; T5/T7 not run; no new inference","consumers":"T1 native_calls selection and t1_proposal_proof anchor plus separate RECOVERED gate; assertion/fixture not application; seq9 discovery false-negative plus genuinely absent proposal verification differs from seq13 Apply-only false-negative; historical seq9 progressed not passed and seq13 blocked; T7/all-status boundaries and R1-R4/raw guard unchanged"},"runtime_proof":["evidence:ev-20261125T055329Z-ac05900b"],"simplest_alternative":"retain failed proof and stop without another observation; do not substitute Explore-plus-prose for verified Apply readiness","choice_rationale":"independent review ses_def0f16a9ffeAEin2bLMykHlkm confirms existing approved design31cdb42 requires correlated native inspection not Apply-only ID; exact Explore or Apply inspection alternatives preserve source/path/hash/session/discovery ordering while separate successful correct-change Apply instructions/tasks plus immutable probes/strict and reported handoff retain guarantee; no owner decision/replan or guard expansion","next_hypothesis":"bounded T1 inspection anchor removes implementation false-negative while independent Apply readiness rejects Explore-only/prose/unproved or mismatched change; prove offline with retained actual trace and negatives, not new native completion or retroactive PASS"}
 ]}
 ```
 
