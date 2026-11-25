@@ -38,22 +38,21 @@ honesto incomplete/not verified é adequado à inspeção, não aprovação da
 implementação ou prontidão de archive. PR/head/checks/manual/dependência,
 snapshots/recibo e recusa de tentativa stateful continuam obrigatórios.
 
-**Offline focado:** `ev-20261125T133817Z-03693f52`, 64/64, após corrigir somente
-fixture unitária que omitia os contêineres `pulls/issues` (primeira execução
-`ev-20261125T133631Z-644ff2c3`, KeyError, 64 testes/1 erro). Positivos sintéticos
+**Offline focado:** 64/64, após corrigir somente fixture unitária que omitia os
+contêineres `pulls/issues` (primeira execução: KeyError, 64 testes/1 erro).
+Recibos novos são entregues fora do commit. Positivos sintéticos
 de captura não são observação nativa. Negativos incluem a tentativa real
 stateful verify19 preservada, além de T7 Verify/Apply em todos os status.
-Rechecagem da fonte offline final `ev-20261125T134603Z-5c4531a2`: 64/64;
-suíte preliminar `ev-20261125T134630Z-326cdee8`: **320/320**, 67,655s,
+Rechecagem da fonte offline: 64/64; suíte preliminar: **320/320**, 67,655s,
 verified/passed/no_required_gate antes do commit, não gate de entrega.
 Strict oficial: change **1/1**, global **13/13**; diff check e attempt-log
 estrutural válidos (história nativa ainda BLOCKED). O recibo de suíte após
 commit limpo fica fora deste documento/commit para evitar commit só de IDs.
 
 **Diagnóstico de dois probes auxiliares, antes de nova execução offline:**
-`ev-20261125T133957Z-e3384624` falhou por presumir advertisement a partir do
-GET `/api/skill` antecipado ([] em T1, builtin-only em T5);
-`ev-20261125T134147Z-80b70a25` falhou por presumir que permissões configuradas
+primeiro probe falhou por presumir advertisement a partir do GET `/api/skill`
+antecipado ([] em T1, builtin-only em T5); segundo probe falhou por presumir
+que permissões configuradas
 seriam o sufixo completo do agente. Fase: API/debug sem prompt, antes de entrega
 ao modelo; escopo: HOME/XDG/DB/roots novos e privados, não o operador.
 Lifecycle: subprocessos terminaram normalmente, sem inferência ou worker nativo
@@ -65,13 +64,12 @@ contíguo e esses denies explícitos via debug settled, preserva o GET bruto com
 antecipado e exige zero mensagens/tokens. Não converter essa evidência em
 delivery/dispatch, não alterar provider/config/timeout para contornar a falha.
 
-**Recibo corrigido** `ev-20261125T134343Z-9f1e91b9`: geração oficial e três
+**Probe corrigido, recibo fora do commit:** geração oficial e três
 commits Git reais de proposta, strict/context/list/Apply ready com 0/19
 concluídos, comparação byte-a-byte de regras e código preservados. Debug settled
 OpenCode2.3.2 confirma Verify **deny/allow/deny** em T1/T5/T7 respectivamente.
-Sessões apenas metadata `ses_ded0d5162ffe7F4bFyD4TXBoyy`,
-`ses_ded0d4c1affeVBot6ZKMwwrKtx`, `ses_ded0d46f6ffeW1yUDFgpVs29q5`:
-zero mensagens/tokens/custo. GET bruto não prova advertisement entregue;
+Sessões apenas metadata, IDs entregues fora do commit: zero mensagens/tokens/
+custo. GET bruto não prova advertisement entregue;
 captura de catálogo rejeita corretamente essas sessões sem assistant. Nenhum
 dispatch skill/modelo/command bridge foi executado: fonte+config settled+testes
 provam somente preflight, não comportamento integrado.
