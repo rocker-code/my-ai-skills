@@ -1,5 +1,5 @@
 """Offline regression for the T7 same-session, pre-native reinventory gate."""
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import closing, redirect_stderr, redirect_stdout
 from io import StringIO
 import json
 import copy
@@ -36,6 +36,7 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               t1_serialization, t1_ownership_context,
                                               t1_phase_evaluation, t1_offline_projection,
                                               t1_github_source_proof,
+                                              native_validation_calls,
                                               input_files, input_digest, effective_input_binding,
                                               effective_input_diff, APPROVED_PROPOSAL, PROMPTS)
 
@@ -158,7 +159,7 @@ class T7VisibleQuestionTest(unittest.TestCase):
         ]
         self.assertTrue(t7_phase1_proof(discovery, session, question,
                                         before, before, resume))
-        for status in ("completed", "error", "cancelled"):
+        for status in ("completed", "error", "cancelled", "running"):
             for tool, inp in (
                 ("skill", {"id": "openspec-explore"}),
                 ("read", {"path": ".agents/skills/openspec-explore/SKILL.md"}),
@@ -680,6 +681,202 @@ class T1NativeInspectionTest(unittest.TestCase):
     def test_catalog_capture_refuses_nonfixture_database(self):
         with self.assertRaises(RuntimeError):
             delivered_skill_catalog(self.repo / "operator.db", self.repo, self.session)
+
+    def validation(self):
+        return {"output": f"Change '{CHANGE}' is valid", "context": {
+            "context": {"root": {"path": str(self.repo)}},
+            "list": {"root": {"path": str(self.repo)}, "changes": [{"name": CHANGE}]}}}
+
+    def validation_event(self):
+        return {"type": "tool_use", "sessionID": self.session, "part": {
+            "tool": "shell", "sessionID": self.session, "id": "strict", "state": {
+                "status": "completed", "input": {"command": STRICT_VALIDATE, "workdir": str(self.repo)},
+                "output": self.validation()["output"],
+                "metadata": {"metadata": {"exit": 0, "truncated": False}}}}}
+
+    def test_t5_bounded_inspection_choices_and_actual_context_validation_before_handoff(self):
+        for source in self.sources:
+            trace = [*self.catalog_events(source), self.validation_event(),
+                     {"type": "text", "sessionID": self.session, "part": {"text": "handoff"}}]
+            def inspect(events=trace, catalog=None, validation=None):
+                return t1_native_inspection(
+                    events, self.session, self.repo, self.sources,
+                    self.catalog(source) if catalog is None else catalog,
+                    before=len(events) - 1, validation=validation or self.validation())
+            result = inspect()
+            self.assertEqual(result[0], source)
+            self.assertEqual(result[2][0]["name"], Path(source["path"]).parent.name)
+            self.assertEqual(result[3][0]["event_index"], 2)
+            # e1408daf design41/45 requires applicable observations, not another
+            # post-skill repetition of an already observed valid T5 CLI gate.
+            before_skill = [trace[0], trace[2], trace[1], trace[3]]
+            self.assertTrue(inspect(before_skill)[3])
+            for field, value in (("command", STRICT_VALIDATE.replace(CHANGE, "wrong-change")),
+                                 ("command", "openspec instructions apply --change wrong --json"),
+                                 ("workdir", "/wrong/fixture")):
+                changed = copy.deepcopy(trace)
+                changed[2]["part"]["state"]["input"][field] = value
+                self.assertFalse(inspect(changed)[3])
+            for field, value in (("status", "error"), ("status", "cancelled"),
+                                 ("output", "Change 'wrong-change' is valid"),
+                                 ("output", "ready; I validated the change")):
+                changed = copy.deepcopy(trace)
+                changed[2]["part"]["state"][field] = value
+                self.assertFalse(inspect(changed)[3])
+            for field, value in (("exit", 1), ("exit", None), ("truncated", True)):
+                changed = copy.deepcopy(trace)
+                changed[2]["part"]["state"]["metadata"]["metadata"][field] = value
+                self.assertFalse(inspect(changed)[3])
+            for location in ("sessionID", "part"):
+                changed = copy.deepcopy(trace)
+                if location == "part":
+                    changed[2]["part"]["sessionID"] = "other-session"
+                else:
+                    changed[2]["sessionID"] = "other-session"
+                self.assertFalse(inspect(changed)[3])
+            for index in (1, 2):
+                changed = copy.deepcopy(trace)
+                changed[index]["part"]["messageID"] = "output-from-a-different-step"
+                proof = inspect(changed)
+                self.assertFalse(proof[2] if index == 1 else proof[3])
+            changed = [trace[0], trace[1], trace[3], trace[2]]
+            self.assertFalse(t1_native_inspection(
+                changed, self.session, self.repo, self.sources, self.catalog(source),
+                before=2, validation=self.validation())[3])
+            wrong = self.validation()
+            wrong["context"]["context"]["root"]["path"] = "/wrong"
+            self.assertFalse(inspect(validation=wrong)[3])
+            wrong = self.validation()
+            wrong["context"]["list"]["changes"] = [{"name": "wrong-change"}]
+            self.assertFalse(inspect(validation=wrong)[3])
+
+    def continuation(self, source):
+        prior = self.catalog(source)
+        current = copy.deepcopy(prior)
+        current["snapshot_sha256"] = "c" * 64
+        current["turn_messages"] = {
+            "user": {"id": "choice-user", "seq": 10, "created": 7},
+            "assistant": {"id": "choice-assistant", "seq": 11, "created": 8,
+                          "time": {"firstToken": 10, "completed": 11}}}
+        events = [{"type": "step_start", "sessionID": self.session, "timestamp": 9,
+                   "part": {"messageID": "choice-assistant"}}, self.events(source)[1],
+                  self.validation_event()]
+        return prior, current, events
+
+    def test_t7_current_same_session_catalog_discovers_only_explore_and_never_overrides_phase_gates(self):
+        explore, apply = self.sources
+        prior, current, events = self.continuation(explore)
+        previous = self.catalog_events(explore)[:1]  # Metadata only before explicit choice.
+        def inspect(trace=events, catalog=current):
+            return t1_native_inspection(
+                trace, self.session, self.repo, self.sources, catalog,
+                allowed_names=("openspec-explore",), validation=self.validation(),
+                prior_catalog=prior, prior_events=previous)
+        result = inspect()
+        self.assertEqual(result[0], explore)
+        self.assertEqual(result[1][0]["turn_message_id"], "choice-assistant")
+        self.assertTrue(result[2] and result[3])
+        # Discovery/inspection is not a substitute for any required reinventory
+        # probe. No synthetic catalog or metadata gets called actual T7 proof.
+        self.assertFalse(t7_reinventory(
+            events, self.session, 1, self.repo, [], Path("/unused-reader"), {21: {}}))
+        # Reuse the existing SYNTHETIC probe fixture in this source's namespace;
+        # no probes/model are executed, and this is not an observed T7 session.
+        probes = T7ReinventoryTest()
+        probes.setUp()
+        def relocate(value):
+            return json.loads(json.dumps(value).replace(
+                str(probes.repo), str(self.repo)).replace(probes.session, self.session))
+        phase2 = [events[0], *relocate(probes.events), *events[1:]]
+        worktrees = [Path(p) for p in relocate([str(p) for p in probes.worktrees])]
+        reader = Path(relocate(str(probes.reader)))
+        receipts = {int(k): v for k, v in relocate(probes.receipts).items()}
+        native_index = len(probes.events) + 1
+        self.assertTrue(inspect(phase2)[2])
+        self.assertTrue(t7_reinventory(
+            phase2, self.session, native_index, self.repo, worktrees, reader, receipts))
+        missing_receipt = copy.deepcopy(phase2)
+        missing_receipt[len(probes.events)] = {}
+        self.assertTrue(inspect(missing_receipt)[2])  # Catalog/skill remain real-shaped facts.
+        self.assertFalse(t7_reinventory(
+            missing_receipt, self.session, native_index, self.repo, worktrees, reader, receipts))
+        _, _, apply_events = self.continuation(apply)
+        self.assertFalse(inspect(apply_events)[2])
+        for negative in ({}, prior, {**current, "origin": "prepared_config"},
+                         {**current, "session_id": "other-session"},
+                         {**current, "snapshot_sha256": prior["snapshot_sha256"]},
+                         {**current, "through_seq": 8}, {**current, "turn_messages": {}}):
+            self.assertFalse(inspect(catalog=negative)[2])
+        for field, value in (("id", "assistant"), ("seq", 6), ("created", 0),
+                             ("time", {"firstToken": 10})):
+            negative = copy.deepcopy(current)
+            negative["turn_messages"]["assistant"][field] = value
+            self.assertFalse(inspect(catalog=negative)[2])
+        changed = copy.deepcopy(events)
+        changed[0]["part"]["messageID"] = "wrong-step"
+        self.assertFalse(inspect(changed)[2])
+        question = ("Qual issue e run você escolhe: issue #21 / wf-disposable-a "
+                    "ou issue #22 / wf-disposable-b?")
+        self.assertTrue(t7_phase1_proof(previous, self.session, question, {}, {}, [True]))
+        self.assertTrue(catalog_discovery(prior, previous, self.session, self.repo, Path(explore["path"])))
+        for status in ("completed", "error", "cancelled", "running"):
+            content = {"type": "tool_use", "sessionID": self.session, "part": {
+                "tool": "read", "state": {"status": status, "input": {"path": explore["path"]}}}}
+            self.assertFalse(t7_phase1_proof(
+                [*previous, content], self.session, question, {}, {}, [True]))
+            early = [phase2[0], content, *phase2[1:]]
+            self.assertTrue(inspect(early)[2])
+            self.assertFalse(t7_reinventory(
+                early, self.session, native_index + 1, self.repo, worktrees, reader, receipts))
+
+    def test_catalog_capture_binds_current_turn_from_owned_private_sqlite_not_stale_preparation(self):
+        import sqlite3
+        # Synthetic native-schema DB, NOT a model/native delivery observation.
+        base = self.repo / "capture"
+        repo = base / "repo"
+        repo.mkdir(parents=True)
+        for source in self.sources:
+            name = Path(source["path"]).parent.name
+            shutil.copytree(Path(source["path"]).parent, repo / ".agents/skills" / name)
+        database = base / "opencode.db"
+        entries = self.catalog(self.sources[0])["catalog"]
+        digest = self.catalog(self.sources[0])["blob_hash"]
+        with closing(sqlite3.connect(database)) as db, db:
+            db.executescript("""
+                CREATE TABLE session_v2(id,directory,version,time_created);
+                CREATE TABLE instruction_state(session_id,epoch_start,through_seq,initial_values,current_values);
+                CREATE TABLE instruction_blob(hash,value);
+                CREATE TABLE session_message(id,seq,time_created,data,session_id,type);
+            """)
+            db.execute("INSERT INTO session_v2 VALUES(?,?,?,?)", (self.session, str(repo), "2.3.2", 1))
+            state = json.dumps({"core/skill-guidance": digest})
+            db.execute("INSERT INTO instruction_state VALUES(?,?,?,?,?)", (self.session, 4, 4, state, state))
+            db.execute("INSERT INTO instruction_blob VALUES(?,?)", (digest, json.dumps(entries)))
+            for ident, seq, created, role, times in (
+                ("user", 5, 2, "user", {}),
+                ("assistant", 6, 3, "assistant", {"firstToken": 5, "completed": 6})):
+                db.execute("INSERT INTO session_message VALUES(?,?,?,?,?,?)",
+                           (ident, seq, created, json.dumps({"time": times}), self.session, role))
+        previous = self.catalog_events(self.sources[0])[:1]
+        prior = delivered_skill_catalog(database, repo, self.session, turn_events=previous)
+        with closing(sqlite3.connect(database)) as db, db:
+            for ident, seq, created, role, times in (
+                ("choice-user", 10, 7, "user", {}),
+                ("choice-assistant", 11, 8, "assistant", {"firstToken": 10, "completed": 11})):
+                db.execute("INSERT INTO session_message VALUES(?,?,?,?,?,?)",
+                           (ident, seq, created, json.dumps({"time": times}), self.session, role))
+        _, _, events = self.continuation(self.sources[0])
+        current = delivered_skill_catalog(database, repo, self.session, turn_events=events)
+        native = repo / ".agents/skills/openspec-explore/SKILL.md"
+        self.assertTrue(catalog_discovery(
+            current, events, self.session, repo, native, prior_catalog=prior, prior_events=previous))
+        self.assertEqual(current["turn_messages"]["assistant"]["id"], "choice-assistant")
+        self.assertEqual(current["messages"], prior["messages"])
+        self.assertNotEqual(current["snapshot_sha256"], prior["snapshot_sha256"])
+        wrong = copy.deepcopy(events)
+        wrong[0]["part"]["messageID"] = "missing-assistant"
+        with self.assertRaises(RuntimeError):
+            delivered_skill_catalog(database, repo, self.session, turn_events=wrong)
 
 
 class T1ProposalProofTest(unittest.TestCase):
@@ -1991,6 +2188,8 @@ class ArchivedContractTest(unittest.TestCase):
                         prompt=prompt, permissions=[],
                         guard=guard, model=model_profile, session=session,
                         approved_contract=contract,
+                        native_candidates=[{"path": str(repo / ".agents/skills/openspec-explore/SKILL.md"),
+                                            "sha256": sha(repo / ".agents/skills/openspec-explore/SKILL.md")}],
                         runtime_paths={name: str(base / "runtime-tool")
                                        for name in ("git", "openspec", "opencode")})
             original = binding()

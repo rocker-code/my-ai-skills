@@ -8,6 +8,7 @@ Only an exact clean candidate HEAD is eligible; retained results are audited evi
 """
 import argparse
 import copy
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -270,7 +271,7 @@ def input_digest(value):
 
 def effective_input_binding(source, revision, contract, active, repo, gh_root, runtime_root,
                             home, env, *, phase, prompt, permissions, guard, model,
-                            runtime_paths, approved_contract, session=None):
+                            runtime_paths, approved_contract, native_candidates, session=None):
     """Record actual source AND transformed inputs, not a blanket source-path claim.
 
     Written before inference. No credential values, DB bytes or model answer are
@@ -288,6 +289,7 @@ def effective_input_binding(source, revision, contract, active, repo, gh_root, r
     rules = input_files(home / ".config/opencode/AGENTS.md")
     wire = {
         "phase": phase, "prompt": prompt, "permissions": permissions,
+        "native_inspection_candidates": native_candidates,
         "config": json.loads(env["OPENCODE_CONFIG_CONTENT"]),
         "guard": {key: input_files(guard[key]) for key in ("source", "policy")},
         "github_shim": input_files(Path(env["PATH"].split(os.pathsep)[1]) / "gh"),
@@ -755,7 +757,7 @@ def t1_phase_evaluation(events, session, fixture, provenance, ownership, *, fact
             "scenario_pass": False, "facts": facts}
 
 
-def delivered_skill_catalog(database, repo, session):
+def delivered_skill_catalog(database, repo, session, *, turn_events=None):
     """Bounded native-owned DB projection, never operator DB/config or prompt text.
 
     Initial state alone can be merely prepared. Require its baseline to precede
@@ -767,8 +769,8 @@ def delivered_skill_catalog(database, repo, session):
     if (database != repo.parent / "opencode.db" or not database.is_file() or
             database.resolve() != database):
         raise RuntimeError("catalog capture requires this disposable fixture database")
-    with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as source, \
-            sqlite3.connect(":memory:") as db:
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as source, \
+            closing(sqlite3.connect(":memory:")) as db:
         source.backup(db)  # Consistent read-only snapshot, including native WAL.
         identity = db.execute(
             "SELECT id,directory,version,time_created FROM session_v2 WHERE id=?", (session,)).fetchone()
@@ -794,6 +796,24 @@ def delivered_skill_catalog(database, repo, session):
                 raise RuntimeError("prepared baseline is not delivered assistant evidence")
             messages[role] = {"id": row[0], "seq": row[1], "created": row[2],
                               "time": json.loads(row[3])}
+        turn = {}
+        if turn_events is not None:
+            first = next((e for e in turn_events if e.get("sessionID") == session), {})
+            if first.get("type") != "step_start":
+                raise RuntimeError("native turn start unavailable for catalog delivery")
+            assistant = db.execute(
+                "SELECT id,seq,time_created,json_extract(data,'$.time') FROM session_message "
+                "WHERE session_id=? AND type='assistant' AND id=?",
+                (session, first.get("part", {}).get("messageID"))).fetchone()
+            user = db.execute(
+                "SELECT id,seq,time_created,json_extract(data,'$.time') FROM session_message "
+                "WHERE session_id=? AND type='user' AND seq<? ORDER BY seq DESC LIMIT 1",
+                (session, assistant[1] if assistant else -1)).fetchone()
+            if not assistant or not user:
+                raise RuntimeError("current native turn messages unavailable in fixture DB")
+            turn["turn_messages"] = {
+                role: {"id": row[0], "seq": row[1], "created": row[2], "time": json.loads(row[3])}
+                for role, row in (("user", user), ("assistant", assistant))}
         return {"origin": "native_disposable_db_snapshot", "session_id": identity[0],
                 "directory": identity[1], "version": identity[2], "session_created": identity[3],
                 "database": str(database), "database_sha256": sha(database),
@@ -801,13 +821,43 @@ def delivered_skill_catalog(database, repo, session):
                 "instruction_key": key, "blob_hash": digest, "catalog": json.loads(blob[0]),
                 "epoch_start": state[0], "through_seq": state[1],
                 "messages": messages,
-                "semantics": "initial-baseline-before-completed-native-assistant"}
+                "semantics": "initial-baseline-before-completed-native-assistant", **turn}
 
 
-def catalog_discovery(catalog, events, session, repo, native):
+def catalog_discovery(catalog, events, session, repo, native, *, prior_catalog=None, prior_events=None):
     """Verify delivered IDs independently of the selected canonical skill body."""
     if not isinstance(catalog, dict):
         return []
+    if prior_catalog is not None or prior_events is not None:
+        # Same-session T7 continuation: recapture the CURRENT private DB, prove
+        # the unchanged delivered baseline against the original turn, and bind
+        # its new native assistant to this turn. Never relabel old metadata as
+        # a new delivery, invocation, user choice or reinventory.
+        try:
+            baseline = ("origin", "session_id", "directory", "version", "session_created",
+                        "database", "instruction_key", "blob_hash", "catalog",
+                        "epoch_start", "through_seq", "messages", "semantics")
+            if (not isinstance(prior_catalog, dict) or not prior_events or
+                    any(catalog[k] != prior_catalog[k] for k in baseline) or
+                    catalog["snapshot_sha256"] == prior_catalog["snapshot_sha256"] or
+                    not catalog_discovery(prior_catalog, prior_events, session, repo, native) or
+                    not catalog_discovery(catalog, prior_events, session, repo, native)):
+                return []
+            first = next(e for e in events if e.get("sessionID") == session)
+            user, assistant = (catalog["turn_messages"][role] for role in ("user", "assistant"))
+            previous = prior_catalog["messages"]["assistant"]
+            if (first["type"] != "step_start" or first["part"]["messageID"] != assistant["id"] or
+                    assistant["id"] == previous["id"] or
+                    not previous["seq"] < user["seq"] < assistant["seq"] or
+                    not (previous["time"]["completed"] <= user["created"] <= assistant["created"] <=
+                         first["timestamp"] <= assistant["time"]["firstToken"] <=
+                         assistant["time"]["completed"])):
+                return []
+        except (KeyError, TypeError, ValueError, StopIteration):
+            return []
+        return [{"tool": "native_catalog", "event_index": -1, "session_id": session,
+                 "message_id": previous["id"], "turn_message_id": assistant["id"],
+                 "blob_hash": catalog["blob_hash"], "scope": "unchanged-baseline-current-turn"}]
     try:
         entries = catalog["catalog"]
         digest = hashlib.sha256(json.dumps(
@@ -1106,12 +1156,20 @@ def native_calls(events, session, native, expected_sha256=None):
         if event.get("sessionID") != session or event.get("type") != "tool_use":
             continue
         part = event.get("part", {})
+        if part.get("sessionID", session) != session:
+            continue
+        if "messageID" in part and not any(
+                e.get("type") == "step_start" and e.get("sessionID") == session and
+                e.get("part", {}).get("messageID") == part["messageID"] for e in events[:index]):
+            continue
         state = part.get("state", {})
         if state.get("status") != "completed":
             continue
         tool = part.get("tool")
         inp = state.get("input", {})
         output = state.get("output", "")
+        if not isinstance(output, str):
+            continue
         # Only the runtime's skill tool is invocation. Direct reads/CLI/prose
         # are auxiliary evidence, never native invocation.
         if (tool == "skill" and inp.get("id") == name and name in output and
@@ -1146,7 +1204,7 @@ def native_calls(events, session, native, expected_sha256=None):
 
 
 def t1_inspection_sources(repo, source_root=ROOT):
-    """Only these two official read-only inspection alternatives satisfy T1."""
+    """The two bounded official inspection sources; consumers may restrict further."""
     sources = []
     for name in ("openspec-explore", "openspec-apply-change"):
         native = repo / ".agents/skills" / name / "SKILL.md"
@@ -1161,21 +1219,27 @@ def t1_inspection_sources(repo, source_root=ROOT):
     return sources
 
 
-def t1_native_inspection(events, session, repo, sources, catalog=None, *, before=None):
+def t1_native_inspection(events, session, repo, sources, catalog=None, *, before=None,
+                         allowed_names=("openspec-explore", "openspec-apply-change"),
+                         validation=None, prior_catalog=None, prior_events=None):
     """Bind discovery and real skill invocation to ONE verified official source.
 
     Do not combine discovery of one alternative with invocation of the other.
-    This proves inspection only; immutable proposal and Apply gates stay separate.
+    T1/T5 admit these alternatives; T7 restricts to Explore. This proves inspection
+    only; immutable proposal/Apply, PR facts, choice and reinventory stay separate.
     """
     for source in sources:
         native = Path(source["path"])
         if (native != repo / ".agents/skills" / native.parent.name / "SKILL.md" or
                 native.parent.name not in ("openspec-explore", "openspec-apply-change") or
+                native.parent.name not in allowed_names or
                 source not in t1_inspection_sources(repo)):
             continue
         discovery, invocation, instructions = native_calls(
             events, session, native, source["source_sha256"])
-        discovery += catalog_discovery(catalog, events, session, repo, native)
+        discovery += catalog_discovery(
+            catalog, events, session, repo, native,
+            prior_catalog=prior_catalog, prior_events=prior_events)
         # Native output contains the official body (without YAML frontmatter).
         # A same-name/path claim or different skill content is not invocation.
         body = native.read_text().split("\n---\n", 1)[-1].strip()
@@ -1184,8 +1248,40 @@ def t1_native_inspection(events, session, repo, sources, catalog=None, *, before
                 len(events) if before is None else before) and any(
                 d["event_index"] < i["event_index"] for d in discovery)]
         if invocation:
+            if validation is not None:
+                instructions = native_validation_calls(
+                    events, session, repo, validation, before=before)
             return source, discovery, invocation, instructions
     return None, [], [], []
+
+
+def native_validation_calls(events, session, repo, validation, *, before=None):
+    """Actual applicable strict validation in the known fixture context.
+
+    Do not accept help, an unrelated change, arbitrary instructions prose or a
+    successful-looking output from a failed/truncated/wrong-cwd tool event.
+    This is not an Apply-specific command or a post-skill repetition quota.
+    """
+    try:
+        context = validation["context"]
+        if (any(context[key]["root"]["path"] != str(repo) for key in ("context", "list")) or
+                len([c for c in context["list"]["changes"] if c["name"] == CHANGE]) != 1 or
+                not isinstance(validation["output"], str) or not validation["output"].strip()):
+            return []
+    except (KeyError, TypeError):
+        return []
+    boundary = len(events) if before is None else before
+    return [{"tool": "shell", "id": e["id"], "event_index": e["index"]}
+            for e in tool_events(events, session, tool="shell")
+            if e["index"] < boundary and e["input"].get("command") == STRICT_VALIDATE and
+            e["input"].get("workdir", str(repo)) == str(repo) and
+            events[e["index"]]["part"].get("sessionID", session) == session and
+            ("messageID" not in events[e["index"]]["part"] or any(
+                prior.get("type") == "step_start" and prior.get("sessionID") == session and
+                prior.get("part", {}).get("messageID") ==
+                events[e["index"]]["part"]["messageID"] for prior in events[:e["index"]])) and
+            e["exit_code"] == 0 and e["truncated"] is False and
+            shell_output_matches(e["output"], validation["output"].strip())]
 
 
 def tool_events(events, session, *, tool=None, contains=None, completed_only=True):
@@ -1925,8 +2021,8 @@ def main():
         tasks.write_text(tasks.read_text().replace("- [x]", "- [ ]"))
         assert "opencode" in (repo / ".agents/skills/.openspec-target").read_text().splitlines()
         assert not (repo / ".opencode/commands").exists()
-        native_names = (("openspec-explore", "openspec-apply-change") if case == "T1" else
-                        ("openspec-apply-change",))
+        native_names = (("openspec-explore",) if case == "T7" else
+                        ("openspec-explore", "openspec-apply-change"))
         for name in native_names:
             native = repo / ".agents/skills" / name / "SKILL.md"
             assert native.is_file() and "generatedBy: \"2.0.0\"" in native.read_text()
@@ -2071,17 +2167,12 @@ def main():
                           provenance=provenance)
         calls_before = (gh_root / "calls.jsonl").read_text().splitlines()
         reads_before = (gh_root / "reads.jsonl").read_text().splitlines()
-        if case == "T7":
-            native = repo / ".agents/skills/openspec-explore/SKILL.md"
-        native_provenance = None if case == "T1" else {
-                             "path": str(native), "resolved": str(native.resolve()),
-                             "sha256": sha(native), "source_sha256":
-                             sha(ROOT / ".agents/skills" / native.parent.name / "SKILL.md"),
-                             "symlink": native.is_symlink()}
-        if native_provenance:
-            assert native_provenance["sha256"] == native_provenance["source_sha256"]
-        inspection_sources = t1_inspection_sources(repo) if case == "T1" else None
+        inspection_sources = [s for s in t1_inspection_sources(repo)
+                              if Path(s["path"]).parent.name in native_names]
+        assert len(inspection_sources) == len(native_names)
+        native_provenance = None  # Selected source is an observation, not a factory placeholder.
         phases = []
+        previous_events = None
         session = None
         prompts = [prompt]
         phase_locators = [locators]
@@ -2132,13 +2223,12 @@ def main():
                 "plugins": [guard["plugin"]]})
             record = {"phase": phase, "prompt": message, "before": before,
                       "published_read_only_locators": phase_locators[phase - 1],
-                      "native": native_provenance, "runtime_receipts": receipts,
+                      "native": None, "runtime_receipts": receipts,
                       "shell_guard": guard,
                       "fixture_proposal_facts": provenance,
                       "permissions": permissions, "previous_session_id": session,
                       "model_preflight": {}}
-            if case == "T1":
-                record["native_inspection_candidates"] = inspection_sources
+            record["native_inspection_candidates"] = inspection_sources
 
             def launch():
                 if case == "T1" and not before["artifact_comparison"]["verified"]:
@@ -2154,6 +2244,7 @@ def main():
                     home, case_env, phase=phase, prompt=message, permissions=permissions,
                     guard=guard, model=record["model_preflight"], session=session,
                     approved_contract=approved_contract,
+                    native_candidates=inspection_sources,
                     runtime_paths={"opencode": cli, "openspec": openspec,
                                    "git": shutil.which("git", path=case_env["PATH"])})
                 persist(base, results)
@@ -2174,18 +2265,31 @@ def main():
                                      for a in args) for args in new_calls)
             try:
                 record["delivered_skill_catalog"] = delivered_skill_catalog(
-                    Path(case_env["OPENCODE_DB"]), repo, session)
+                    Path(case_env["OPENCODE_DB"]), repo, session, turn_events=events)
             except (RuntimeError, sqlite3.Error, ValueError, TypeError) as error:
                 record["delivered_skill_catalog"] = None
                 record["catalog_capture_error"] = str(error)
+            handoff_index = max((i for i, e in enumerate(events) if e.get("type") == "text" and
+                                 e.get("sessionID") == session), default=0)
             if case == "T1":
                 outcome, handoff_index = t1_handoff(events, session, fixture, provenance)
                 native_provenance, native_discovery, native_invocation, native_instructions = (
                     t1_native_inspection(events, session, repo, inspection_sources,
                                          record["delivered_skill_catalog"], before=handoff_index))
-            else:
+            elif case == "T7" and phase == 1:
+                native = Path(inspection_sources[0]["path"])
                 native_discovery, native_invocation, native_instructions = (
-                    native_calls(events, session, native, native_provenance["sha256"]))
+                    native_calls(events, session, native, inspection_sources[0]["sha256"]))
+                native_discovery += catalog_discovery(
+                    record["delivered_skill_catalog"], events, session, repo, native)
+            else:
+                native_provenance, native_discovery, native_invocation, native_instructions = (
+                    t1_native_inspection(
+                        events, session, repo, inspection_sources, record["delivered_skill_catalog"],
+                        before=handoff_index, allowed_names=native_names,
+                        validation={"output": fixture["strict_validation"], "context": before["openspec"]},
+                        prior_catalog=phases[-1]["delivered_skill_catalog"] if previous_events else None,
+                        prior_events=previous_events))
             resume_invocation = tool_events(events, session, tool="skill",
                                             contains="resume-workflow") + [
                 e for e in tool_events(events, session, tool="read",
@@ -2209,6 +2313,7 @@ def main():
                                if case == "T1" else None)
             record.update({"phase": phase, "prompt": message, "session_id": session,
                       "response": response, "events": transcript, "before": before,
+                      "handoff_index": handoff_index,
                       "after": after, "unchanged": before == after,
                       "github_calls": new_calls, "github_read_only": calls_safe,
                       "native": native_provenance, "native_discovery": native_discovery,
@@ -2260,7 +2365,9 @@ def main():
                 required &= bool(previous_discovery) or any(
                     d["event_index"] < i["event_index"] for d in native_discovery
                     for i in native_invocation)
-                if case != "T1":
+                if case == "T7":
+                    # T7's explicit phase-2 prompt orders validation after Explore.
+                    # T1/T5 recovery only requires applicable observations before handoff.
                     required &= any(i["event_index"] < c["event_index"]
                                     for i in native_invocation for c in native_instructions)
                 if case == "T1" or case == "T7":
@@ -2331,6 +2438,7 @@ def main():
             persist(base, results)
             before, calls_before = after, calls_after
             reads_before = reads_after
+            previous_events = events
         if case == "T7":
             assert phases[0]["session_id"] == phases[1]["session_id"]
     results["finished_at"] = datetime.now(timezone.utc).isoformat()

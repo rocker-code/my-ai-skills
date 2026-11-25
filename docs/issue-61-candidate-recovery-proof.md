@@ -2,6 +2,89 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Correção offline do gate nativo T5/T7 — sem décima observação
+
+Entrada limpa `c17f361b015e3480f5d127e97f89f12283e43b99`, somente notas desde
+a fonte observada `3b7f98b2fc5c743f5e00a69f0bd5d36b647ccd06`; mesmo worker
+`ses_dedd54912ffeUE0O1zucvX95YV`/checkout/branch/issue/run. Reserva ownerless
+WAITING adquirida/verificada sem drift; Apply/context/list oficiais confirmam
+16/18 e 3.4/4.3 pendentes. Nenhum novo modelo, mudança global ou closeout.
+
+**Revisão independente posterior**, informada pelo coordenador:
+`ses_dee9d76e4ffeR10I59JewObvEC` aprova os subcenários realmente observados
+no nono run, **nos inputs3b7f98b**, não por reuso de45c5b72:
+- T1 `ses_ded94254bffeAw0vHsGHrhKaz2`: nove fatos e condição tipada atuais,
+  receipt22/inventário21/23–27/proposta31–38/Apply39/strict40/GitHub69, skill49
+  e handoff80 seguro/reconcile-ownership/escritafalse. CLI anterior à skill é
+  permitido para T1; serialization_compliance=failed permanece diagnóstico.
+- T5 `ses_ded914169ffeL50MoN6MM82Kow`: fontes12–17 efetivas no escopo
+  disposable/recovery milestone3/issue11/PR12/dependente13; PRhead
+  `5b0d4ba2c6f9046faaacab030801ca7f66cfe6ba`, checkSUCCESS, nenhuma review e
+  modo manual, dependente bloqueado. Diferença do head do checkout divulgada
+  honestamente, sem alegação de entrega/green final. Owner22/receipt26 e
+  snapshots preservados, sem tentativa stateful/probes do produtor; apenas
+  listing5 negado. Final48 encaminha revisão do PR existente ao coordenador.
+
+Os campos pending/scenario_pass dos originais **não** foram reescritos. O nono
+run inteiro continua FAILED no gate nativo T5; T7 nunca rodou. Clientes/DB
+terminaram normalmente/idle succeeded; steps completos reportam custo0, mas
+liquidação final pelo provedor permanece UNKNOWN. Falhas/limites anteriores
+continuam intactos; aprovação substantiva separada não cria F1 na fonte nova.
+
+**Diagnóstico assertion/fixture, não provedor/aplicação/posse:** o gate fixava
+Apply para T5 e ignorava o catálogo entregue. A skill efetiva foi Explore42,
+fonte canônica `e776f0d8b5e36d2e5fd8149254a95c54008942bd4336d1c67e568c67e45ddcca`,
+com strict45 correto depois; Apply33 era leitura de arquivo, nunca invocação.
+Design e1408daf:41 exige descoberta/invocação nativa correlacionada e validação
+aplicável; :45 preserva T5 PR/manual/dependência sem exigir Apply. Explore oficial
+é stance read-only (:15–17). Trocar Apply-only por Explore-only repetiria a
+sobre-restrição; revisor confirma correção de implementação no contrato aprovado,
+sem decisão material/replan.
+
+**Correção limitada:** reutilizar o matcher existente para T5 com Explore **ou**
+Apply, cada qual com seu próprio source/path/hash/body/session e descoberta real
+por ferramenta ou catálogo entregue. Strict exato da fixture, exit0/não truncado/
+cwd/change corretos antes do handoff é o anchor já solicitado; help/prosa ou
+instructions de outro change não o substituem. Não impor repetição pós-skill em
+T1/T5 (design:41/45); a ordem bruta Explore42→strict45 fica preservada. T7 conserva
+a ordem explícita do segundo prompt: reinventário antes do primeiro conteúdo/
+invocação, strict após Explore. MessageID presente deve corresponder a step_start
+anterior da mesma sessão; não aceitar output de outro step.
+
+T7 permanece **Explore-only**, conforme design:45/prompt. Cada fase recaptura o
+DB privado read-only; continuidade requer mesma identidade/baseline/blob/source/
+sessão, snapshot novo e user/assistant **do turno atual** obtidos do DB/correlacionados
+ao step_start. Baseline alterado, stale/prepared metadata ou identidade inconclusiva
+não qualificam discovery. Catálogo antes da escolha é metadata, não conteúdo,
+seleção, posse ou permissão. Ele não substitui probes nem apaga conteúdo precoce
+all-status. Controles de dois turnos usam DB/probes sintéticos explicitamente;
+nenhum capture T7 real foi inventado. Conexões de snapshot são fechadas.
+
+Preparo/binding enumera candidatos canônicos: T1/T5 ambos, T7 apenas Explore,
+sem resposta/SHA de skill injetados no prompt. `native` fica null até observação;
+execution_binding registra fonte efetivamente invocada, não placeholder Apply.
+Mapa explícito adicional em resume-effective-inputs-v1 é fixture-only. Oracle/
+capture/binder mudam inputs materiais; aprovações nos inputs3b não autorizam
+reuso automático ou whole F1 PASS na candidata corrigida.
+
+**Provas offline:** 60 focados passaram em
+`evidence:ev-20261125T114918Z-b19c0966`, incluindo alternativas T5, T7 restrito/
+catálogo atual em dois turnos e negativos source/hash/body/skill/session/catálogo/
+step/cwd/change/exit/truncamento, conteúdo precoce all-status e recibo obrigatório
+mesmo com discovery válido. `evidence:ev-20261125T114918Z-0b1cb4df` reavalia
+T5 **real retido**: catálogo→Explore42→strict45/fontes PR comprovados, 11 negativos
+em cópias rejeitados. Hashes originais results/JSONLs/terminais/manifesto/log
+idênticos; log1.746.429 bytes/`de5b7198…b38646f`. Placeholder Apply e bindings
+originais ficam como história, nunca reclassificados retroativamente. Novo recibo
+é diagnóstico offline, não PASS nativo, resultado T7 ou resolução por replay.
+
+Próximo passo: revisão independente afetada; só autorização separada poderá
+iniciar harness **completo real T1/T5/T7**. 3.4/4.3, Verify atualizado/archive/
+preparo e suíte local final no HEAD limpo exato após todos os commits seguem
+pendentes; repetir após qualquer commit posterior. Guards/permissões/reader/
+timeout/pins/ignorados preservados. Sem décima inferência, selector/framework,
+PR/push/archive/merge.
+
 ### Nona observação — T5 assertion/native gate, sem timeout ou retry
 
 Uma nova observação **completa**, autorizada pelo coordenador após aprovação
@@ -2058,6 +2141,7 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"diagnosis","seq":47,"group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; T5 expected native Apply invocation/discovery absent"},"class":"assertion/contract","checked":{"phase":"post-terminal T5 aggregate native gate lines2258-2265 fails; statusfailed/proof_completefalse persisted, RuntimeError2328 recovery proof incomplete; native_discovery[]/native_invocation[] for designated openspec-apply-change, strict45 present; direct Apply read33 not invocation; actual Explore42 successful before strict45, no qualifying directory listing in native_calls; delivered catalog exists but current T5 matcher does not consume it","scope":"exact3b7f98b approvede1408daf in isolated HOME/config/XDG/CODEX_HOME/privateDB; manifest read8, six published fixture GitHub commands12-17 successful/no truncation prove disposable/recovery milestone3 issue11 PR12/head5b0d4ba2c6f9046faaacab030801ca7f66cfe6ba/checkSUCCESS/manual/dependent13; t5_sources diagnostictrue, no producer repo probes or out_of_scope reads, only ls5 denied","lifecycle":"T1ses_ded94254bffeAw0vHsGHrhKaz2 pid4065153 terminal0 at11:19:33.816475Z,13completedsteps/52tools; T5ses_ded914169ffeL50MoN6MM82Kow pid4122032 terminal0 at11:21:17.582760Z,10completedsteps/24tools; no timeout/provider error/malformed lines; completed-step cost sums0, no separate settled provider final-cost receipt; harness1 stop beforeT7; clientPIDs and writerPIDs4064287/4121033 absent afterward, no kill/cancel/restart/DB cleanup","consumers":"T5 sources/outcome/read-only/inventory/receipt succeeded, snapshots seven equal/forbidden_attempts[]/write_authorizedfalse; native applicability/discovery gate alone remains unsatisfied in retained matcher, not reclassified as PASS; T1 technical facts true and ownership proven with eight snapshots/prereqs equal, nonempty blocker gives legacy serializationfailed and pendingreview/scenario_passfalse; T1 ApplyCLI39/strict40 precede nativeApply49, original order retained for independent review; both prepared/execution bindings and delivered catalogs captured unchanged"},"runtime_proof":["evidence:ev-20261125T111624Z-0bd063a1"],"simplest_alternative":"stop preserving actual assertion and successful partial facts for independent contract/source/event review; do not edit oracle, relabel Explore as Apply, retrofit catalog discovery, force T7 or rerun model","choice_rationale":"new authorized complete observation consumed; unlike eighth timeout the corrected GitHub entrypoint worked and clients terminated normally, but that does not waive native gate; independent review must decide applicable read-only skill and discovery requirement against approved contract; no application/provider failure or automatic source fix established","next_hypothesis":"offline independent review can compare actual Explore42/strict45, delivered catalog versus missing qualifying listing and T5 Apply-only predicate, while separately reviewing T1 semantics/order and future F1 impact; no tenth run authorized"}
 ,{"kind":"blocker","seq":48,"group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; T5 expected native Apply invocation/discovery absent"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T111624Z-0bd063a1"],"diagnosis":"seq:47","options":[],"impact":"ninth whole observation FAILED T5 post-terminal native gate, not timeout; T1 pending independent response/event review with serialization diagnostic failed, T7 NOT RUN; no final required gate/archive/PR; independent applicability/discovery and F1 review needed","researchable":true}
 ,{"kind":"resolution","group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; T5 expected native Apply invocation/discovery absent"},"outcome":"blocked","via_seq":48}
+,{"kind":"diagnosis","seq":49,"group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; T5 expected native Apply invocation/discovery absent"},"class":"fixture/isolation","checked":{"phase":"post-terminal matcher overconstraint: Apply-only plus directory-only discovery omits actual canonical Explore42 and delivered catalog despite strict45; Apply file33 auxiliary, not invocation; actual response/source semantics independently approved as reported by coordinator","scope":"observed3b7f98b approvede1408daf design41/45 and official Explore15-17 permit applicable read-only inspection without Apply-only identity; T5 real PRhead5b0d4ba2c6f9046faaacab030801ca7f66cfe6ba/manual/dependent13 sources12-17, honest checkout-head difference/owner receipt/no stateful attempts; T7 explicitly Explore-only, same-session choice then reinventory before earliest native content","lifecycle":"ninth T1ses_ded94254bffeAw0vHsGHrhKaz2 and T5ses_ded914169ffeL50MoN6MM82Kow complete/idle succeeded without timeout; no settled provider final-cost receipt, completed steps0 only; original whole FAILED/pending fields/legacy-format failure retained; T7 never executed; no tenth model or fabricated current-turn capture","consumers":"existing bounded matcher reused for T5 alternatives and T7 Explore-only; genuine catalog, strict context/cwd/session/step before handoff; private DB recaptured with unchanged baseline plus actual current-turn messages; future candidate map/actual-source binding replaces factory placeholder, never edits original record; T1 ownership/facts and T5 PR/all-status safety unchanged"},"runtime_proof":["evidence:ev-20261125T111624Z-0bd063a1","evidence:ev-20261125T112620Z-bbe58aa9","evidence:ev-20261125T114918Z-b19c0966","evidence:ev-20261125T114918Z-0b1cb4df"],"simplest_alternative":"retain BLOCKED without another observation; never weaken invocation to file/prose, switch T5 to Explore-only, broaden T7 to Apply, widen guard or grant ownership from catalog/receipt","choice_rationale":"fresh independent review ses_dee9d76e4ffeR10I59JewObvEC and explicit offline delegation identify implementation overconstraint inside e1408daf, not material acceptance change needing owner replan; reuse source/body/hash matcher and delivered catalog with applicable strict, distinguish metadata from content and initial baseline from actual current-turn delivery","next_hypothesis":"after affected independent review and separate authorization only, complete actual T1/T5/T7 may prove changed native oracle/binder inputs; old3b subscenario approvals are not automatic reuse, metadata/replay or final F1 PASS"}
 ]}
 ```
 
