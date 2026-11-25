@@ -7,6 +7,100 @@
 de T1/T7. Os recibos em `/tmp` daquela máquina não estão disponíveis aqui.
 Sem término/relatório acessível, o resultado permanece **UNKNOWN**.
 
+### R1 residual — controle nativo pré-spawn, sem inferência
+
+Writer delegado `ses_deef1ed65ffez0d4OTgc6z8rcl`, worker `fix61-rawshell`,
+entrada `481b2539aadbaec9f5bcc15c93ac613e258eea8a`, mesmo checkout/branch/run
+e proposta `31cdb42`. Reserva adquirida com a sessão real e checkpoint.
+Escopo: **somente harness/fixture/testes/handoff**, sem merge, PR, push, archive,
+credenciais, update global ou plugin pessoal/distribuído (#52).
+A revisão `ses_def0f16a9ffeAEin2bLMykHlkm` confirmou R2–R4 resolvidos; R1
+continuava aberto: restringir reads não conserta o scanner shell.
+
+**Causa comprovada:** `export GIT_CONFIG_COUNT=1
+GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=<hook descartável>;
+git status --short` pode chegar à autorização somente como `git status --short`.
+Declarações, ambiente e composição não ficam confinados por essa permissão.
+Uma deny rule para `export` ou detector posterior não seria controle pré-spawn.
+Nenhum arquivo/credential/config do operador foi usado como probe.
+
+Correção mínima: `tests/fixtures/resume_shell_guard.mjs` é **copiado somente
+para o runtime descartável**, fora dos checkouts da fixture. O harness referencia
+seu **diretório** em `plugins`, nunca instala em HOME real, pacote global ou
+`.opencode/plugins` persistente. `install-global`, componentes distribuídos,
+launchers e pins permanecem inalterados.
+
+- `tool.execute.before` rejeita a entrada shell bruta antes do executor.
+- `shell.create.before` confere novamente o comando inteiro e cwd final,
+  antes do scanner/permission callback e de ambos os caminhos de spawn.
+  Comparação por igualdade com allowlist literal gerada das leituras já
+  autorizadas; cwd precisa ser um checkout exato e real, sem alias symlink.
+  Declarações, compostos, expansão, prefixos env, argv extras e cwd alheio
+  **não** são normalizados para um comando permitido. Não há parser novo.
+- O segundo hook fixa `/bin/sh` e substitui, não mescla, o ambiente do filho
+  por constantes da fixture. Não herda `BASH_ENV`, `ENV`, loaders, funções
+  exportadas ou overrides da sessão; Git ignora config global/sistema, não
+  atualiza index opcional e tem fsmonitor=false. Reads/grep/glob e catálogo
+  de modelo continuam com as restrições anteriores.
+- Fonte/policy têm SHA-256 na preparação persistida. Preflight
+  `debug agents --standalone` exige **novo** evento setup/active da fonte
+  exata; log antigo, falta de ativação ou falha bloqueiam antes do modelo.
+  Esse preflight usa outro processo standalone; não se confunde com prova
+  de execução do modelo. A admissão de prompt nativa também espera plugins.
+
+**API e fonte oficiais efetivamente inspecionadas (V2 / tag v2.3.2):**
+[lifecycle/load](https://opencode.ai/docs/build/plugins),
+[hooks shell/tool e tool.list](https://opencode.ai/docs/build/plugins/server#shell),
+[API](https://opencode.ai/docs/api);
+`packages/core/src/{shell.ts,tool/plugin/shell.ts,plugin/hooks.ts,
+session/command.ts}` e `packages/plugin/src/{promise/tool.ts,promise/adapter.ts}`
+em [anomalyco/opencode v2.3.2](https://github.com/anomalyco/opencode/tree/v2.3.2).
+`Shell.create` dispara `hooks.trigger("shell","create.before",invocation)` antes
+de `before(invocation)`/scanner, ID e spawn/daemon. O adapter converte rejeição
+do tool-before em Tool.Error; shell-before usa Effect.promise (falha/defect
+propaga, não é uma nova permissão tipada). A prova abaixo verifica o abort real
+nesse runtime, não presume que o hook shell tenha um contrato tipado de deny.
+O carregamento fica limitado ao lifecycle da instância e dispose no cleanup.
+
+**Provas pre-smoke recuperáveis, não gates finais:**
+Os recibos abaixo são da implementação, vinculados ao fingerprint com diff;
+não são aprovação do HEAD limpo posterior nem gate pós-archive.
+
+| Evidência | Resultado e limite |
+| --- | --- |
+| `ev-20261125T050448Z-7af3b952` | 31/31 offline (24 R1–R4/catálogo anteriores + 7 guard/ativação). Inclui igualdade raw, 28 variantes de injeção, cwd/argv inválidos e ativação ausente/stale. Avaliação direta/mocks são testes unitários, não prova nativa. |
+| `ev-20261125T050526Z-c5403829` | OpenCode 2.3.2, sessão `ses_deee7cf4affeD8i0KAjAsDmUt1`, executor shell nativo via `ctx.tool.list().find(id=shell).execute` em comando temporário: 1 leitura permitida, 10 rejeições no hook nativo shell-before. |
+
+A segunda evidência retém em stdout checksum-bound os resultados, audit,
+policy, fonte do guard/bridge, controle positivo e log nativo redigido; os
+arquivos originais ficam em `/tmp/opencode/issue61-rawshell-ses_deef1ed65ffe`.
+O controle positivo executa um hook **inofensivo** somente nessa fixture.
+Na execução protegida, o mesmo payload export/fsmonitor é rejeitado sem
+progress/shellID, sem marker do hook e sem mudar bytes do repo (incluindo
+`.git`) ou ambiente do processo harness. Todas as dez rejeições são
+correlacionadas ao hook; setup/cleanup também foram observados. Sessão sem
+mensagens, tokens/custo zero. O bridge chama o executor real e seu scanner/
+permission/spawn internos; **não** usa modelo nem o dispatcher genérico de
+tool calls, portanto não prova esse dispatcher/model-backed nem a capacidade
+de inferência. Não se atribui prova runtime aos callbacks unitários.
+
+Diagnóstico das execuções intermediárias, preservado sem reclassificar:
+`ev-20261125T050017Z-{8d03877d,3190c0b3}` falharam nos asserts unitário de
+None→undefined e formato da versão; `ev-20261125T050109Z-3ab7a47f` falhou no
+envelope API `data`. `ev-20261125T050150Z-b19f7f75` detectou carregamento
+incorreto por path de **arquivo**: OpenCode exige diretório, não carregou o
+guard e a fixture inofensiva reproduziu o bypass. Corrigidos o load e a
+exigência explícita de ativação antes de qualquer probe. O primeiro sucesso
+nativo `ev-20261125T050239Z-37241a8d` antecede a prova completa retida acima.
+Uma tentativa de anexar `/tmp` ao recorder foi recusada pela fronteira
+checkout-only; nenhum contorno foi introduzido.
+
+**Estado permanece WAITING:** zero inferências nesta correção. O attempt-log
+seq6–8 abaixo conserva **HTTP 400 / blocked**, não PASS; T1/T5/T7 model-backed,
+3.4/4.3, archive e gate final pós-archive continuam pendentes. Suite integral
+do HEAD corrigido é somente pre-smoke; revisão independente do raw guard e
+da prova é a próxima ação **antes** de autorizar qualquer inferência.
+
 ### Correção offline após revisão independente
 
 Fonte atual de autorização: o coordenador transmitiu nesta delegação a resposta
@@ -14,8 +108,8 @@ direta do proprietário **“Sim, se aprovado”** para **AUTO-IF-GREEN**, escop
 #61, run `wf-20261116T064328Z-45cb0ecc`. É autorização posterior, não recuperação
 da autorização original desconhecida nem aprovação de gates. As referências
 HELD do planejamento pinado registram o conhecimento daquela data; não foram
-reescritas para fabricar histórico. Este writer
-`ses_def08c6bdffe43exnubv86SE83` continua **NO MERGE / NO PR / NO ARCHIVE**.
+reescritas para fabricar histórico. O writer anterior
+`ses_def08c6bdffe43exnubv86SE83` permaneceu **NO MERGE / NO PR / NO ARCHIVE**.
 
 Revisão fonte `ses_def0f16a9ffeAEin2bLMykHlkm` no HEAD de entrada
 `5de88ac47e24c95f92fa4c7dd930af9d60aa80b6`: quatro MUST FIX válidos,

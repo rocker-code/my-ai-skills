@@ -279,6 +279,52 @@ def disposable_path(home, inherited_path, operator_home):
     return os.pathsep.join([str(home / ".local/bin"), *system_paths])
 
 
+def disposable_shell_guard(directory, repo, worktrees, permissions, env):
+    """Materialize a temporary native V2 guard, not a distributed plugin.
+
+    Shell permissions operate on scanner output and cannot constrain raw input.
+    The native pre-spawn hook instead checks exact raw commands and cwd, and
+    replaces the child environment with fixture-owned constants.
+    """
+    directory.mkdir(parents=True, exist_ok=False)
+    commands = [r["resource"] for r in permissions
+                if r["action"] == "shell" and r["effect"] == "allow"]
+    if not commands or any(re.search(r'[$`\\\n\r;&|<>!*?{}()]', c) for c in commands):
+        raise RuntimeError("fixture shell allowlist must contain only literal simple commands")
+    safe_env = {key: env[key] for key in (
+        "HOME", "PATH", "LANG", "TERM", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+        "XDG_CACHE_HOME", "XDG_STATE_HOME", "RESUME_GH_ROOT", "RESUME_RUNTIME_ROOT",
+        "OPENSPEC_TELEMETRY", "PYTHONDONTWRITEBYTECODE") if key in env}
+    safe_env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
+                    GIT_OPTIONAL_LOCKS="0", GIT_PAGER="cat", PAGER="cat",
+                    GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.fsmonitor",
+                    GIT_CONFIG_VALUE_0="false")
+    roots = [str(p.resolve(strict=True)) for p in (repo, *worktrees)]
+    policy = {"commands": {root: commands for root in roots}, "env": safe_env,
+              "audit": str(directory / "audit.jsonl")}
+    policy_path = directory / "policy.json"
+    policy_path.write_text(json.dumps(policy, indent=2) + "\n")
+    plugin = directory / "index.mjs"
+    shutil.copyfile(ROOT / "tests/fixtures/resume_shell_guard.mjs", plugin)
+    return {"plugin": str(directory), "source": str(plugin), "plugin_sha256": sha(plugin),
+            "policy": str(policy_path), "policy_sha256": sha(policy_path),
+            "audit": policy["audit"], "cwd": roots,
+            "mechanism": "native tool.execute.before + shell.create.before"}
+
+
+def shell_guard_preflight(cli, repo, env, guard):
+    """Use debug agents' activation barrier, not an early config snapshot."""
+    audit = Path(guard["audit"])
+    previous = audit.read_text().splitlines() if audit.exists() else []
+    run([cli, "debug", "agents", "--standalone"], cwd=repo, env=env)
+    events = [json.loads(line) for line in audit.read_text().splitlines()[len(previous):]]
+    if not any(e == {"boundary": "setup", "decision": "active", "source": guard["source"]}
+               for e in events):
+        raise RuntimeError("native fixture shell guard not activated; no inference")
+    guard["preflight"] = {"status": "active", "events": events,
+                          "limit": "separate standalone; prompt admission also awaits plugins"}
+
+
 def disposable_opencode_shim(bin_dir, cli):
     """Expose only the discovered executable, not the operator's HOME."""
     if not Path(cli).is_absolute():
@@ -990,14 +1036,20 @@ def main():
             permissions = read_only_permissions(repo, worktrees, reader, receipts,
                                                 active,
                                                 prechoice=case == "T7" and phase == 1)
+            guard = disposable_shell_guard(
+                runtime_root / f"shell-guard-phase{phase}", repo, worktrees, permissions, case_env)
             case_env["OPENCODE_CONFIG_CONTENT"] = json.dumps({
-                "$schema": "https://opencode.ai/config.json", "permissions": permissions})
+                "$schema": "https://opencode.ai/config.json", "permissions": permissions,
+                "plugins": [guard["plugin"]]})
             record = {"phase": phase, "prompt": message, "before": before,
                       "native": native_provenance, "runtime_receipts": receipts,
+                      "shell_guard": guard,
                       "permissions": permissions, "previous_session_id": session,
                       "model_preflight": {}}
 
             def launch():
+                shell_guard_preflight(cli, repo, case_env, guard)
+                persist(base, results)
                 model = model_preflight(cli, repo, case_env, record["model_preflight"],
                                         os.environ.get("RESUME_SMOKE_MODEL"))
                 results["model"] = model
