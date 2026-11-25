@@ -2,6 +2,67 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Observação autorizada não iniciada — wrapper recusado no prelaunch
+
+Worker `ses_dee5e0a18ffefE7FomnYJ9smc1`, stage `observe61-locators`,
+run `wf-20261116T064328Z-45cb0ecc`, entrada limpa exata
+`3c85548fe095259fe55b9b48718022ed67105272`. Reserva ownerless WAITING
+adquirida/verificada sem drift; nove bytecodes e commits preservados.
+Revisão independente informada `ses_dee9d76e4ffeR10I59JewObvEC`.
+Política contra `31cdb42`: ok. Diagnóstico seq25 e check não final lidos
+antes do lançamento: valid=true/violations=[], ready=null/BLOCKED.
+Reverificadas no HEAD exato as provas 298 offline, 50 focados, strict
+13/13, usabilidade reader/CLI e diagnóstico:
+`ev-20261125T072945Z-bed5e24f`, `ev-20261125T072922Z-db9333b4`,
+`ev-20261125T072945Z-1d17cdda`, `ev-20261125T072922Z-6dcbbf08`,
+`ev-20261125T072945Z-4383041b`; todas verified/passed sem required gate.
+Não são gates finais nem prova de modelo.
+
+**Falha operacional, antes do harness:** a única chamada externa foi
+`scripts/workflow-evidence record ... --output-dir
+/tmp/opencode/issue61-observe-3c85548-ses_dee5e0a18ffe -- python3 -B -c ...`,
+com timeout externo explícito 1.800 s e callback real do shell
+`sh_211a48aac001ATv7V152CjRros`, exit **2**:
+`workflow-evidence: path must remain inside checkout`.
+O wrapper rejeita outputs externos em `scripts/workflow_evidence.py:285`,
+antes de criar evidence_id/manifesto (:293–307) ou executar o child (:313).
+Esse `--output-dir` foi erro deste executor, não defeito demonstrado do
+harness, modelo, guard ou aplicação. O diretório solicitado não existe.
+
+**T1/T5/T7 NOT RUN**, nenhuma sessão nova, inferência, catálogo entregue,
+preparação, snapshot, recibo de writer ou terminal de modelo desta tentativa.
+OpenCode **2.3.2** e OpenSpec **2.1.1** foram conferidos, mas preflight fresh
+de guard/modelo **não ocorreu**; não presumir modelo/default/preço/custo zero.
+O exit 2 é do wrapper, não do harness ou modelo. Sem quinta observação
+model-backed e sem retry corrigido: a regra explícita de parar na primeira
+falha foi respeitada. Históricos failed e Dell UNKNOWN continuam intactos.
+
+**Diagnóstico acessível** `evidence:ev-20261125T074002Z-fee6cd0b` captura os
+bytes reais do erro, hash, identidade/callback, ausência do diretório e fonte
+da validação pré-spawn. Verificado antes desta nota como
+verified/passed/exit3/no_required_gate com `--tool opencode=2.3.2 --tool
+openspec=2.1.1 --env-id sandbox=observe61-3c85548-ses_dee5e0a18ffe`.
+O PASS refere-se **somente ao diagnóstico**, não à tentativa, setup ou smoke.
+O wrapper recusado não produziu seu próprio evidence_id.
+
+Próxima ação mínima para o coordenador: revisar offline a chamada de captura.
+O sandbox externo deve continuar externo; a retenção checksum-bound de seus
+bytes pode usar o execution.log existente, como as chamadas anteriores,
+sem declarar output externo como exclusão do fingerprint do checkout.
+Não mover o sandbox para o checkout, ampliar o helper ou executar modelo
+para diagnosticar. Qualquer lançamento corrigido precisa de autorização
+separada, preflight fresh e check após seq27, não retry automático.
+Tarefas 3.4/4.3 seguem pendentes; sem Verify de closeout, archive/sync,
+PR/push/merge ou suíte final. Somente este handoff factual foi alterado;
+seu registro documental não aprova a candidata nem muda o código revisado.
+Seq26–28 registram tentativa, diagnóstico e bloqueio; resolução `blocked`
+classifica o bloqueio, **não** aprova setup. Check não final deve continuar
+valid=true; check final deve permanecer ready=false/BLOCKED.
+O primeiro commit documental saiu 128 (`Author identity unknown`) antes
+de criar commit. Os cinco commits anteriores usam consistentemente
+`OpenCode <opencode@localhost>`; essa identidade do agente foi selecionada
+somente por `git -c` no commit documental, sem editar configuração.
+
 ### Correção offline pós-quarta falha — publicação literal de locators
 
 Writer `ses_deeb219ebffecKs4h8aN9D00bl`, stage
@@ -1008,6 +1069,10 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 {"kind":"blocker","seq":24,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; receipt unobserved and apply instructions denied with blocked handoff"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T070455Z-8f203e55"],"diagnosis":"seq:23","options":[],"impact":"T1 fourth observation failed; T5/T7 not run; no archive/final suite/PR; independent offline diagnosis review needed","researchable":true},
 {"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; receipt unobserved and apply instructions denied with blocked handoff"},"outcome":"blocked","via_seq":24},
 {"kind":"diagnosis","seq":25,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; receipt unobserved and apply instructions denied with blocked handoff"},"class":"fixture/isolation","checked":{"phase":"raw authorization correctly denies quoted status42/instructions43 and incomplete reader calls; post-terminal aggregation correctly fails Apply/receipt/final87 BLOCKED despite native39 and proposal pass","scope":"exact 3a3fdaa disposable HOME/XDG/DB/Location; allowlist510-512 already formats complete reader command from actual execution/owner/run/checkout but metadata1357-1359 publishes only prefix; cwd distinct from receipt checkout; no wrong owner/run actually supplied in eleven incomplete calls","lifecycle":"ses_dee7a654fffeTm0iHDWBZM9vOq exit0/cost0; harness1 T1; snapshots available/equal; T5/T7 not run; no fifth model; cooperative writer receipt exists independently but model never observed it successfully","consumers":"read_only_permissions raw strings versus recovery-evidence locator publication, T1 actual reader/Apply gate, T5 shared incomplete locator and T7 chosen-turn locator; preserve T7 prechoice and explicit ordering; guard/perms/reader/proof gates unchanged"},"runtime_proof":["evidence:ev-20261125T070455Z-8f203e55","evidence:ev-20261125T072459Z-d562cea9"],"simplest_alternative":"keep blocked with original failed proof; never normalize quotes or accept declarative terminal metadata","choice_rationale":"fresh independent review ses_dee9d76e4ffeR10I59JewObvEC identifies publication defect, not guard defect; use exact already-allowed command/cwd and existing shlex.join primitive with actual receipt fields; no parser/service/help wrapper or contract change; publish chosen T7 locator only after explicit choice","next_hypothesis":"complete raw-byte locators usable by actual reader/CLI remove source puzzle while unchanged trace remains failed; prove policy membership, real correlated terminal output and negatives offline without model before affected independent review"}
+,{"kind":"attempt","seq":26,"obligation":"setup","signature":"evidence-wrapper: path must remain inside checkout","target":"3c85548 authorized observation prelaunch","class":"environment/bootstrap","hypothesis":"declare the external disposable sandbox as output-dir while retaining raw artifacts in execution.log","change":"add external output-dir to evidence wrapper invocation; no candidate source change","change_target":"none","observed_effect":"workflow-evidence exit2 before evidence ID and subprocess spawn; requested output directory absent; harness and model never started; T1/T5/T7 NOT RUN","result":"fail","evidence":["evidence:ev-20261125T074002Z-fee6cd0b"]}
+,{"kind":"diagnosis","seq":27,"group":{"obligation":"setup","signature":"evidence-wrapper: path must remain inside checkout"},"class":"environment/bootstrap","checked":{"phase":"record argument validation at workflow_evidence.py285 before evidence allocation293 and subprocess spawn313; original shell callback exit2 and raw error retained","scope":"operator-side evidence wrapper only, exact clean3c85548; no disposable HOME/XDG/DB/Location or model preflight created; output directory absent","lifecycle":"outer shell sh_211a48aac001ATv7V152CjRros completed exit2 with explicit1800s timeout, not timeout/cancellation; no harness/model/writer child or terminal, prepared data or snapshots","consumers":"workflow-evidence safe_relative on output exclusions; external sandbox is not checkout output; no application, guard, permissions or harness defect established"},"runtime_proof":["evidence:ev-20261125T074002Z-fee6cd0b"],"simplest_alternative":"stop now preserving exact reviewed code and record failure; do not repeat the command, move sandbox inside checkout or widen evidence helper","choice_rationale":"explicit stop-first-failure controls even prelaunch failure; diagnostics only confirm original error and absence, never count as successful setup or observation","next_hypothesis":"after independent offline invocation review and separate authorization, existing execution.log capture can retain external artifact bytes without declaring an external checkout exclusion; fresh guard/model eligibility still mandatory"}
+,{"kind":"blocker","seq":28,"group":{"obligation":"setup","signature":"evidence-wrapper: path must remain inside checkout"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T074002Z-fee6cd0b"],"diagnosis":"seq:27","options":[],"impact":"authorized observation did not launch; T1/T5/T7 NOT RUN, previous T1 failed proof still blocked; tasks3.4/4.3 pending; no archive/final required gate/PR; coordinator must review capture invocation before separately authorizing launch","researchable":true}
+,{"kind":"resolution","group":{"obligation":"setup","signature":"evidence-wrapper: path must remain inside checkout"},"outcome":"blocked","via_seq":28}
 ]}
 ```
 
