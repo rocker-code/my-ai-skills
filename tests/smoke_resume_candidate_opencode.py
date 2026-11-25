@@ -28,7 +28,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE = "issue-61-opencode-safe-resume"
-APPROVED_PROPOSAL = "e1408dafbb7c6b2251b206afe62a2785708d1e08"
+APPROVED_PROPOSAL = "a0b4796fb1a2646125c6e62bfa6ca450d2118e7e"
+VERIFY_SHA256 = "3b86fbb9734fdb6b942dd12d0afa4247457aa7f212bb48832eae133f5e66880a"
+VERIFY_GENERATOR_VERSION = "2.1.1"
 STRICT_VALIDATE = f"openspec validate {CHANGE} --strict --no-interactive"
 PROMPTS = {
     "T1": (
@@ -889,7 +891,7 @@ def catalog_discovery(catalog, events, session, repo, native, *, prior_catalog=N
 
 
 def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoice=False,
-                          provenance=None):
+                          provenance=None, case="T1"):
     """V2 ordered rules (last match wins), not a shell sandbox.
 
     grep authorizes the regexp and glob the pattern, NOT the target directory.
@@ -908,6 +910,11 @@ def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoic
         rules.append({"action": "read", "resource": path, "effect": "allow"})
     for name in ("resume-workflow", "openspec-apply-change", "openspec-explore"):
         rules.append({"action": "skill", "resource": name, "effect": "allow"})
+    if case == "T5":
+        # Instruction loading only. Fail closed before advertising a missing or
+        # counterfeit source; no shell/resource rule is added by this capability.
+        t1_inspection_sources(repo, case=case)
+        rules.append({"action": "skill", "resource": "openspec-verify-change", "effect": "allow"})
     commands = ["git rev-parse --show-toplevel", "git rev-parse HEAD",
                 "git rev-parse --path-format=absolute --git-common-dir",
                 "git status --short", "git status --porcelain",
@@ -1203,43 +1210,70 @@ def native_calls(events, session, native, expected_sha256=None):
     return discovery, invocation, instructions
 
 
-def t1_inspection_sources(repo, source_root=ROOT):
-    """The two bounded official inspection sources; consumers may restrict further."""
+def t1_inspection_sources(repo, source_root=ROOT, *, case="T1",
+                          generator_version=VERIFY_GENERATOR_VERSION):
+    """Bounded canonical sources; only T5 may add the approved Verify bytes.
+
+    VERIFY_SHA256 pins the official 2.1.1 generator's published content with its
+    supported skill-reference conversion, not a manually synthesized fallback.
+    The actual installed CLI version is checked before any model run.
+    """
     sources = []
-    for name in ("openspec-explore", "openspec-apply-change"):
+    names = (("openspec-explore",) if case == "T7" else
+             ("openspec-explore", "openspec-apply-change"))
+    if case == "T5":
+        if generator_version != VERIFY_GENERATOR_VERSION:
+            raise RuntimeError("T5 Verify capability BLOCKED: unsupported canonical generator version")
+        names += ("openspec-verify-change",)
+    for name in names:
         native = repo / ".agents/skills" / name / "SKILL.md"
         source = source_root / ".agents/skills" / name / "SKILL.md"
         if (not native.is_file() or not source.is_file() or
                 native.resolve() != native or source.resolve() != source or
-                sha(native) != sha(source)):
+                sha(native) != sha(source) or
+                (name == "openspec-verify-change" and sha(source) != VERIFY_SHA256)):
+            if name == "openspec-verify-change":
+                raise RuntimeError("T5 Verify capability BLOCKED: missing/noncanonical source/path/hash")
             continue
         sources.append({"path": str(native), "resolved": str(native.resolve()),
                         "sha256": sha(native), "source": str(source),
                         "source_sha256": sha(source), "symlink": False})
+        if name == "openspec-verify-change":
+            sources[-1]["generator"] = {"package": "@fission-ai/openspec",
+                                       "version": VERIFY_GENERATOR_VERSION,
+                                       "published_sha256": VERIFY_SHA256}
     return sources
 
 
 def t1_native_inspection(events, session, repo, sources, catalog=None, *, before=None,
-                         allowed_names=("openspec-explore", "openspec-apply-change"),
-                         validation=None, prior_catalog=None, prior_events=None):
+                         allowed_names=None, case="T1", validation=None,
+                         prior_catalog=None, prior_events=None):
     """Bind discovery and real skill invocation to ONE verified official source.
 
     Do not combine discovery of one alternative with invocation of the other.
-    T1/T5 admit these alternatives; T7 restricts to Explore. This proves inspection
+    T5 alone additionally admits Verify; T7 restricts to Explore. This proves inspection
     only; immutable proposal/Apply, PR facts, choice and reinventory stay separate.
     """
+    try:
+        canonical = t1_inspection_sources(repo, case=case)
+    except RuntimeError:
+        return None, [], [], []
+    names = {Path(s["path"]).parent.name for s in canonical}
     for source in sources:
         native = Path(source["path"])
         if (native != repo / ".agents/skills" / native.parent.name / "SKILL.md" or
-                native.parent.name not in ("openspec-explore", "openspec-apply-change") or
-                native.parent.name not in allowed_names or
-                source not in t1_inspection_sources(repo)):
+                native.parent.name not in names or
+                (allowed_names is not None and native.parent.name not in allowed_names) or
+                source not in canonical):
             continue
         discovery, invocation, instructions = native_calls(
             events, session, native, source["source_sha256"])
-        discovery += catalog_discovery(
+        delivered = catalog_discovery(
             catalog, events, session, repo, native,
             prior_catalog=prior_catalog, prior_events=prior_events)
+        if native.parent.name == "openspec-verify-change" and not delivered:
+            continue  # Prepared/debug catalog or listing alone is not delivery.
+        discovery += delivered
         # Native output contains the official body (without YAML frontmatter).
         # A same-name/path claim or different skill content is not invocation.
         body = native.read_text().split("\n---\n", 1)[-1].strip()
@@ -1979,6 +2013,8 @@ def main():
                "opencode": run([cli, "--version"], cwd=ROOT, env=env),
                "openspec": run([openspec, "--version"], cwd=ROOT, env=env),
                "scenarios": {}}
+    # No model if the pinned canonical Verify or its supported CLI is unavailable.
+    t1_inspection_sources(ROOT, case="T5", generator_version=results["openspec"])
     # The public installer has no source override. Inject the local Git transport
     # only in this disposable test process; no global install is performed.
     loader = ("import importlib.machinery,sys; "
@@ -2024,11 +2060,15 @@ def main():
         tasks.write_text(tasks.read_text().replace("- [x]", "- [ ]"))
         assert "opencode" in (repo / ".agents/skills/.openspec-target").read_text().splitlines()
         assert not (repo / ".opencode/commands").exists()
+        inspection_sources = t1_inspection_sources(repo, case=case)
         native_names = (("openspec-explore",) if case == "T7" else
-                        ("openspec-explore", "openspec-apply-change"))
+                        ("openspec-explore", "openspec-apply-change") +
+                        (("openspec-verify-change",) if case == "T5" else ()))
+        assert len(inspection_sources) == len(native_names)
         for name in native_names:
             native = repo / ".agents/skills" / name / "SKILL.md"
-            assert native.is_file() and "generatedBy: \"2.0.0\"" in native.read_text()
+            if name != "openspec-verify-change":
+                assert native.is_file() and "generatedBy: \"2.0.0\"" in native.read_text()
         validation = run([openspec, "validate", CHANGE, "--strict", "--no-interactive"],
                          cwd=repo, env=env)
         git(repo, env, "add", "-A")
@@ -2154,7 +2194,8 @@ def main():
                                  "--session", receipt["owner"], "--json"], cwd=repo,
                                 env=case_env)["ok"]
         locator_permissions = read_only_permissions(
-            repo, worktrees, reader, receipts, active, prechoice=case == "T7", provenance=provenance)
+            repo, worktrees, reader, receipts, active, prechoice=case == "T7",
+            provenance=provenance, case=case)
         locators = read_only_locators(
             repo, worktrees, reader, receipts, locator_permissions, case=case, fixture=fixture)
         fixture.update(locators)
@@ -2170,7 +2211,7 @@ def main():
                           provenance=provenance)
         calls_before = (gh_root / "calls.jsonl").read_text().splitlines()
         reads_before = (gh_root / "reads.jsonl").read_text().splitlines()
-        inspection_sources = [s for s in t1_inspection_sources(repo)
+        inspection_sources = [s for s in t1_inspection_sources(repo, case=case)
                               if Path(s["path"]).parent.name in native_names]
         assert len(inspection_sources) == len(native_names)
         native_provenance = None  # Selected source is an observation, not a factory placeholder.
@@ -2216,7 +2257,7 @@ def main():
             permissions = read_only_permissions(repo, worktrees, reader, receipts,
                                                 active,
                                                 prechoice=case == "T7" and phase == 1,
-                                                provenance=provenance)
+                                                provenance=provenance, case=case)
             guard = disposable_shell_guard(
                 runtime_root / f"shell-guard-phase{phase}", repo, worktrees, permissions, case_env,
                 repo_only_commands=[p["command"] for p in provenance["probes"]]
@@ -2289,7 +2330,7 @@ def main():
                 native_provenance, native_discovery, native_invocation, native_instructions = (
                     t1_native_inspection(
                         events, session, repo, inspection_sources, record["delivered_skill_catalog"],
-                        before=handoff_index, allowed_names=native_names,
+                        before=handoff_index, allowed_names=native_names, case=case,
                         validation={"output": fixture["strict_validation"], "context": before["openspec"]},
                         prior_catalog=phases[-1]["delivered_skill_catalog"] if previous_events else None,
                         prior_events=previous_events))
@@ -2420,6 +2461,7 @@ def main():
                 "terminal": input_files(base / f"{case}-phase{phase}-terminal.json"),
                 "delivered_catalog": input_digest(record.get("delivered_skill_catalog")),
                 "native_source": native_provenance,
+                "native_invocation": native_invocation,
                 "snapshots": {"before": input_digest(before), "after": input_digest(after)},
                 "native_cli_observations": [{
                     "event_index": e["index"], "command": e["input"]["command"],

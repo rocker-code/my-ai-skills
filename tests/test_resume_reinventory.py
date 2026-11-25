@@ -38,7 +38,8 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               t1_github_source_proof,
                                               native_validation_calls,
                                               input_files, input_digest, effective_input_binding,
-                                              effective_input_diff, APPROVED_PROPOSAL, PROMPTS)
+                                              effective_input_diff, APPROVED_PROPOSAL, PROMPTS,
+                                              VERIFY_SHA256, VERIFY_GENERATOR_VERSION)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -694,6 +695,152 @@ class T1NativeInspectionTest(unittest.TestCase):
                 "output": self.validation()["output"],
                 "metadata": {"metadata": {"exit": 0, "truncated": False}}}}}
 
+    def verify_fixture(self):
+        name = "openspec-verify-change"
+        shutil.copytree(ROOT / ".agents/skills" / name, self.repo / ".agents/skills" / name)
+        sources = t1_inspection_sources(self.repo, case="T5")
+        source = sources[-1]
+        trace = [*self.catalog_events(source), self.validation_event(),
+                 {"type": "text", "sessionID": self.session, "part": {"text":
+                  "Verification incomplete / not verified. Review existing PR #12, "
+                  "merge manual; consumer #13 blocked. No implementation or archive."}}]
+        return source, sources, trace, self.catalog(source)
+
+    def test_t5_verify_is_canonical_instruction_activation_not_implementation_approval(self):
+        source, sources, trace, catalog = self.verify_fixture()
+        self.assertEqual(source["source_sha256"], VERIFY_SHA256)
+        self.assertEqual(source["generator"]["version"], VERIFY_GENERATOR_VERSION)
+        proof = t1_native_inspection(
+            trace, self.session, self.repo, sources, catalog, case="T5", before=3,
+            validation=self.validation())
+        self.assertEqual(proof[0], source)
+        self.assertEqual(proof[1][0]["session_id"], self.session)
+        self.assertEqual(proof[2][0]["name"], "openspec-verify-change")
+        self.assertEqual(proof[2][0]["event_index"], 1)
+        self.assertEqual(proof[3][0]["event_index"], 2)
+        # This is a synthetic tool/capture unit fixture, not native model delivery.
+        # Honest incomplete findings are compatible with inspecting a proposal PR.
+        self.assertIn("Do not implement tasks or archive", Path(source["path"]).read_text())
+        for case in ("T1", "T7"):
+            self.assertFalse(t1_native_inspection(
+                trace, self.session, self.repo, sources, catalog, case=case,
+                allowed_names=("openspec-verify-change",), validation=self.validation())[2])
+        # Even actual-looking skill/strict facts cannot substitute PR sources.
+        self.assertFalse(t5_sources(
+            trace, self.session, {"pr": 12}, {"pulls": {}, "issues": {}}, []))
+        fixture = {"pr": 12, "pr_head": "a" * 40, "merge_mode": "manual"}
+        pr = {"number": 12, "state": "OPEN", "headRefOid": fixture["pr_head"],
+              "body": "Merge manual. Consumer #13 blocked until merge.",
+              "statusCheckRollup": [{"headSha": fixture["pr_head"], "status": "COMPLETED",
+                                     "conclusion": "SUCCESS"}]}
+        dependency = {"number": 13, "state": "OPEN",
+                      "body": "Blocked until PR #12 is merged; do not dispatch."}
+        github = {"pulls": {"12": pr}, "issues": {"13": dependency}}
+        reads = [{"args": ["pr", "view", "12"], "exit_code": 0, "result": pr},
+                 {"args": ["api", "repos/disposable/recovery/issues/13"],
+                  "exit_code": 0, "result": dependency}]
+        source_events = [{"type": "tool_use", "sessionID": self.session, "part": {
+            "tool": "shell", "state": {"status": "completed",
+                "input": {"command": shlex.join(["gh", *read["args"]])},
+                "metadata": {"metadata": {"exit": 0, "truncated": False}},
+                "output": json.dumps(read["result"])}}} for read in reads]
+        self.assertTrue(t5_sources([*trace, *source_events], self.session, fixture, github, reads))
+        retained = json.loads((ROOT / "tests/fixtures/resume_t5_denied_verify.json").read_text())
+        for status in ("completed", "error", "cancelled", "running"):
+            denied = copy.deepcopy(retained["event"])
+            denied["sessionID"] = self.session
+            denied["part"]["state"]["status"] = status
+            self.assertFalse(t5_sources(
+                [*trace, *source_events, denied], self.session, fixture, github, reads))
+        for field, value in (("command", STRICT_VALIDATE.replace(CHANGE, "wrong")),
+                             ("workdir", "/wrong")):
+            changed = copy.deepcopy(trace)
+            changed[2]["part"]["state"]["input"][field] = value
+            self.assertFalse(t1_native_inspection(
+                changed, self.session, self.repo, sources, catalog, case="T5",
+                validation=self.validation())[3])
+        wrong = self.validation()
+        wrong["context"]["list"]["changes"] = [{"name": "wrong"}]
+        self.assertFalse(t1_native_inspection(
+            trace, self.session, self.repo, sources, catalog, case="T5", validation=wrong)[3])
+
+    def test_t5_verify_missing_counterfeit_unsupported_or_wrong_source_blocks_without_fallback(self):
+        source, sources, trace, catalog = self.verify_fixture()
+        native = Path(source["path"])
+        original = native.read_bytes()
+        for version in ("2.0.0", "unsupported", None):
+            with self.assertRaisesRegex(RuntimeError, "BLOCKED.*unsupported"):
+                t1_inspection_sources(self.repo, case="T5", generator_version=version)
+        for field, value in (("source", "/wrong/SKILL.md"), ("source_sha256", "0" * 64),
+                             ("sha256", "0" * 64), ("path", "/wrong/SKILL.md"),
+                             ("generator", {"version": "unsupported"})):
+            wrong = {**source, field: value}
+            self.assertFalse(t1_native_inspection(
+                trace, self.session, self.repo, [wrong], catalog, case="T5")[2])
+        for data in (b"---\nname: openspec-verify-change\n---\nmanual stub\n",
+                     original + b"\nchanged\n"):
+            native.write_bytes(data)
+            with self.assertRaisesRegex(RuntimeError, "BLOCKED.*noncanonical"):
+                t1_inspection_sources(self.repo, case="T5")
+            # Matching a forged source to the forged fixture does not make it canonical.
+            fake = self.repo / "fake-source/.agents/skills/openspec-verify-change/SKILL.md"
+            fake.parent.mkdir(parents=True, exist_ok=True)
+            fake.write_bytes(data)
+            with self.assertRaises(RuntimeError):
+                t1_inspection_sources(self.repo, self.repo / "fake-source", case="T5")
+        native.unlink()
+        with self.assertRaises(RuntimeError):
+            read_only_permissions(self.repo, [], self.repo / "reader", {}, self.repo, case="T5")
+        self.assertFalse(native.exists())  # No generated/manual replacement on failure.
+        native.symlink_to(source["source"])
+        with self.assertRaises(RuntimeError):
+            t1_inspection_sources(self.repo, case="T5")
+
+    def test_t5_verify_catalog_file_cli_failed_cancelled_or_wrong_binding_is_not_dispatch(self):
+        source, sources, trace, catalog = self.verify_fixture()
+        def inspect(events=trace, delivered=catalog):
+            return t1_native_inspection(
+                events, self.session, self.repo, sources, delivered, case="T5",
+                validation=self.validation())
+        for delivered in (None, {}, {**catalog, "origin": "prepared_config"},
+                          {**catalog, "session_id": "other"}, {**catalog, "directory": "/wrong"},
+                          {**catalog, "messages": {}}, {**catalog, "catalog": []}):
+            self.assertFalse(inspect(delivered=delivered)[2])
+        # Prepared/debug-only catalog (zero messages) is never actual delivery.
+        self.assertFalse(inspect([trace[0], trace[2], trace[3]])[2])
+        for tool, inp, output in (
+            ("read", {"path": source["path"]}, Path(source["path"]).read_text()),
+            ("shell", {"command": STRICT_VALIDATE}, self.validation()["output"]),
+            ("skill", {"id": "openspec-explore"}, trace[1]["part"]["state"]["output"]),
+            ("skill", {"id": "openspec-verify-change"}, "I invoked Verify"),
+            ("skill", {"id": "openspec-verify-change"},
+             trace[1]["part"]["state"]["output"].replace(str(Path(source["path"]).parent), "/wrong")),
+            ("skill", {"id": "openspec-verify-change"},
+             f"openspec-verify-change\nBase directory: {Path(source['path']).parent}\nwrong body"),
+        ):
+            changed = copy.deepcopy(trace)
+            changed[1]["part"]["tool"] = tool
+            changed[1]["part"]["state"].update(input=inp, output=output)
+            self.assertFalse(inspect(changed)[2])
+        for status in ("error", "cancelled", "running"):
+            changed = copy.deepcopy(trace)
+            changed[1]["part"]["state"]["status"] = status
+            self.assertFalse(inspect(changed)[2])
+        for location in ("sessionID", "part"):
+            changed = copy.deepcopy(trace)
+            if location == "part":
+                changed[1]["part"]["sessionID"] = "other"
+            else:
+                changed[1]["sessionID"] = "other"
+            self.assertFalse(inspect(changed)[2])
+        changed = copy.deepcopy(trace)
+        changed[1]["part"]["messageID"] = "wrong-agent-message"
+        self.assertFalse(inspect(changed)[2])
+        # A valid directory listing cannot replace delivery of THIS skill.
+        listed = [self.events(source)[0], *trace]
+        listed[0]["part"]["state"]["output"] += "\nopenspec-verify-change/"
+        self.assertFalse(inspect(listed, delivered=None)[2])
+
     def test_t5_bounded_inspection_choices_and_actual_context_validation_before_handoff(self):
         for source in self.sources:
             trace = [*self.catalog_events(source), self.validation_event(),
@@ -828,12 +975,13 @@ class T1NativeInspectionTest(unittest.TestCase):
             self.assertTrue(inspect(early)[2])
             self.assertFalse(t7_reinventory(
                 early, self.session, native_index + 1, self.repo, worktrees, reader, receipts))
-            other_skill = {"type": "tool_use", "sessionID": self.session, "part": {
-                "tool": "skill", "state": {"status": status, "input": {"id": "openspec-apply-change"}}}}
-            both = [*phase2[:native_index], other_skill, *phase2[native_index:]]
-            self.assertTrue(inspect(both)[2])  # Genuine Explore still observed, never a waiver.
-            self.assertFalse(t7_reinventory(
-                both, self.session, native_index + 1, self.repo, worktrees, reader, receipts))
+            for name in ("openspec-apply-change", "openspec-verify-change"):
+                other_skill = {"type": "tool_use", "sessionID": self.session, "part": {
+                    "tool": "skill", "state": {"status": status, "input": {"id": name}}}}
+                both = [*phase2[:native_index], other_skill, *phase2[native_index:]]
+                self.assertTrue(inspect(both)[2])  # Genuine Explore is never a waiver.
+                self.assertFalse(t7_reinventory(
+                    both, self.session, native_index + 1, self.repo, worktrees, reader, receipts))
 
     def test_catalog_capture_binds_current_turn_from_owned_private_sqlite_not_stale_preparation(self):
         import sqlite3
@@ -1346,6 +1494,27 @@ class ReadOnlyGitHubTest(unittest.TestCase):
 
 
 class ProofBoundaryTest(unittest.TestCase):
+    def test_t5_only_adds_one_canonical_skill_rule_without_resource_or_guard_expansion(self):
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as directory:
+            repo = Path(directory)
+            name = "openspec-verify-change"
+            shutil.copytree(ROOT / ".agents/skills" / name, repo / ".agents/skills" / name)
+            args = (repo, [], repo / "runtime/reader", {}, repo / "active")
+            baseline = read_only_permissions(*args)
+            t5 = read_only_permissions(*args, case="T5")
+            addition = {"action": "skill", "resource": name, "effect": "allow"}
+            self.assertEqual([r for r in t5 if r not in baseline], [addition])
+            self.assertEqual([r for r in t5 if r != addition], baseline)
+            self.assertEqual(read_only_permissions(*args, case="T1"), baseline)
+            self.assertEqual(read_only_permissions(*args, case="T7"), baseline)
+            self.assertEqual(read_only_permissions(*args, case="T7", prechoice=True),
+                             read_only_permissions(*args, prechoice=True))
+            for case in ("T1", "T7"):
+                self.assertNotIn(addition, read_only_permissions(*args, case=case))
+            guard = ROOT / "tests/fixtures/resume_shell_guard.mjs"
+            self.assertEqual(sha(guard),
+                             "b878847767fd9759d7362a6aa71707b4e13f97606258f39448c82b23f255e656")
+
     def test_t1_github_requires_actual_issue_decisions_read_before_handoff(self):
         repo = Path("/tmp/opencode/unit")
         fixture = {"repository": "disposable/recovery", "issue": 61}
@@ -2156,6 +2325,8 @@ class ArchivedContractTest(unittest.TestCase):
                 ("openspec/config.yaml", "schema: spec-driven\n"),
                 (".agents/skills/openspec-explore/SKILL.md", "# Actual native skill bytes\n")):
                 write(source / path, text)
+            verify_path = ".agents/skills/openspec-verify-change/SKILL.md"
+            write(source / verify_path, (ROOT / verify_path).read_text())
             shutil.copytree(source / "openspec", repo / "openspec")
             shutil.copytree(source / ".agents", repo / ".agents")
             tasks = repo / plan / "tasks.md"
@@ -2165,6 +2336,7 @@ class ArchivedContractTest(unittest.TestCase):
             write(installed / "protocol/WORKTREES.md", "# Consumed canonical policy\n")
             write(installed / "skills/resume-workflow/references/WORKTREES.md", "# Loaded reference\n")
             write(installed / "manifest.json", '{"revision":"candidate"}\n')
+            write(installed / verify_path, (ROOT / verify_path).read_text())
             write(home / ".config/opencode/AGENTS.md", "# Loaded rules\n")
             write(base / "bin/gh", "#!/bin/sh\n")
             write(base / "github/state.json", '{"issues":{}}\n')
@@ -2183,7 +2355,7 @@ class ArchivedContractTest(unittest.TestCase):
                 ("proposal.md", "design.md", "tasks.md", "specs/one/spec.md")}}
             model_profile = {"requested": "known-zero", "status": "metadata_eligible"}
             def binding(candidate="candidate", selected=None, session=None,
-                        prompt="Natural request; no computed model answer"):
+                        prompt="Natural request; no computed model answer", permissions=None):
                 # Version calls only are stubbed: this test must never launch a
                 # native completion, infer from a model answer or need credentials.
                 with patch("smoke_resume_candidate_opencode.run", return_value="version-unit"), \
@@ -2191,7 +2363,7 @@ class ArchivedContractTest(unittest.TestCase):
                     return effective_input_binding(
                         source, candidate, selected or contract, installed, repo,
                         base / "github", base / "runtime", home, env, phase=1,
-                        prompt=prompt, permissions=[],
+                        prompt=prompt, permissions=[] if permissions is None else permissions,
                         guard=guard, model=model_profile, session=session,
                         approved_contract=contract,
                         native_candidates=[{"path": str(repo / ".agents/skills/openspec-explore/SKILL.md"),
@@ -2211,6 +2383,7 @@ class ArchivedContractTest(unittest.TestCase):
             for path in (
                 tasks, repo / "recovery-evidence.json", repo / ".agents/skills/openspec-explore/SKILL.md",
                 installed / "skills/resume-workflow/SKILL.md",
+                repo / verify_path, installed / verify_path,
                 installed / "protocol/WORKTREES.md",
                 installed / "skills/resume-workflow/references/WORKTREES.md",
                 repo / "openspec/config.yaml", base / "guard/index.mjs",
@@ -2227,6 +2400,10 @@ class ArchivedContractTest(unittest.TestCase):
             env["OPENCODE_CONFIG_CONTENT"] = '{"permissions":["different"],"plugins":[]}'
             self.assertTrue(effective_input_diff(original, binding())["requires_complete_native_smoke"])
             env["OPENCODE_CONFIG_CONTENT"] = '{"permissions":[],"plugins":[]}'
+            capability_delta = effective_input_diff(original, binding(permissions=[
+                {"action": "skill", "resource": "openspec-verify-change", "effect": "allow"}]))
+            self.assertTrue(capability_delta["requires_complete_native_smoke"])
+            self.assertFalse(capability_delta["reuse_permitted"])
             t5_input = binding(prompt=PROMPTS["T5"])
             prompt_delta = effective_input_diff(original, t5_input)
             self.assertEqual(prompt_delta["status"], "material_or_uncertain")
