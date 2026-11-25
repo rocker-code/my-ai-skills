@@ -2,6 +2,84 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Revisão independente do décimo trace e preflight somente de metadados
+
+O coordenador informa revisão independente de
+`ses_dee9d76e4ffeR10I59JewObvEC`: **T1 aprovado somente nos inputs observados
+703ffb9**, sessão `ses_ded625d95ffelT8lOw69u3ftnR`, com nove fatos, condição
+tipada, serialização e handoff de posse seguros. Não reescrever os campos
+originais pending_independent_review/scenario_pass=false. Para T5
+`ses_ded609cceffe7kZ16usqNCOvbN`, fontes PR/head/manual/dependência e inventário
+aprovados, mas skill2 foi apenas resume-workflow; Verify35 é leitura de arquivo,
+strict48 é CLI e native_source=null continua correto. O catálogo/permissões
+permitiam resume/explore/apply; Verify era default-deny como skill embora seu
+arquivo canônico fosse legível. Não é quebra de perfil “quatro versus cinco”.
+Prompt/adaptador/contrato já exigem dispatch real: a revisão classifica omissão
+do modelo e divergência arquivo/capacidade, **sem correção de implementação
+justificada**, sem relaxar gate, acrescentar Verify, forçar Apply ou inflar prompt.
+Clientes nativos anteriores completos/idle succeeded, custo final liquidado
+UNKNOWN; steps0 não são liquidação. Décimo run inteiro permanece FAILED,
+seq50–52 intactas e T7 NOT RUN. Não há PASS F1 por aprovação de subcenário.
+
+**Nova autorização administrativa, sem inferência:** entrada limpa
+`5522981a0ec735ac8f2bb3243f41893c283733fa`, somente documentação desde
+`703ffb979b21b94fbcd830f7cac3bdba0f725220`; worker real
+`ses_dee5e0a18ffefE7FomnYJ9smc1`, stage `metadata61-tidepool`, mesmo run/issue/
+checkout. WAITING ownerless reservado/verify/checkpoint sem drift, nove ignorados
+preservados. Nenhuma nova tentativa nativa/alteração de orçamento do attempt-log.
+O pai selecionou **somente para verificar metadados**
+`opencode/tidepool-alpha-free`; sua listagem global não comprova esse perfil.
+
+Wrapper temporário próprio, sem patch de fonte, bloqueia main/prepared_phase/
+execute_model e subprocessos fora da allowlist. Usa o **model_preflight existente**
+com override process-local `RESUME_SMOKE_MODEL=opencode/tidepool-alpha-free`;
+nunca strip/fallback/variante/troca do modelo do coordenador. Instalação privada
+exata5522981, HOME/XDG/config/CODEX_HOME/DB novos, sem importar auth/config do
+operador. Permissões T5 idênticas após rebasing dos paths/revisão próprios,
+guard original fresh ativo/disposed. OpenCode2.3.2/OpenSpec2.1.1.
+
+**Resultado BLOCKED, não metadata-eligible:** os únicos GETs nativos foram
+`/api/model/default` e `/api/model`, standalone no Location privado T5,
+ambos exit0. model_preflight rejeitou:
+`selected model absent/ambiguous in native catalog`.
+Não foi estabelecida uma única linha local da referência exata. O wrapper não
+reteve a projeção/count rejeitados; **ausente versus ambíguo continua inconclusivo**,
+sem nova consulta para distinguir. enabled/active/tools/text e todos os preços
+da alternativa ficam **UNKNOWN neste perfil**, sem transportar zeros/capacidades
+do catálogo global. Nenhuma segunda rota, retry ou probe de token/inferência.
+O default/binding/resultados antigos big-pickle permanecem imutáveis.
+
+**Prova negativa de inferência:** DB privado read-only com session_v2,
+session_message, session_part, user, assistant e credential todos **0**;
+nenhum endpoint generate/completion chamado, zero tokens/custo de inferência
+registrados. Isso não é disponibilidade de provedor nem teste comportamental.
+Os sete processos de preparo/versão/guard/APIs retornaram0 e seus PIDs já
+ausentes; guard audit contém três setup/disposed. Sem restart global, limpeza,
+kill ou sessão modelo. Credencial de serviço privado gerada localmente não foi
+retida; nenhuma credencial de operador lida/importada.
+
+`evidence:ev-20261125T123047Z-cacbb737`: metadata-only **verified/failed**,
+no_required_gate, não execução nativa substituta.
+`evidence:ev-20261125T123238Z-53b019a3`: retenção/diagnóstico read-only
+verified/passed/no_required_gate, confirma DB zero, fontes/guard/pins byte-idênticos
+e log original `ev-20261125T121046Z-f787388b` intacto
+(1.586.873 bytes, `ec613943a4bde9577638e4f669eccd116bcc06bee17fa0c35478da0b6b51b841`).
+Artefatos próprios em
+`/tmp/opencode/issue61-metadata-tidepool-ses_dee5e0a18ffe-profile/`:
+`metadata-result.json` e `metadata-retention.json`, wrapper/log/hash vinculados
+ao segundo recibo. Nenhum campo antigo foi retroinserido.
+
+Não propor inferência futura enquanto a elegibilidade local estiver inconclusiva.
+Se o pai decidir investigar a discrepância de catálogo, isso requer direção
+separada, sem fallback automático. Qualquer experimento futuro com novo modelo
+é input material: exige autorização separada, preflight local conhecido zero e
+**novo T1/T5/T7 completo**, registrando ref exata/source RESUME_SMOKE_MODEL no
+binding resume-effective-inputs-v1 real. Esta checagem não criou esse binding
+nativo nem dispensa F1/revisão/suíte final futura. Apenas anotação documental;
+final readiness false/T5 e T7 nativos não comprovados. Closeout documental previsto:
+commit somente desta nota e liberação ownerless WAITING após verify, a confirmar
+pelo callback real; sem décima primeira inferência, suíte completa, archive/PR/push/merge.
+
 ### Décima observação autorizada — T5 sem invocação nativa, T7 NOT RUN
 
 Autorização nova explícita, após revisão independente da correção material
