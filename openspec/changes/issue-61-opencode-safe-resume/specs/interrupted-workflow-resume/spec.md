@@ -70,6 +70,14 @@ O workflow SHALL reconstruir estado por GitHub/Git/OpenSpec, reservas, runtime s
 - **WHEN** há somente arquivo de skill, leitura direta, CLI isolado, stub ou resposta narrativa sem evento nativo de invocação correlacionado
 - **THEN** a prova de integração nativa fica bloqueada com causa exata, sem fabricar comandos legados ou declarar PASS por presença de arquivo
 
+#### Scenario: T5 inspects an existing PR with canonical Verify
+- **WHEN** a fixture read-only T5 tem Verify oficialmente gerada/suportada e seu perfil permite carregar exatamente essa skill como alternativa aplicável a Explore/Apply
+- **THEN** a prova exige catálogo/discovery e dispatch nativo genuíno bem-sucedido, fonte/path/hash/body/sessão/contexto/change corretos, strict e leituras reais PR/head/checks/manual/dependência com estado preservado; Verify pode relatar incomplete/not verified sem aprovar implementação ou archive, e carregar instruções não concede shell/FS/escrita/MCP
+
+#### Scenario: T5 capability addition cannot approve absent invocation or leak scope
+- **WHEN** Verify está ausente/unsupported/divergente ou há somente catálogo/preparação/arquivo/CLI, dispatch failed/cancelled ou prova de outra fonte/sessão/root/change
+- **THEN** a prova necessária fica bloqueada com causa exata sem stub ou retro-PASS; a permissão adicional de ativação é exclusiva de T5, não amplia T1 nem os limites T7 de escolha e Explore-only, e sua mudança material exige futuro run real completo após revisão
+
 #### Scenario: Offline diagnosis of an earlier failed native run
 - **WHEN** uma correção do oráculo é avaliada sobre trace real e pré-requisitos prospectivos retidos
 - **THEN** a projeção nova é registrada como diagnóstico/regressão offline separado, preservando bytes, manifesto e FAILED originais; não cria observação nativa, não resolve episódio por replay e não supre cenários que nunca rodaram
