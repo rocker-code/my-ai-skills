@@ -77,9 +77,61 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 {"kind":"attempt","seq":3,"obligation":"setup","signature":"installer: gh missing from disposable path","target":"smoke_resume_candidate_opencode.py at 88171e3","class":"environment/bootstrap","hypothesis":"PATH filtrado inclui todas as dependências antes da instalação","change":"shim OpenCode isolado e fontes read-only","change_target":"test","observed_effect":"Falta gh no PATH; exit 1 antes de qualquer sessão/modelo; gh real reside no HOME filtrado","result":"fail","evidence":["evidence:ev-20261125T041342Z-1d01b591"]},
 {"kind":"diagnosis","seq":4,"group":{"obligation":"setup","signature":"installer: gh missing from disposable path"},"class":"fixture/isolation","checked":{"phase":"preflight do instalador antes de qualquer execute_model","scope":"PATH do HOME descartável, não ambiente do operador","lifecycle":"exit terminal 1; nenhum JSONL/sessão de modelo","consumers":"install-global verifica which(gh); harness criava shim somente após instalar"},"runtime_proof":["evidence:ev-20261125T041342Z-1d01b591"],"simplest_alternative":"expor gh real do HOME, recusado para manter isolamento e evitar credenciais","choice_rationale":"antecipar o mesmo shim read-only já usado pela fixture satisfaz preflight sem mudar instalador","next_hypothesis":"setup completo com shim antecipado chega ao limite execute_model em prova determinística sem modelo"},
 {"kind":"attempt","seq":5,"obligation":"setup","signature":"installer: gh missing from disposable path","target":"isolated installer + T1 fixture at a1e4789","class":"fixture/isolation","hypothesis":"shim gh antecipado conserva isolamento e permite preparação completa","change":"criar o mesmo shim read-only antes do preflight do instalador","change_target":"test","observed_effect":"exit 0; instalação real e fixture T1 preparadas, writer observado e esperado; limite execute_model interceptado sem modelo","result":"pass","evidence":["evidence:ev-20261125T041508Z-c662812e"]},
-{"kind":"resolution","group":{"obligation":"setup","signature":"installer: gh missing from disposable path"},"outcome":"passed","via_seq":5}
+{"kind":"resolution","group":{"obligation":"setup","signature":"installer: gh missing from disposable path"},"outcome":"passed","via_seq":5},
+{"kind":"attempt","seq":6,"obligation":"T1","signature":"provider.invalid-request: upstream request failed: model is unavailable","target":"opencode/glm-5.3-flash-free at 33e193565009f8da5744eda218878d6a9a3e847c","class":"environment/bootstrap","hypothesis":"modelo listado no runtime isolado aceita a observação após setup válido","change":"nenhuma mudança após diagnóstico/setup; uma observação sem fallback","change_target":"none","observed_effect":"HTTP 400 Model is unavailable; sessão ses_def153ec6ffevyM1h9hymDQ8O1, exit 1, zero tool calls; T5/T7 NOT RUN","result":"fail","evidence":["evidence:ev-20261125T041548Z-ed5ea997"]},
+{"kind":"diagnosis","seq":7,"group":{"obligation":"T1","signature":"provider.invalid-request: upstream request failed: model is unavailable"},"class":"environment/bootstrap","checked":{"phase":"primeiro step do provedor antes de qualquer ferramenta","scope":"OpenCode 2.3.2 standalone; HOME/XDG/DB novos, sem credenciais do operador","lifecycle":"sessão nativa criada, erro terminal 400 e exit 1; nenhum timeout ou retry","consumers":"modelo público listado, instruções globais e skills carregadas no instruction_state da mesma sessão"},"runtime_proof":["evidence:ev-20261125T041548Z-ed5ea997","evidence:ev-20261125T041711Z-36eb7ff7"],"simplest_alternative":"consultar suporte/capacidade real do provedor antes de nova observação; não editar aplicação ou enfraquecer detector","choice_rationale":"listagem confirma descoberta, mas evento terminal nega disponibilidade; causa interna do provedor não é demonstrada","next_hypothesis":"somente nova disponibilidade comprovada ou seleção explicitamente fundamentada de runtime/modelo permitirá nova tentativa limitada"},
+{"kind":"blocker","seq":8,"group":{"obligation":"T1","signature":"provider.invalid-request: upstream request failed: model is unavailable"},"type":"technical","wait_reason":"external","evidence":["evidence:ev-20261125T041548Z-ed5ea997","evidence:ev-20261125T041711Z-36eb7ff7"],"diagnosis":"seq:7","options":[],"impact":"T1 bloqueado; T5/T7 não executados; sem archive, suíte final de entrega ou PR","researchable":false},
+{"kind":"resolution","group":{"obligation":"T1","signature":"provider.invalid-request: upstream request failed: model is unavailable"},"outcome":"blocked","via_seq":8}
 ]}
 ```
+
+### Observação atual bloqueada e Verify nativo
+
+Somente **uma** sessão model-backed foi iniciada nesta recuperação, no
+`33e193565009f8da5744eda218878d6a9a3e847c`. O setup falho anterior não
+iniciou modelo. O log checksum-bound
+`evidence:ev-20261125T041548Z-ed5ea997` contém os JSONLs, recibo terminal e
+recibo independente do processo cooperante; não depende somente de `/tmp`.
+JSONL SHA-256 `1eb988d9d26c5192b8ce9ff1a0e06c320c074d7e336c0c216d302b5c0cd20f02`.
+A leitura read-only do DB **isolado** em
+`evidence:ev-20261125T041711Z-36eb7ff7` vincula a sessão ao guidance
+`resume-workflow`, cinco skills oficiais e AGENTS carregado por
+`instruction_state`/`instruction_blob`; isso **não** prova invocação nativa.
+O callback HTTP 400 atual é factual e diferente do observer antigo UNKNOWN;
+não é 429 e não contém retryAfter ou diagnóstico de quota.
+
+Verify oficial invocado nesta sessão por `openspec-verify-change`, origem
+`.agents/skills/openspec-verify-change/SKILL.md`, após integração; OpenSpec
+2.1.1, sem init/update/habilitação global. `status`/`instructions apply`
+resolveram este root e os cinco artefatos. Strict do change: **1/1 PASS**.
+
+| Dimension | Status |
+| --- | --- |
+| Completeness | 13/16 antes desta Verify; cinco requisitos mapeados ao código. Tarefas 3.4/4.3 incompletas; 4.4 satisfeita pela invocação/relatório/strict, não por sucesso dos smokes. |
+| Correctness | Mapeamento estático e 18 regressões offline conferidos. Cenários T1/T5/T7 reais **Not verified**: primeiro modelo indisponível antes de ferramenta; não pontuar como PASS. |
+| Coherence | Merge/pins/remoções/fontes read-only/archive resolver conferidos; não há novo framework de produção. Revisão independente dos novos eventos não realizada pelo próprio Apply. |
+
+**CRITICAL — completar antes de archive:** tarefas 3.4 e 4.3 em
+`openspec/changes/issue-61-opencode-safe-resume/tasks.md:22,30`. Após superar
+o bloqueio externo, exigir T1/T5/T7 completos e dois turnos do mesmo ID em T7,
+com snapshots por fase e revisão independente. Não marcar por prosa.
+
+**WARNING — limite de prova da falha:** `execute_model` terminou antes de
+`results.json` ser preenchido (`tests/smoke_resume_candidate_opencode.py:771`).
+Existem terminal/eventos/DB/receipt, mas não snapshots pós-fase completos
+desse run. Não reconstruir um snapshot anterior por inferência. Antes da
+próxima observação, preservar também a preparação antes de chamar modelo.
+
+Mapeamento: recuperação/escopo/UNKNOWN em `skills/resume-workflow/SKILL.md:8-20`;
+preservação e receipt em `tests/smoke_resume_candidate_opencode.py:96,160,270`;
+native skill/event/hash em `:292`; escolha/probes/mesma sessão em `:359,422,501`;
+archive em `:188`; distribuição em `tests/test_global_install.py:648`.
+Negativos e fontes read-only em `tests/test_resume_reinventory.py:245-521`;
+reserva/evidência existentes cobrem crash/ownership/stale/incomplete.
+
+**Resultado:** dois achados críticos de completude e uma limitação de
+captura; cenários model-backed não verificados. **Não pronto para archive
+ou PR**. Archive/sync e gate final pós-archive **NOT RUN**, sem dispensas.
 
 ## Histórico — 16/11/2026 (não é gate atual)
 
