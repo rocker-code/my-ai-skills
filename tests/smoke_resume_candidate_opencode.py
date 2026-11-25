@@ -1161,16 +1161,22 @@ def t1_inventory_proof(events, session, repo, worktrees, reader, receipt,
         path = Path(receipt["checkout"])
         expected = before["reservation"][path.name]
         owner = row.get("owner")
-        if (row.get("ok") is True and row.get("exit_code") == 0 and row.get("state") == "ACTIVE" and
+        stopped_owner = (row.get("state") == "ACTIVE" and isinstance(owner, dict) and
+                         owner.get("session") == receipt["owner"] and
+                         owner.get("run") == receipt["run"] and
+                         owner.get("pid") in (None, receipt.get("pid")))
+        released = row.get("state") == "WAITING" and owner is None
+        if (row.get("ok") is True and row.get("exit_code") == 0 and
                 row.get("path") == receipt["checkout"] and row.get("head") == receipt["head"] and
-                row.get("drift") is None and isinstance(owner, dict) and
-                owner == expected["owner"] and owner.get("session") == receipt["owner"] and
-                owner.get("run") == receipt["run"] and
-                owner.get("pid") in (None, receipt.get("pid")) and
+                row.get("issue_url") == (
+                    f"https://github.com/{fixture['repository']}/issues/{fixture['issue']}") and
+                row.get("drift") is None and (stopped_owner or released) and
                 row.get("unknown_untracked_paths") == [] and all(
-                    row.get(k) == expected[k] for k in
-                    ("issue_url", "branch", "state", "head", "digest", "drift"))):
-            return True  # Known stopped PRIOR owner; reconciliation still required before effects.
+                    k in row and k in expected and row[k] == expected[k] for k in
+                    ("issue_url", "branch", "state", "owner", "head", "digest", "drift"))):
+            # Both states still require the independently observed prior-writer
+            # receipt above. Neither transfers ownership or authorizes effects.
+            return True
     return False
 
 

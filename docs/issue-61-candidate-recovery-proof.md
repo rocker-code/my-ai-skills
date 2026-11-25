@@ -2,6 +2,63 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Correção offline de ownerstate — WAITING released não é posse desconhecida
+
+Entrada limpa `05ea1c286f276415ec90fbc536414e9ee0513b3f`, mesmo
+checkout/branch/run. Writer real `ses_deeb219ebffecKs4h8aN9D00bl`, stage
+`workerfix61-released-inventory`: reserva ownerless WAITING adquirida e
+verificada, nove ignorados/histórico preservados. Sem sétima inferência.
+
+**MUST FIX confirmado pela revisão independente**
+`ses_dee9d76e4ffeR10I59JewObvEC`: o predicado de inventário introduzido em
+05ea1c2 aceitava somente ACTIVE com owner anterior parado. O negativo que
+rotulava WAITING released/ownerless como “unknown transition” estava errado
+sob `protocol/WORKTREES.md:13,21` e spec aprovada31cdb42, cenário T1:43.
+Seq38 anota essa correção de seq37 sem apagar falha/evento ou resetar contador.
+
+Condições corrigidas, somente para recuperação read-only:
+
+- **A:** ACTIVE com owner anterior correspondente ao receipt terminal real
+  continua válido; não transfere owner para a sessão nova.
+- **B:** WAITING released/ownerless unívoco é válido, com list/inventário
+  realmente observados, identidade path/issue/branch/HEAD/digest ligada ao
+  snapshot real antes/depois e receipt independente do writer anterior
+  com execução/owner/run/checkout corretos. Ausência de owner **não** prova
+  término. Reserva/reconciliação continua obrigatória antes de efeitos.
+- **C:** posse desconhecida/RECOVERY_REQUIRED, campos ausentes, owner null em
+  ACTIVE/estado inválido, rows ambíguas, drift ou outro owner vivo continuam
+  bloqueados. Checar presença dos campos evita aceitar owner/drift ausente
+  como se fossem null explícitos. Nenhum comando stateful do modelo é permitido.
+
+Controle concreto `test_publicly_released_waiting_fixture_recovers_read_only_with_prior_receipt`:
+producer **conhecido e criado pelo teste**, `seed-T1/wf-unit`, usa helpers
+públicos: reserve planned → cria worktree → reserve/verify pelo processo
+cooperante → Popen.wait/receipt terminal → checkpoint → verify → release
+WAITING. Depois faz novos readouts reais de Git/list/reader em eventos unitários
+sintéticos. Nunca adota identidade de reserva do operador; só muda a fixture
+descartável. O predicado anterior falhou nesse controle; o corrigido passa,
+com snapshots iguais/owner ainda null, sem qualquer reserva pela recuperação.
+
+Prova com diff `ev-20261125T092512Z-4c9146bc` contém lifecycle público real
+planned/activate/checkpoint/release, receipt independente e readouts:
+old_predicate=false/corrected_predicate=true/write_authorized=false.
+Negativos mantêm ACTIVE null/owner vivo, receipt errado/ausente, digest/HEAD/
+drift incorretos, fatos ausentes e ambiguidade. 61 focados passaram offline.
+Essa prova é **pre-smoke**, não whole-run PASS ou observação de modelo.
+
+O mesmo diagnóstico retém a sexta execução FAILED: model_inventory_proved=false,
+handoff_outcome=false, blockers contraditórios, inputs originais byte-identical.
+Eventos11/61 negados, limites de ignored, limitations/blockers, locators,
+guard/raw commands/permissões/reader/pins/T5/T7 continuam inalterados.
+As provas anteriores de 05ea1c2 (308 offline/60 focados/strict13) eram
+pre-smoke e não cobriam esse positivo legítimo; não viram gates finais.
+Somente `t1_inventory_proof`, seu teste e este handoff mudam. Check não final
+válido; repetir focados/suíte offline/controle no HEAD limpo, sem required
+gates. Strict não precisa ser repetido: contrato/OpenSpec inalterado.
+Check final continua ready=false/BLOCKED. Saída limpa ownerless WAITING;
+revisão afetada independente antes de qualquer sétima observação
+**separadamente autorizada**. Sem PR/push/archive/merge/mudança global.
+
 ### Correção offline pós-sexta falha — inventário observado e limites do handoff
 
 Writer `ses_deeb219ebffecKs4h8aN9D00bl`, stage
@@ -1494,6 +1551,7 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"blocker","seq":36,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T083810Z-4711919b"],"diagnosis":"seq:35","options":[],"impact":"T1 sixth native observation failed strict handoff; T5/T7 NOT RUN; tasks3.4/4.3 pending; no archive/final required suite/PR; independent offline handoff review required","researchable":true}
  ,{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"outcome":"blocked","via_seq":36}
  ,{"kind":"diagnosis","seq":37,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"class":"fixture/isolation","checked":{"phase":"healthy model completed; post-terminal handoff fixture schema ambiguously called all gaps blockers while mandatory observed inventory was not asserted/published; four final79 entries split scope seed, observation method/namespace, genuine unobserved inventory, future post-Apply stage","scope":"627b89a isolated HOME/XDG/DB/Location; eight prospective snapshots equal/prerequisites true; receipt17/Apply41/native50/strict42/proposal25/ancestry28-29/review30/diff39 actual; no new SHA-sum requirement or real candidate approval inside controlled fixture; ignored coverage must be honestly bounded, not inferred from status/list alone","lifecycle":"ses_dee25002cffeyXijaW40o1kU0x exit0/cost0/harness1 T1; T5/T7 not run; final79 RECOVERED plus four blockers correctly failed; no seventh model; stopped prior writer receipt does not grant ownership or approve different/live current registry owner","consumers":"T1 fixture metadata/locators, handoff blockers-versus-limitations schema and new native observed inventory proof; stateful forbidden_attempts distinct from denied out-of-scope repo read61 and benign unsupported variants; T5 checks/T7 prechoice and reinventory unchanged; guards/raw commands/permissions/pins unchanged"},"runtime_proof":["evidence:ev-20261125T083810Z-4711919b"],"simplest_alternative":"keep blocked; never strip actual blockers or assume snapshots equal means model inspected inventory or owns checkout","choice_rationale":"fresh independent review ses_dee9d76e4ffeR10I59JewObvEC distinguishes three honest nonblocking limitations from missing native inventory under approved spec27/resume-workflow10/14/18; publish existing exact inventory commands/cwds and require actual correct identity/owner/receipt observations; clarify read-only last-gate recovery versus permission before effects without new protocol/stage or LLM judge","next_hypothesis":"bounded schema with limitations plus real native inventory sources admits honest recovered fixture handoff only; unknown/live/conflicting owner or missing receipt/inventory still blocks regardless labels; retained sixth trace remains failed for genuine gap and nonempty blockers; independent affected review before any separately authorized seventh observation"}
+ ,{"kind":"diagnosis","seq":38,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"class":"fixture/isolation","checked":{"phase":"offline independent review found ownerstate overconstraint in05ea1c2 t1_inventory_proof: onlyACTIVE-stopped accepted; real public-helper releasedWAITING control fails old predicate despite fully observed inventory/receipt","scope":"same issue checkout/run; change only inventory predicate/test/handoff; disposable producer seed-T1 explicitly created by test uses planned reserve/activate/verify/terminal receipt/checkpoint/verify/release; no operator or foreign reservation changed; path/issue/branch/HEAD/digest/current snapshot bindings still mandatory","lifecycle":"no seventh inference; original sixth model healthy exit0/cost0 but harness1 T1, missing inventory and nonempty blockers remain FAILED; new released control is offline synthetic trace of actual Git/list/reader outputs and public lifecycle, not model proof","consumers":"T1 read-only last-gate inventory: accept either matching stopped priorACTIVE owner or unambiguous releasedWAITING ownerless; independent matching terminal receipt mandatory in both; neither state grants writes; missing facts/recoveryrequired/unknown/nullACTIVE/live conflicting owner/ambiguous rows/drift still block; all other source nodes/guard/raw permissions/reader/pins/T5T7 unchanged"},"runtime_proof":["evidence:ev-20261125T092512Z-4c9146bc","evidence:ev-20261125T083810Z-4711919b"],"simplest_alternative":"keep blocked pending affected review; never treat arbitrary ownerNull as proof a worker ended or as a grant to start a writer","choice_rationale":"fresh review ses_dee9d76e4ffeR10I59JewObvEC identifies concrete normal lifecycle false-negative against WORKTREES13/21 and approved spec43; smallest state distinction keeps public release valid for read-only recovery while retaining all observed facts/receipt and ownership-before-effects requirements","next_hypothesis":"real released public-helper positive and retained ACTIVE-stopped/unknown/live/identity/digest/drift/ambiguity negatives plus full offline suite validate the narrow correction; sixth native trace still fails; independent affected review before separately authorized seventh observation"}
 ]}
 ```
 

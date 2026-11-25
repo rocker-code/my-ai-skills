@@ -1456,6 +1456,9 @@ class T1ObservedInventoryTest(unittest.TestCase):
         self.locators = read_only_locators(
             self.repo, [self.checkout], self.reader, {61: self.receipt},
             self.permissions, case="T1")
+        self.observe_inventory()
+
+    def observe_inventory(self):
         self.events = []
         for locator in self.locators["inventory_locators"]:
             argv = shlex.split(locator["command"])
@@ -1554,6 +1557,51 @@ class T1ObservedInventoryTest(unittest.TestCase):
                 state["output"] = "(no output)"
         self.assertTrue(self.proof(events=events))
 
+    def test_publicly_released_waiting_fixture_recovers_read_only_with_prior_receipt(self):
+        # Known disposable fixture PRODUCER, explicitly created in setUp; never
+        # infer/adopt an operator's session from a registry row.
+        producer = "seed-T1"
+        self.assertEqual(self.receipt["owner"], producer)
+        self.assertTrue(self.proof())  # Existing stopped ACTIVE-owner positive.
+        for verb, args in (
+            ("checkpoint", ["--note", "fixture producer terminal; ready to release"]),
+            ("verify", []),
+            ("release", ["--state", "WAITING"]),
+        ):
+            result = json.loads(self.invoke([
+                str(self.reservation), verb, "--path", str(self.checkout),
+                "--session", producer, "--run", "wf-unit", *args, "--json"]))
+            self.assertTrue(result["ok"])
+        self.before = self.snapshot()
+        row = self.before["reservation"][self.checkout.name]
+        self.assertEqual(row["state"], "WAITING")
+        self.assertIsNone(row["owner"])
+        self.assertEqual(row["head"], self.receipt["head"])
+        self.observe_inventory()  # Fresh real public list/Git/reader readouts AFTER release.
+        self.assertTrue(self.proof())
+        self.assertEqual(self.before, self.snapshot())  # No reservation/writes by recovery.
+        self.assertFalse(forbidden_attempts(self.events, self.session))
+        self.assertFalse(self.proof(events=self.events[:-1]))  # Ownerless is NOT terminal proof.
+        for field in ("execution_id", "owner", "run", "checkout"):
+            self.assertFalse(self.proof(receipt={**self.receipt, field: "unrelated"}))
+        index = next(i for i, event in enumerate(self.events) if
+                     event["part"]["state"]["input"]["command"].startswith("worktree-reservation"))
+        for field in ("owner", "issue_url", "branch", "head", "digest", "drift"):
+            events = copy.deepcopy(self.events)
+            state = events[index]["part"]["state"]
+            data = json.loads(state["output"])
+            del data["entries"][0][field]
+            state["output"] = json.dumps(data)
+            self.assertFalse(self.proof(events=events), field)
+        for change in ({"digest": "sha256:v1:" + "0" * 64}, {"head": "0" * 40},
+                       {"drift": {"changed": True}}, {"state": "RECOVERY_REQUIRED"}):
+            events = copy.deepcopy(self.events)
+            state = events[index]["part"]["state"]
+            data = json.loads(state["output"])
+            data["entries"][0].update(change)
+            state["output"] = json.dumps(data)
+            self.assertFalse(self.proof(events=events), change)
+
     def test_unknown_or_live_conflicting_owner_cannot_reuse_old_terminal_receipt(self):
         index = next(i for i, event in enumerate(self.events) if
                      event["part"]["state"]["input"]["command"].startswith("worktree-reservation"))
@@ -1563,7 +1611,7 @@ class T1ObservedInventoryTest(unittest.TestCase):
                        "session": "other-live-writer", "pid": os.getpid()}},
             {"owner": {**self.before["reservation"][self.checkout.name]["owner"],
                        "pid": os.getpid()}},
-            {"state": "WAITING", "owner": None},  # Unknown transition needs reconciliation.
+            {"state": "RECOVERY_REQUIRED", "owner": None},
             {"drift": {"changed": True}}, {"unknown_untracked_paths": ["local"]},
             {"path": "/unrelated"}, {"head": "0" * 40},
         ):
