@@ -7,6 +7,7 @@ It never uses real GitHub resources or the operator's OpenCode configuration.
 Only an exact clean candidate HEAD is eligible; retained results are audited evidence.
 """
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -19,13 +20,14 @@ import signal
 import sqlite3
 import stat
 import subprocess
+import sys
 import tempfile
 from datetime import datetime, timezone
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE = "issue-61-opencode-safe-resume"
-APPROVED_PROPOSAL = "31cdb42b2d0e409e8820fa71d97177316c07f94a"
+APPROVED_PROPOSAL = "e1408dafbb7c6b2251b206afe62a2785708d1e08"
 STRICT_VALIDATE = f"openspec validate {CHANGE} --strict --no-interactive"
 PROMPTS = {
     "T1": (
@@ -56,8 +58,15 @@ PROMPTS = {
         "impedimentos da ação dependente, não podem ser ocultados em limitations. "
         "RECOVERED identifica o último gate; não concede posse nem permissão de "
         "escrever. A próxima ação segura pode ser reconcile-ownership antes de "
-        "apply-issue. Use os locators de inventário e confronte o owner atual "
-        "com o receipt real. Use "
+        "apply-issue. Inclua ownership_condition como objeto com phase, kind, "
+        "checkout, execution_id, owner, run e write_authorized. phase deve ser "
+        "before-write; kind é prior-stopped-owner para ACTIVE do mesmo writer "
+        "comprovadamente parado, ou released-unreserved para WAITING sem owner "
+        "com receipt correto. Copie as identidades das fontes observadas, não "
+        "infira término/posse. write_authorized deve ser false: esta prova nunca "
+        "concede escrita. Uma condição ausente, desconhecida ou incompatível "
+        "não pode ser convertida em pré-escrita por texto. Use os locators "
+        "de inventário e confronte o owner atual com o receipt real. Use "
         "evidence_scope=controlled_fixture para esta prova; só use RECOVERED "
         "com last_verified_gate=proposal_review_validated e next_action=apply-issue "
         "(ou reconcile-ownership como condição anterior a efeitos) "
@@ -228,6 +237,131 @@ def contract_source(root, revision):
         if f"{selected}/{name}" not in files:
             raise RuntimeError(f"Incomplete committed contract: {name}")
     return {"revision": revision, "path": selected, "files": files}
+
+
+def input_files(root):
+    """Byte inventory of the supplied consumed tree, with paths/modes/symlinks.
+
+    No path-name based 'docs are irrelevant' exemption. The caller chooses an
+    actual source/installed/prepared input root, never a transient DB or secrets.
+    """
+    root = Path(root)
+    if not root.exists():
+        raise RuntimeError(f"Missing effective input root: {root}")
+    files = {}
+    for path in sorted(root.rglob("*")) if root.is_dir() else [root]:
+        if path.is_file() or path.is_symlink():
+            files[str(path.relative_to(root)) if root.is_dir() else path.name] = {
+                "sha256": sha(path), "mode": stat.S_IMODE(path.lstat().st_mode),
+                "symlink": os.readlink(path) if path.is_symlink() else None,
+                "resolved": str(path.resolve())}
+    return {"root": str(root), "files": files}
+
+
+def input_digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=True,
+                                     separators=(",", ":")).encode()).hexdigest()
+
+
+def effective_input_binding(source, revision, contract, active, repo, gh_root, runtime_root,
+                            home, env, *, phase, prompt, permissions, guard, model,
+                            runtime_paths, approved_contract, session=None):
+    """Record actual source AND transformed inputs, not a blanket source-path claim.
+
+    Written before inference. No credential values, DB bytes or model answer are
+    included. Delivered catalog/session/events/terminal are bound separately after
+    execution; this preparation by itself never proves native behavior.
+    """
+    source_paths = (
+        "tests/smoke_resume_candidate_opencode.py", "tests/fixtures/resume_gh.py",
+        "tests/fixtures/resume_shell_guard.mjs",
+        "scripts/install-global", "scripts/worktree-reservation", "scripts/worktree_registry.py")
+    source_files = {p: input_files(source / p) for p in source_paths}
+    prepared = {p: input_files(repo / p) for p in
+                (".agents", "openspec", "recovery-evidence.json")}
+    installed = input_files(active)
+    rules = input_files(home / ".config/opencode/AGENTS.md")
+    wire = {
+        "phase": phase, "prompt": prompt, "permissions": permissions,
+        "config": json.loads(env["OPENCODE_CONFIG_CONTENT"]),
+        "guard": {key: input_files(guard[key]) for key in ("source", "policy")},
+        "github_shim": input_files(Path(env["PATH"].split(os.pathsep)[1]) / "gh"),
+        "github_state": input_files(gh_root / "state.json"),
+        "runtime_reader": input_files(runtime_root / "read-receipt"),
+        "runtime_receipts": input_files(runtime_root / "receipts.json"),
+        # An allowlist, not an environment dump. OPENCODE_PASSWORD is excluded.
+        "child_environment": {k: env.get(k) for k in (
+            "PATH", "HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+            "XDG_STATE_HOME", "CODEX_HOME", "OPENCODE_DB", "OPENSPEC_TELEMETRY",
+            "PYTHONDONTWRITEBYTECODE", "RESUME_GH_ROOT", "RESUME_RUNTIME_ROOT", "LANG", "TERM")},
+        "authentication": "Disposable generated password; credential value intentionally excluded.",
+        "runtime": {name: {"path": shutil.which(name, path=env["PATH"]),
+                            "resolved": str(Path(shutil.which(name, path=env["PATH"])).resolve()),
+                            "version": run([name, "--version"], cwd=repo, env=env),
+                            "executable": input_files(runtime_paths[name])}
+                    for name in ("git", "openspec", "opencode")},
+        "python": {"path": sys.executable, "version": sys.version,
+                   "executable": input_files(sys.executable)},
+        "model_preflight": model,
+        "run_argv": [runtime_paths["opencode"], "run", "--standalone", "--archived", "--model",
+                     model["requested"], "--format", "json",
+                     *(["--session", session] if session else [])],
+    }
+    value = {"format": "resume-effective-inputs-v1",
+             "source": {"candidate": revision, "approved_proposal": APPROVED_PROPOSAL,
+                        "approved_contract": approved_contract,
+                        "contract": contract, "files": source_files},
+             "effective": {"installed_snapshot": installed, "loaded_rules": rules,
+                           "prepared_fixture": prepared, "wire": wire},
+             "limit": "Preparation binding only; independent impact review and complete "
+                      "actual T1/T5/T7 observations remain mandatory."}
+    # Freeze metadata against later caller mutation; file/input bytes are NOT normalized.
+    value = copy.deepcopy(value)
+    return {**value, "sha256": input_digest(value)}
+
+
+def effective_input_diff(previous, current):
+    """Exact changed leaves for independent impact review, NEVER an approval.
+
+    Do not strip hashes, normalize text, or automatically bless relocated paths.
+    Even provenance-only mappings require the reviewer to cite immutable refs and
+    explain every difference. Material/uncertain deltas require a complete smoke.
+    """
+    def leaves(value, prefix=""):
+        if isinstance(value, dict) and value:
+            return {p: v for k, child in value.items()
+                    for p, v in leaves(child, f"{prefix}/{k}").items()}
+        return {prefix: value}
+    valid = all(isinstance(v, dict) and v.get("format") == "resume-effective-inputs-v1" and
+                isinstance(v.get("source"), dict) and
+                isinstance(v["source"].get("files"), dict) and
+                isinstance(v.get("effective"), dict) and set(v["effective"]) == {
+                    "installed_snapshot", "loaded_rules", "prepared_fixture", "wire"} and
+                v.get("sha256") == input_digest({k: x for k, x in v.items() if k != "sha256"})
+                for v in (previous, current))
+    if not valid:
+        return {"status": "incomplete", "reuse_permitted": False,
+                "requires_complete_native_smoke": True, "differences": []}
+    old, new = (leaves({k: v for k, v in x.items() if k != "sha256"})
+                for x in (previous, current))
+    differences = [{"field": p, "before": old.get(p), "after": new.get(p),
+                    **({"before_present": p in old, "after_present": p in new}
+                       if p not in old or p not in new else {})}
+                   for p in sorted(set(old) | set(new))
+                   if p not in old or p not in new or old[p] != new[p]]
+    changed_effective = any(d["field"].startswith("/effective/") for d in differences)
+    # Harness/oracle, shim, installer/reservation sources affect behavior too.
+    changed_source = any(d["field"].startswith((
+        "/source/files/", "/source/contract/files/", "/source/approved_contract/files/"))
+                         for d in differences)
+    return {"status": ("material_or_uncertain" if changed_effective or changed_source else
+                       "provenance_review_required" if differences else "byte_identical"),
+            "previous": previous["sha256"], "current": current["sha256"],
+            "differences": differences, "reuse_permitted": False,
+            "independent_impact_review": "required",
+            "requires_complete_native_smoke": changed_effective or changed_source,
+            "limit": "Only independent byte-identity/relevance review may justify behavioral "
+                     "reuse; never exact-HEAD local approval or replacement native PASS."}
 
 
 def seed_proposal_review(repo, env, proposal_sha, validation, candidate, source_proposal):
@@ -474,17 +608,14 @@ def t1_apply_gate_proof(events, session, repo, provenance, native_invocation, *,
     return False
 
 
-def t1_handoff(events, session, fixture, provenance):
-    """A bounded final statement of the recovered gate, not an 'Apply' substring.
+def t1_handoff_value(events, session):
+    """Parse only the bounded last same-session handoff; never rewrite its bytes."""
 
-    No prose around a contradictory JSON claim is accepted. Tool/source proof is
-    independently mandatory; an otherwise matching declaration is never enough.
-    """
     texts = [(i, e["part"]["text"]) for i, e in enumerate(events)
              if e.get("sessionID") == session and e.get("type") == "text" and
              isinstance(e.get("part", {}).get("text"), str)]
     if not texts:
-        return False, 0
+        return None, 0
     index, text = texts[-1]
     def unique_object(pairs):
         result = dict(pairs)
@@ -493,25 +624,130 @@ def t1_handoff(events, session, fixture, provenance):
         return result
     try:
         if len(text.encode()) > 4096:
-            return False, index
+            return None, index
         value = json.loads(text, object_pairs_hook=unique_object)
     except (ValueError, TypeError):
+        return None, index
+    return value if isinstance(value, dict) else None, index
+
+
+def t1_handoff(events, session, fixture, provenance):
+    """Semantic fields only, NOT acceptance, blocker classification or write proof.
+
+    Ownership corroboration and every native gate are checked separately. Textual
+    diagnostics (including contradictory prose) MUST still be reviewed independently.
+    Unknown structured claims fail closed rather than being silently ignored.
+    """
+    value, index = t1_handoff_value(events, session)
+    if value is None:
         return False, index
+    expected = {"issue": fixture["issue"], "run": fixture["run"],
+                 "evidence_scope": "controlled_fixture",
+                 "proposal_sha": provenance["proposal_sha"], "review_sha": provenance["review_sha"],
+                 "last_verified_gate": "proposal_review_validated", "apply_executed": False}
+    diagnostics = {"status", "blockers", "limitations", "ownership_condition", "next_action"}
+    return (set(value) <= set(expected) | diagnostics and
+             all(value.get(key) == item for key, item in expected.items()) and
+             value.get("next_action") in ("apply-issue", "reconcile-ownership") and
+             value.get("status") in ("RECOVERED", "BLOCKED") and
+             all(isinstance(value.get(key), list) and len(value[key]) <= 8 and
+                 all(isinstance(item, str) and 0 < len(item) <= 1024 for item in value[key])
+                 for key in ("blockers", "limitations")) and
+             type(value.get("issue")) is int and value.get("apply_executed") is False), index
+
+
+def t1_serialization(events, session, fixture, provenance):
+    """Keep the OLD strict convention visible; it no longer judges recovery."""
+    value, _ = t1_handoff_value(events, session)
+    if value is None:
+        return "failed"
     expected = {"issue": fixture["issue"], "run": fixture["run"],
                 "evidence_scope": "controlled_fixture",
                 "proposal_sha": provenance["proposal_sha"], "review_sha": provenance["review_sha"],
                 "status": "RECOVERED", "last_verified_gate": "proposal_review_validated",
-                "next_action": "apply-issue", "apply_executed": False, "blockers": []}
-    if not isinstance(value, dict):
-        return False, index
-    limitations = value.pop("limitations", None)
-    action = value.get("next_action")
-    expected["next_action"] = action
-    return (value == expected and
-            action in ("apply-issue", "reconcile-ownership") and
-            isinstance(limitations, list) and len(limitations) <= 8 and
-            all(isinstance(item, str) and 0 < len(item) <= 1024 for item in limitations) and
-            type(value.get("issue")) is int and value.get("apply_executed") is False), index
+                "next_action": value.get("next_action"), "apply_executed": False, "blockers": []}
+    # The new typed condition is not part of the legacy presentation convention.
+    body = {k: v for k, v in value.items() if k not in ("limitations", "ownership_condition")}
+    valid, _ = t1_handoff(events, session, fixture, provenance)
+    return "passed" if valid and body == expected else "failed"
+
+
+def t1_ownership_context(before, receipt, fixture):
+    """Bounded native snapshot condition, never a grant or a liveness inference.
+
+    Callers must ALSO prove actual inventory/receipt observations before handoff.
+    A declarative snapshot alone cannot satisfy t1_inventory_proof.
+    """
+    if not isinstance(receipt, dict):
+        return None
+    try:
+        running = datetime.fromisoformat(receipt["running_observed_at"])
+        stopped = datetime.fromisoformat(receipt["observed_at"])
+        if (not running.tzinfo or not stopped.tzinfo or running > stopped or
+                any(type(receipt.get(k)) is not int or receipt[k] <= 0
+                    for k in ("pid", "process_start"))):
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
+    rows = before.get("reservation", {})
+    selected = [(name, r) for name, r in rows.items() if r.get("path") == receipt.get("checkout") or
+                r.get("issue_url") == (
+                    f"https://github.com/{fixture['repository']}/issues/{fixture['issue']}")]
+    if len(selected) != 1:
+        return None
+    name, row = selected[0]
+    if not {"issue_url", "branch", "state", "owner", "head", "digest", "drift",
+            "unknown_untracked_paths"} <= set(row):
+        return None
+    owner = row.get("owner")
+    if (receipt.get("terminal") is not True or type(receipt.get("exit_code")) is not int or
+            receipt["exit_code"] != 0 or receipt.get("execution_kind") != "cooperative_process" or
+            receipt.get("run") != fixture["run"] or not all(isinstance(receipt.get(k), str) and
+            receipt[k] for k in ("execution_id", "owner", "run", "checkout", "head")) or
+            name != Path(receipt["checkout"]).name or name not in before.get("checkout_git", {}) or
+            ("path" in row and row["path"] != receipt["checkout"]) or
+            row.get("head") != receipt["head"] or
+            row.get("issue_url") != (
+                f"https://github.com/{fixture['repository']}/issues/{fixture['issue']}") or
+            row.get("drift") is not None or row.get("unknown_untracked_paths") != [] or
+            ("ok" in row and row["ok"] is not True) or
+            ("exit_code" in row and row["exit_code"] != 0)):
+        return None
+    if (row.get("state") == "ACTIVE" and isinstance(owner, dict) and
+            owner.get("session") == receipt["owner"] and owner.get("run") == receipt["run"] and
+            owner.get("pid") in (None, receipt.get("pid"))):
+        kind = "prior-stopped-owner"
+    elif row.get("state") == "WAITING" and owner is None:
+        kind = "released-unreserved"
+    else:
+        return None
+    return {"phase": "before-write", "kind": kind, "write_authorized": False,
+            **{k: receipt[k] for k in ("checkout", "execution_id", "owner", "run")}}
+
+
+def t1_phase_evaluation(events, session, fixture, provenance, ownership, *, facts):
+    """Technical conjunction, not a prose judge or final scenario approval.
+
+    All listed facts are independently established by the existing native gates.
+    Nonempty textual blockers are NEVER waived: even corroborated structured
+    conditions leave response/event interpretation pending independent review.
+    """
+    semantic, _ = t1_handoff(events, session, fixture, provenance)
+    value, _ = t1_handoff_value(events, session)
+    required = {"terminal", "proposal", "apply_gate", "inventory", "snapshots",
+                "github", "native", "resume", "no_stateful_attempts"}
+    sources = set(facts) == required and all(v is True for v in facts.values())
+    condition = value.get("ownership_condition") if value else None
+    condition_proved = bool(ownership and isinstance(condition, dict) and
+                            condition == ownership and condition.get("write_authorized") is False)
+    proved = bool(semantic and sources and condition_proved)
+    return {"read_only_facts_proven": proved,
+            "read_only_acceptance": "pending_independent_review" if proved else "blocked",
+            "ownership_condition_proven": condition_proved,
+            "write_authorized": False,
+            "serialization_compliance": t1_serialization(events, session, fixture, provenance),
+            "independent_response_event_review": "required",
+            "scenario_pass": False, "facts": facts}
 
 
 def delivered_skill_catalog(database, repo, session):
@@ -1107,6 +1343,9 @@ def t1_inventory_proof(events, session, repo, worktrees, reader, receipt,
             not all(receipt.get(key) for key in
                     ("execution_id", "owner", "run", "checkout", "head"))):
         return False
+    if (t1_ownership_context(before, receipt, fixture) is None or
+            before.get("runtime") != [receipt]):
+        return False
     calls = [e for e in tool_events(events, session, tool="shell")
              if e["index"] < handoff_index and e["exit_code"] == 0 and e["truncated"] is False]
     def outputs(command, cwd):
@@ -1178,6 +1417,90 @@ def t1_inventory_proof(events, session, repo, worktrees, reader, receipt,
             # receipt above. Neither transfers ownership or authorizes effects.
             return True
     return False
+
+
+def t1_github_source_proof(events, session, repo, fixture, github, *, before):
+    """Successful same-session native issue/decisions read, not a claim or audit alone."""
+    expected = github.get("issues", {}).get(str(fixture["issue"]))
+    endpoint = f"repos/{fixture['repository']}/issues/{fixture['issue']}"
+    if not isinstance(expected, dict):
+        return False
+    commands = {shlex.join(["gh", "api", *flags, endpoint]) for flags in ([], ["--paginate"])}
+    for event in tool_events(events, session, tool="shell"):
+        if (event["index"] >= before or event["exit_code"] != 0 or event["truncated"] is not False or
+                event["input"].get("workdir", str(repo)) != str(repo) or
+                event["input"].get("command") not in commands):
+            continue
+        try:
+            if json.loads(event["output"]) == expected:
+                return True
+        except (ValueError, TypeError):
+            pass
+    return False
+
+
+def t1_offline_projection(record, events, terminal, fixture):
+    """Diagnose retained original observations, never synthesize a future field.
+
+    Caller retains/hashes original files and records this separately. Recompute
+    the gates from actual events/prospective snapshots, not recorded booleans.
+    Text interpretation still requires independent response/event review.
+    """
+    session, before, after = record["session_id"], record["before"], record["after"]
+    provenance = record["fixture_proposal_facts"]
+    repo = Path(before["artifact_comparison"]["repo"])
+    worktrees = [Path(row["path"]) for row in before["registry"]["entries"]]
+    receipt = record["runtime_receipts"][str(fixture["issue"])]
+    reader = Path(shlex.split(fixture["runtime_receipt_command"])[1])
+    semantic, boundary = t1_handoff(events, session, fixture, provenance)
+    source, discovery, invocation, instructions = t1_native_inspection(
+        events, session, repo, record["native_inspection_candidates"],
+        record["delivered_skill_catalog"], before=boundary)
+    calls = record["github_calls"]
+    resume = tool_events(events, session, tool="skill", contains="resume-workflow")
+    facts = {
+        "terminal": terminal.get("exit_code") == 0 and terminal.get("timed_out") is False and
+                    terminal.get("session_ids") == [session] and
+                    terminal.get("candidate") == fixture.get("candidate_sha") ==
+                    provenance["review"].get("source_candidate") and
+                    fixture.get("approved_source_proposal_sha") ==
+                    provenance["review"].get("source_approved_proposal") and
+                    terminal.get("malformed_lines") == [] and terminal.get("error_events") == [] and
+                    {e["sessionID"] for e in events if e.get("sessionID")} == {session},
+        "proposal": t1_proposal_proof(
+            events, session, repo, provenance, invocation, before=boundary,
+            artifact_states=(before.get("artifact_comparison"), after.get("artifact_comparison"))),
+        "apply_gate": t1_apply_gate_proof(events, session, repo, provenance, invocation, before=boundary),
+        "inventory": t1_inventory_proof(events, session, repo, worktrees, reader, receipt,
+                                        fixture, before, after, handoff_index=boundary),
+        "snapshots": before == after,
+        "github": bool(t1_github_source_proof(
+            events, session, repo, fixture, before["github"], before=boundary) and
+            calls and any(args[:1] == ["api"] for args in calls) and all(
+            not any(a == "--method" or a.startswith("body=") or
+                    a in ("edit", "create", "merge", "close", "delete") for a in args)
+            for args in calls)),
+        "native": bool(source and discovery and invocation and instructions and any(
+            d["event_index"] < i["event_index"] for d in discovery for i in invocation)),
+        "resume": bool(resume and any(e["index"] < boundary for e in resume)),
+        "no_stateful_attempts": not forbidden_attempts(events, session)}
+    ownership = t1_ownership_context(before, receipt, fixture)
+    value, _ = t1_handoff_value(events, session)
+    future = t1_phase_evaluation(events, session, fixture, provenance, ownership, facts=facts)
+    return {"kind": "offline_projection", "session_id": session,
+            "original_status": record["status"], "original_outcome": record["outcome"],
+            "original_proof_complete": record["proof_complete"],
+            "last_handoff_index": boundary, "facts": facts,
+            "semantic_fields_proven": semantic,
+            "read_only_facts_proven": bool(semantic and ownership and all(facts.values())),
+            "observed_ownership_context": ownership,
+            "future_typed_condition_observed": bool(value and "ownership_condition" in value),
+            "future_fixture_evaluation": future,
+            "serialization_compliance": t1_serialization(events, session, fixture, provenance),
+            "write_authorized": False, "native_pass": False,
+            "independent_response_event_review": "required",
+            "limit": "No retroactive typed condition, native PASS, failure resolution, T5/T7 "
+                     "observation or replacement of the original manifest."}
 
 
 def t7_phase1_proof(events, session, response, before, after, resume_invocation):
@@ -1480,6 +1803,8 @@ def main():
     if run(["git", "status", "--porcelain"], cwd=ROOT, env=os.environ):
         raise RuntimeError("Commit the candidate before installing its exact revision")
     selected_contract = contract_source(ROOT, revision)
+    git(ROOT, os.environ, "merge-base", "--is-ancestor", APPROVED_PROPOSAL, revision)
+    approved_contract = contract_source(ROOT, APPROVED_PROPOSAL)
     output = os.environ.get("RESUME_SMOKE_OUTPUT")
     base = Path(output) if output else Path(tempfile.mkdtemp(
         prefix="resume-candidate-", dir="/tmp/opencode"))
@@ -1514,7 +1839,7 @@ def main():
     assert run([openspec, "--version"], cwd=ROOT, env=env).startswith("2.")
     results = {"started_at": datetime.now(timezone.utc).isoformat(),
                "candidate": revision, "approved_proposal": APPROVED_PROPOSAL,
-               "contract": selected_contract, "model": None,
+               "contract": selected_contract, "approved_contract": approved_contract, "model": None,
                "opencode": run([cli, "--version"], cwd=ROOT, env=env),
                "openspec": run([openspec, "--version"], cwd=ROOT, env=env),
                "scenarios": {}}
@@ -1787,6 +2112,13 @@ def main():
                                         os.environ.get("RESUME_SMOKE_MODEL"))
                 results["model"] = model
                 # Persist selected capabilities/source/pricing BEFORE inference.
+                record["effective_inputs"] = effective_input_binding(
+                    ROOT, revision, selected_contract, active, repo, gh_root, runtime_root,
+                    home, case_env, phase=phase, prompt=message, permissions=permissions,
+                    guard=guard, model=record["model_preflight"], session=session,
+                    approved_contract=approved_contract,
+                    runtime_paths={"opencode": cli, "openspec": openspec,
+                                   "git": shutil.which("git", path=case_env["PATH"])})
                 persist(base, results)
                 return execute_model(cli, repo, case_env, base, f"{case}-phase{phase}",
                                      message, session, model=model)
@@ -1803,13 +2135,13 @@ def main():
             calls_safe = all(not any(a == "--method" or a.startswith("body=") or
                                      a in ("edit", "create", "merge", "close", "delete")
                                      for a in args) for args in new_calls)
+            try:
+                record["delivered_skill_catalog"] = delivered_skill_catalog(
+                    Path(case_env["OPENCODE_DB"]), repo, session)
+            except (RuntimeError, sqlite3.Error, ValueError, TypeError) as error:
+                record["delivered_skill_catalog"] = None
+                record["catalog_capture_error"] = str(error)
             if case == "T1":
-                try:
-                    record["delivered_skill_catalog"] = delivered_skill_catalog(
-                        Path(case_env["OPENCODE_DB"]), repo, session)
-                except (RuntimeError, sqlite3.Error, ValueError, TypeError) as error:
-                    record["delivered_skill_catalog"] = None
-                    record["catalog_capture_error"] = str(error)
                 outcome, handoff_index = t1_handoff(events, session, fixture, provenance)
                 native_provenance, native_discovery, native_invocation, native_instructions = (
                     t1_native_inspection(events, session, repo, inspection_sources,
@@ -1855,7 +2187,8 @@ def main():
             record["model_apply_gate_proved"] = apply_gate_proved
             phases.append(record)
             persist(base, results)
-            required = before == after and calls_safe and new_calls and outcome
+            required = (before == after and calls_safe and new_calls and outcome and
+                        bool(record["delivered_skill_catalog"]))
             required &= any(args[:1] == ["api"] for args in new_calls)
             if case == "T1":
                 record["forbidden_attempts"] = forbidden_attempts(events, session)
@@ -1902,6 +2235,51 @@ def main():
                                                    repo, worktrees, reader, receipts)
                 if phase == 1:
                     required &= bool(resume_invocation)
+            if case == "T1":
+                terminal_path = base / f"{case}-phase{phase}-terminal.json"
+                terminal = json.loads(terminal_path.read_text())
+                record["phase_evaluation"] = t1_phase_evaluation(
+                    events, session, fixture, provenance,
+                    t1_ownership_context(before, receipts[61], fixture),
+                    facts={
+                        "terminal": terminal.get("exit_code") == 0 and
+                                    terminal.get("timed_out") is False and
+                                    terminal.get("candidate") == revision and
+                                    terminal.get("session_ids") == [session] and
+                                    terminal.get("malformed_lines") == [] and
+                                    terminal.get("error_events") == [],
+                        "proposal": proposal_proved, "apply_gate": apply_gate_proved,
+                        "inventory": record["model_inventory_proved"],
+                        "snapshots": before == after, "github": bool(t1_github_source_proof(
+                            events, session, repo, fixture, before["github"], before=handoff_index) and
+                            calls_safe and new_calls and
+                                      any(args[:1] == ["api"] for args in new_calls)),
+                        "native": bool(native_discovery and native_invocation and
+                                       native_instructions and any(
+                                           d["event_index"] < i["event_index"]
+                                           for d in native_discovery for i in native_invocation)),
+                        "resume": bool(resume_invocation),
+                        "no_stateful_attempts": not record["forbidden_attempts"]})
+                required &= record["phase_evaluation"]["read_only_facts_proven"]
+            # Bind actual observations without modifying preparation or calling
+            # them independent review. Missing T5/T7 can never become whole PASS.
+            record["execution_binding"] = {
+                "session_id": session, "events": {"path": transcript, "sha256": sha(Path(transcript))},
+                "terminal": input_files(base / f"{case}-phase{phase}-terminal.json"),
+                "delivered_catalog": input_digest(record.get("delivered_skill_catalog")),
+                "native_source": native_provenance,
+                "snapshots": {"before": input_digest(before), "after": input_digest(after)},
+                "native_cli_observations": [{
+                    "event_index": e["index"], "command": e["input"]["command"],
+                    "status": events[e["index"]]["part"]["state"].get("status"),
+                    "exit_code": e["exit_code"], "truncated": e["truncated"],
+                    "output_sha256": hashlib.sha256(e["output"].encode()).hexdigest()
+                                     if isinstance(e["output"], str) else None}
+                    for e in tool_events(events, session, tool="shell", completed_only=False)
+                    if isinstance(e["input"].get("command"), str) and
+                    e["input"]["command"].startswith("openspec ")],
+                "prepared_input_sha256": record["effective_inputs"]["sha256"],
+                "independent_response_event_review": "required"}
             if not required:
                 record.update(status="failed", proof_complete=False)
                 persist(base, results)

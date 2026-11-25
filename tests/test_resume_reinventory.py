@@ -32,7 +32,12 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               read_only_locators, disposable_shell_guard,
                                               artifact_comparison_prerequisites,
                                               STRICT_VALIDATE, t1_inventory_proof,
-                                              read_scope_attempts, terminal_receipt)
+                                              read_scope_attempts, terminal_receipt,
+                                              t1_serialization, t1_ownership_context,
+                                              t1_phase_evaluation, t1_offline_projection,
+                                              t1_github_source_proof,
+                                              input_files, input_digest, effective_input_binding,
+                                              effective_input_diff, APPROVED_PROPOSAL)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -847,19 +852,25 @@ class T1ProposalProofTest(unittest.TestCase):
             events, self.session, self.repo, self.facts,
             [{"event_index": len(events)}], before=boundary, artifact_states=self.artifact_states))
 
-    def test_final_handoff_rejects_blocked_contradictory_wrong_scope_and_substring_claims(self):
+    def test_final_handoff_semantics_and_legacy_presentation_are_separate(self):
         fixture = {"issue": 61, "run": "wf-unit"}
         def check(event):
             return t1_handoff(self.events + [event], self.session, fixture, self.facts)[0]
         self.assertTrue(check(self.handoff_event()))
+        for diagnostics in ({"status": "BLOCKED"}, {"blockers": ["hash mismatch"]}):
+            event = self.handoff_event(**diagnostics)
+            # Parseable fields do NOT classify the prose or approve recovery.
+            self.assertTrue(check(event))
+            self.assertEqual(t1_serialization(
+                self.events + [event], self.session, fixture, self.facts), "failed")
         self.assertTrue(check(self.handoff_event(
             next_action="reconcile-ownership", limitations=[
                 "Controlled fixture review is not independent approval of the real candidate.",
                 "No model-executed sha256sum; Git comparison and prospective checks bound integrity.",
                 "Post-Apply tests/smoke/CI have not run at this pre-Apply recovery gate."])))
         for field, value in (
-            ("status", "BLOCKED"), ("next_action", "bloquear Apply"),
-            ("last_verified_gate", "NÃO comprovado"), ("blockers", ["hash mismatch"]),
+            ("status", "UNKNOWN"), ("next_action", "bloquear Apply"),
+            ("last_verified_gate", "NÃO comprovado"), ("blockers", [None]),
             ("proposal_sha", "0" * 40), ("review_sha", "1" * 40),
             ("evidence_scope", "real_candidate"), ("issue", 62), ("run", "other"),
             ("apply_executed", True), ("contradictory_extra", "bloquear Apply"),
@@ -1132,6 +1143,35 @@ class ReadOnlyGitHubTest(unittest.TestCase):
 
 
 class ProofBoundaryTest(unittest.TestCase):
+    def test_t1_github_requires_actual_issue_decisions_read_before_handoff(self):
+        repo = Path("/tmp/opencode/unit")
+        fixture = {"repository": "disposable/recovery", "issue": 61}
+        issue = {"number": 61, "body": "Pinned proposal", "comments": [{"body": "[DECISION] Read only"}]}
+        event = {"type": "tool_use", "sessionID": "ses-unit", "part": {
+            "tool": "shell", "state": {"status": "completed", "input": {
+                "command": "gh api repos/disposable/recovery/issues/61", "workdir": str(repo)},
+                "metadata": {"metadata": {"exit": 0, "truncated": False}},
+                "output": json.dumps(issue)}}}
+        def proof(trace, boundary=1):
+            return t1_github_source_proof(
+                trace, "ses-unit", repo, fixture, {"issues": {"61": issue}}, before=boundary)
+        self.assertTrue(proof([event]))
+        self.assertFalse(proof([event], 0))
+        for mutation in ("session", "error", "cancelled", "cwd", "output", "exit", "truncated"):
+            changed = copy.deepcopy(event)
+            state = changed["part"]["state"]
+            if mutation == "session":
+                changed["sessionID"] = "other"
+            elif mutation in ("error", "cancelled"):
+                state["status"] = mutation
+            elif mutation == "cwd":
+                state["input"]["workdir"] = "/other"
+            elif mutation == "output":
+                state["output"] = json.dumps({**issue, "comments": []})
+            else:
+                state["metadata"]["metadata"][mutation] = 1 if mutation == "exit" else True
+            self.assertFalse(proof([changed]), mutation)
+
     def test_permissions_deny_search_and_unbounded_shell_or_home_reads(self):
         repo = Path("/tmp/opencode/fixture/T1")
         reader = Path("/tmp/opencode/fixture/T1-runtime/read-receipt")
@@ -1478,7 +1518,8 @@ class T1ObservedInventoryTest(unittest.TestCase):
             [str(self.reservation), "status", "--path", str(self.checkout), "--json"]))
         return {"git": inventory(self.repo, self.env),
                 "checkout_git": {self.checkout.name: inventory(self.checkout, self.env)},
-                "reservation": {self.checkout.name: row}}
+                "reservation": {self.checkout.name: row},
+                "runtime": json.loads((self.runtime / "receipts.json").read_text())}
 
     def add(self, command, output, *, cwd=None):
         self.events.append({"type": "tool_use", "sessionID": self.session, "part": {
@@ -1515,7 +1556,15 @@ class T1ObservedInventoryTest(unittest.TestCase):
         self.assertTrue(outcome(handoff))
         # Fourth actual context: inventory was not observed. No JSON label fixes that.
         self.assertFalse(self.proof(events=[]))
-        self.assertFalse(outcome({**handoff, "blockers": ["Current inventory not observed."]}))
+        # Prose cannot change the observed facts. Its meaning is NOT automated
+        # approval: without corroborated typed context the future phase blocks.
+        claimed = {**handoff, "blockers": ["Current inventory not observed."]}
+        self.assertTrue(outcome(claimed))
+        events = [*self.events, {"type": "text", "sessionID": self.session,
+                                "part": {"text": json.dumps(claimed)}}]
+        self.assertFalse(t1_phase_evaluation(
+            events, self.session, self.fixture, provenance, None, facts={})[
+                "read_only_facts_proven"])
         # Last-gate recovery never reserves or authorizes effects.
         self.assertEqual(self.before, self.snapshot())
         self.assertNotEqual(self.before["reservation"][self.checkout.name]["owner"]["session"],
@@ -1579,6 +1628,7 @@ class T1ObservedInventoryTest(unittest.TestCase):
         self.assertEqual(row["head"], self.receipt["head"])
         self.observe_inventory()  # Fresh real public list/Git/reader readouts AFTER release.
         self.assertTrue(self.proof())
+        self.assert_phase_condition("released-unreserved")
         self.assertEqual(self.before, self.snapshot())  # No reservation/writes by recovery.
         self.assertFalse(forbidden_attempts(self.events, self.session))
         self.assertFalse(self.proof(events=self.events[:-1]))  # Ownerless is NOT terminal proof.
@@ -1601,6 +1651,72 @@ class T1ObservedInventoryTest(unittest.TestCase):
             data["entries"][0].update(change)
             state["output"] = json.dumps(data)
             self.assertFalse(self.proof(events=events), change)
+
+    def assert_phase_condition(self, kind):
+        """Real ownership/inventory observations; other gate booleans are unit inputs."""
+        provenance = {"proposal_sha": "a" * 40, "review_sha": "b" * 40}
+        ownership = t1_ownership_context(self.before, self.receipt, self.fixture)
+        self.assertEqual(ownership["kind"], kind)
+        value = {"issue": 61, "run": "wf-unit", "evidence_scope": "controlled_fixture",
+                 **provenance, "status": "BLOCKED",
+                 "last_verified_gate": "proposal_review_validated",
+                 "next_action": "reconcile-ownership", "apply_executed": False,
+                 "blockers": ["Reconcile ownership before any write."], "limitations": [],
+                 "ownership_condition": ownership}
+        facts = {key: True for key in (
+            "terminal", "proposal", "apply_gate", "inventory", "snapshots",
+            "github", "native", "resume", "no_stateful_attempts")}
+        def evaluate(body=None, gates=None, events=None, context=ownership):
+            trace = [*(self.events if events is None else events), {
+                "type": "text", "sessionID": self.session,
+                "part": {"text": json.dumps(value if body is None else body)}}]
+            actual_facts = {**facts, "inventory": self.proof(
+                events=trace, boundary=len(trace) - 1),
+                "no_stateful_attempts": not forbidden_attempts(trace, self.session),
+                **(gates or {})}
+            return t1_phase_evaluation(
+                trace, self.session, self.fixture, provenance, context, facts=actual_facts)
+        positive = evaluate()
+        self.assertTrue(positive["read_only_facts_proven"])
+        self.assertFalse(positive["write_authorized"])
+        self.assertFalse(positive["scenario_pass"])
+        self.assertEqual(positive["serialization_compliance"], "failed")
+        self.assertEqual(positive["read_only_acceptance"], "pending_independent_review")
+        self.assertTrue(evaluate({**value, "next_action": "apply-issue"})["read_only_facts_proven"])
+        for field, wrong in (("phase", "after-write"), ("kind", "unknown"),
+                              ("kind", "released-unreserved" if kind == "prior-stopped-owner"
+                               else "prior-stopped-owner"),
+                              ("owner", "other"), ("checkout", "/other"),
+                              ("execution_id", "other"), ("run", "other"),
+                              ("write_authorized", True), ("write_authorized", 0),
+                              ("effect_claim", "acquired")):
+            with self.subTest(field=field, wrong=wrong):
+                self.assertFalse(evaluate({**value, "ownership_condition": {
+                    **ownership, field: wrong}})["read_only_facts_proven"])
+        for changes in ({"ownership_condition": None}, {"next_action": "implement"},
+                        {"next_action": "prepare-pr"}, {"apply_executed": True},
+                        {"write_authorized": True}, {"effects": ["takeover"]},
+                        {"proposal_sha": "0" * 40}, {"run": "other"}):
+            self.assertFalse(evaluate({**value, **changes})["read_only_facts_proven"])
+        for key in facts:
+            self.assertFalse(evaluate(gates={key: False})["read_only_facts_proven"], key)
+        self.assertFalse(evaluate(context=None)["read_only_facts_proven"])
+        # Arbitrary/contradictory prose has no machine waiver. Even with typed
+        # context, no response is accepted until independent event/response review.
+        ambiguous = evaluate({**value, "status": "RECOVERED",
+                              "blockers": ["Current source missing; owner alive."]})
+        self.assertFalse(ambiguous["scenario_pass"])
+        self.assertEqual(ambiguous["read_only_acceptance"], "pending_independent_review")
+        self.assertFalse(evaluate(body={**value, "status": "RECOVERED", "blockers": []},
+                                 events=[])["read_only_facts_proven"])
+        for status in ("completed", "error", "cancelled", "running"):
+            event = {"type": "tool_use", "sessionID": self.session, "part": {
+                "tool": "shell", "state": {"status": status, "input": {
+                    "command": "worktree-reservation verify --session observer --json"}}}}
+            self.assertFalse(evaluate(events=[*self.events, event])["read_only_facts_proven"])
+
+    def test_active_stopped_owner_condition_requires_all_facts_and_never_grants_writes(self):
+        self.assert_phase_condition("prior-stopped-owner")
 
     def test_unknown_or_live_conflicting_owner_cannot_reuse_old_terminal_receipt(self):
         index = next(i for i, event in enumerate(self.events) if
@@ -1634,6 +1750,9 @@ class T1ObservedInventoryTest(unittest.TestCase):
 
     def test_missing_unknown_or_wrong_identity_terminal_receipt_blocks(self):
         for field, value in (("terminal", False), ("exit_code", None),
+                             ("exit_code", False), ("pid", None), ("process_start", None),
+                             ("running_observed_at", None), ("observed_at", "unknown"),
+                             ("running_observed_at", "2099-01-01T00:00:00+00:00"),
                              ("owner", "other"), ("run", "wf-other"),
                              ("execution_id", "other-execution"), ("checkout", "/other"),
                              ("head", "0" * 40), ("execution_kind", "pid_only")):
@@ -1702,6 +1821,133 @@ class TerminalReceiptTest(unittest.TestCase):
 
 
 class ArchivedContractTest(unittest.TestCase):
+    def test_effective_input_binding_records_consumed_bytes_and_invalidates_uncertain_deltas(self):
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as directory:
+            base = Path(directory)
+            source, repo, installed, home = (base / p for p in ("source", "repo", "installed", "home"))
+            def write(path, text):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+            for path in (
+                "tests/smoke_resume_candidate_opencode.py", "tests/fixtures/resume_gh.py",
+                "tests/fixtures/resume_shell_guard.mjs", "scripts/install-global",
+                "scripts/worktree-reservation", "scripts/worktree_registry.py"):
+                write(source / path, "# actual test source\n")
+            plan = f"openspec/changes/{CHANGE}"
+            for path, text in (
+                (f"{plan}/proposal.md", "# Contract\n"),
+                (f"{plan}/design.md", "# Design\n"),
+                (f"{plan}/tasks.md", "# Tasks\n- [x] Inspect\n"),
+                (f"{plan}/specs/one/spec.md", "# Requirement\n"),
+                ("openspec/config.yaml", "schema: spec-driven\n"),
+                (".agents/skills/openspec-explore/SKILL.md", "# Actual native skill bytes\n")):
+                write(source / path, text)
+            shutil.copytree(source / "openspec", repo / "openspec")
+            shutil.copytree(source / ".agents", repo / ".agents")
+            tasks = repo / plan / "tasks.md"
+            tasks.write_text(tasks.read_text().replace("- [x]", "- [ ]"))
+            write(repo / "recovery-evidence.json", '{"locator":"controlled fixture"}\n')
+            write(installed / "skills/resume-workflow/SKILL.md", "# Installed skill\n")
+            write(installed / "protocol/WORKTREES.md", "# Consumed canonical policy\n")
+            write(installed / "skills/resume-workflow/references/WORKTREES.md", "# Loaded reference\n")
+            write(installed / "manifest.json", '{"revision":"candidate"}\n')
+            write(home / ".config/opencode/AGENTS.md", "# Loaded rules\n")
+            write(base / "bin/gh", "#!/bin/sh\n")
+            write(base / "github/state.json", '{"issues":{}}\n')
+            write(base / "runtime/read-receipt", RUNTIME_READER)
+            write(base / "runtime/receipts.json", "[]\n")
+            write(base / "guard/index.mjs", "// guard\n")
+            write(base / "guard/policy.json", '{"commands":{}}\n')
+            write(base / "runtime-tool", "#!/bin/sh\n# Unit executable bytes; never launched\n")
+            env = {"PATH": f"{home}/.local/bin:{base}/bin:/usr/bin",
+                   "HOME": str(home), "OPENCODE_PASSWORD": "MUST-NOT-BE-BOUND",
+                   "OPENCODE_CONFIG_CONTENT": '{"permissions":[],"plugins":[]}'}
+            guard = {"source": str(base / "guard/index.mjs"),
+                     "policy": str(base / "guard/policy.json")}
+            contract = {"revision": "candidate", "path": plan, "files": {
+                f"{plan}/{name}": sha(source / plan / name) for name in
+                ("proposal.md", "design.md", "tasks.md", "specs/one/spec.md")}}
+            model_profile = {"requested": "known-zero", "status": "metadata_eligible"}
+            def binding(candidate="candidate", selected=None, session=None):
+                # Version calls only are stubbed: this test must never launch a
+                # native completion, infer from a model answer or need credentials.
+                with patch("smoke_resume_candidate_opencode.run", return_value="version-unit"), \
+                     patch("smoke_resume_candidate_opencode.shutil.which", return_value="/usr/bin/true"):
+                    return effective_input_binding(
+                        source, candidate, selected or contract, installed, repo,
+                        base / "github", base / "runtime", home, env, phase=1,
+                        prompt="Natural request; no computed model answer", permissions=[],
+                        guard=guard, model=model_profile, session=session,
+                        approved_contract=contract,
+                        runtime_paths={name: str(base / "runtime-tool")
+                                       for name in ("git", "openspec", "opencode")})
+            original = binding()
+            self.assertEqual(original["source"]["approved_proposal"], APPROVED_PROPOSAL)
+            self.assertNotIn("MUST-NOT-BE-BOUND", json.dumps(original))
+            consumed = original["effective"]["prepared_fixture"]["openspec"]["files"]
+            self.assertNotEqual(consumed[f"changes/{CHANGE}/tasks.md"]["sha256"],
+                                contract["files"][f"{plan}/tasks.md"])
+            same = effective_input_diff(original, binding())
+            self.assertEqual(same["status"], "byte_identical")
+            self.assertFalse(same["reuse_permitted"])  # Never approval of a native run/gate.
+            self.assertEqual(same["independent_impact_review"], "required")
+            for path in (
+                tasks, repo / ".agents/skills/openspec-explore/SKILL.md",
+                installed / "skills/resume-workflow/SKILL.md",
+                installed / "protocol/WORKTREES.md",
+                installed / "skills/resume-workflow/references/WORKTREES.md",
+                repo / "openspec/config.yaml", base / "guard/index.mjs",
+                base / "guard/policy.json", source / "tests/smoke_resume_candidate_opencode.py",
+                base / "github/state.json", base / "runtime/receipts.json", base / "runtime-tool"):
+                old = path.read_bytes()
+                path.write_bytes(old + b"\n# changed effective bytes\n")
+                changed = effective_input_diff(original, binding())
+                self.assertEqual(changed["status"], "material_or_uncertain", path)
+                self.assertTrue(changed["requires_complete_native_smoke"], path)
+                self.assertFalse(changed["reuse_permitted"])
+                self.assertTrue(any(d["field"].endswith("/sha256") for d in changed["differences"]))
+                path.write_bytes(old)
+            env["OPENCODE_CONFIG_CONTENT"] = '{"permissions":["different"],"plugins":[]}'
+            self.assertTrue(effective_input_diff(original, binding())["requires_complete_native_smoke"])
+            env["OPENCODE_CONFIG_CONTENT"] = '{"permissions":[],"plugins":[]}'
+            model_profile["requested"] = "different-runtime-model"
+            self.assertTrue(effective_input_diff(original, binding())["requires_complete_native_smoke"])
+            self.assertEqual(original["effective"]["wire"]["model_preflight"]["requested"], "known-zero")
+            model_profile["requested"] = "known-zero"
+            continuation = binding(session="ses-same-t7")
+            self.assertEqual(continuation["effective"]["wire"]["run_argv"][-2:],
+                             ["--session", "ses-same-t7"])
+            provenance = effective_input_diff(original, binding(candidate="new-immutable-ref"))
+            self.assertEqual(provenance["status"], "provenance_review_required")
+            self.assertFalse(provenance["reuse_permitted"])
+            self.assertEqual(provenance["differences"], [
+                {"field": "/source/candidate", "before": "candidate", "after": "new-immutable-ref"}])
+            # Actual archive copies/normalization: prepared bytes can stay the
+            # same while SOURCE locators change. Show the delta; don't silently
+            # erase it or assume all archive/sync operations are provenance-only.
+            archive = "openspec/changes/archive/2026-11-25-" + CHANGE
+            archived = {**contract, "path": archive, "files": {
+                path.replace(plan, archive): digest for path, digest in contract["files"].items()}}
+            archived_binding = binding(selected=archived)
+            self.assertEqual(original["effective"], archived_binding["effective"])
+            diff = effective_input_diff(original, archived_binding)
+            self.assertEqual(diff["status"], "material_or_uncertain")
+            self.assertFalse(diff["reuse_permitted"])
+            # An absent binding or falsified checksum cannot pass as byte identity.
+            self.assertEqual(effective_input_diff({}, original)["status"], "incomplete")
+            corrupt = copy.deepcopy(original)
+            corrupt["effective"]["wire"]["prompt"] = "unrecorded transformation"
+            self.assertEqual(effective_input_diff(original, corrupt)["status"], "incomplete")
+            incomplete = copy.deepcopy(original)
+            incomplete["source"] = None
+            self.assertEqual(effective_input_diff(original, incomplete)["status"], "incomplete")
+            missing = copy.deepcopy(original)
+            del missing["effective"]["wire"]["child_environment"]["TERM"]
+            missing["sha256"] = input_digest({k: v for k, v in missing.items() if k != "sha256"})
+            diff = effective_input_diff(original, missing)
+            self.assertEqual(diff["status"], "material_or_uncertain")
+            self.assertTrue(any(d.get("after_present") is False for d in diff["differences"]))
+
     def test_active_archived_missing_and_ambiguous_committed_contracts(self):
         with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
             repo = Path(root)

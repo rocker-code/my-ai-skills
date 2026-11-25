@@ -2,6 +2,91 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Apply offline da revisão e1408daf — sem nova observação nativa
+
+Worker novo `ses_dedd54912ffeUE0O1zucvX95YV`, mesmo checkout/branch/issue/run.
+Entrada limpa na proposta exata `e1408dafbb7c6b2251b206afe62a2785708d1e08`;
+reserva ownerless WAITING adquirida pela identidade nativa própria, sem takeover
+ou aceite de drift. Skill oficial `openspec-apply-change` invocada e instruções
+Apply/context/list reais consultadas (14/18 antes das correções). Políticas
+canônicas do checkout prevalecem sobre adaptadores globais anteriores; integração,
+38 commits anteriores, nove bytecodes, instalador/pins/guard foram preservados.
+
+**O1/T1:** `t1_handoff` agora valida campos semânticos limitados, sem igualdade
+do objeto inteiro. A condição da fixture futura é `ownership_condition`:
+`phase=before-write`, `kind=prior-stopped-owner|released-unreserved`,
+checkout/execução/owner/run observados e `write_authorized=false`. Ela precisa
+coincidir com snapshot e recibo independente corretos, mais todos os gates
+nativos existentes. Inventário/receipt/identidade/proposta/Apply/GitHub/catálogo
+ausentes, owner vivo/desconhecido, drift, próxima ação errada, claim estruturado
+de efeito/autorização ou tentativa stateful mesmo negada continuam bloqueando.
+Recibo terminal não transfere posse; reconciliação/aquisição verificada vem
+antes de qualquer escrita. `apply-issue` só indica estágio posterior com essa
+condição explícita.
+
+`serialization_compliance` conserva o diagnóstico legado separado. **Nenhum
+texto não vazio recebe waiver:** status/blockers/limitations não são julgados
+por wordlist/LLM; mesmo com todos os predicados técnicos verdadeiros,
+`read_only_acceptance=pending_independent_review` e `scenario_pass=false`.
+Contradições textuais ou claims ambíguos exigem revisão independente da resposta
+e de todos os eventos antes de qualquer aceite. Leituras negadas de boundary
+continuam separadas de tentativas stateful; não foram apagadas.
+
+**Projeção separada**, `evidence:ev-20261125T102143Z-5f20e853`: usa o sétimo
+trace completo real e reavalia suas observações/fontes/pré-requisitos
+prospectivos, não os booleans antigos. Os nove grupos de fatos técnicos e os
+campos semânticos são verdadeiros; o owner é o mesmo ACTIVE anterior parado.
+Final90/`reconcile-ownership`, oito dimensões inalteradas e formato legado
+**failed** preservados. O novo campo tipado **não foi observado** ali: avaliação
+da fixture futura permanece blocked, `native_pass=false`, escrita não autorizada.
+23 negativos em cópias removem fontes reais (inclusive receipt25/GitHub72/native79),
+alteram término/identidade/owner/pré-requisitos e são rejeitados. Não se inseriu
+condição ou observação em eventos antigos. Hashes antes/depois de results,
+JSONL, terminal, manifesto e execution.log originais são idênticos; log original
+continua 675.598 bytes/`8eb68cdd…79aaf`, manifesto FAILED/exit1.
+O recibo novo retém relatório e script diagnóstico completos no próprio log.
+Uma primeira execução offline (`ev-20261125T101624Z-c4a15119`) falhou com
+`KeyError: path`: o snapshot real conserva path no registry e campos resumidos
+na reservation. Corrigida a leitura dessas fontes existentes, sem adicionar
+campo ao trace; prova intermediária `ev-20261125T101744Z-e4efdc59` preservada.
+Antes disso, `--artifact` externo foi recusado pelo wrapper (exit2, sem executar
+o diagnóstico); a captura final usa apenas o log suportado. Nada disso é retry
+de modelo ou resolução do episódio nativo.
+
+**F1:** cada fase futura grava `effective_inputs` (`resume-effective-inputs-v1`,
+SHA-256 de metadados congelados + hashes literais dos arquivos), antes de
+inference. Distingue fonte candidata/proposta aprovada/contrato selecionado de
+snapshot instalado/regras carregadas/fixture transformada. Enumera `.agents/`,
+todo `openspec/` efetivamente copiado, artefatos normalizados/checkboxes, evidência
+e locators, scripts/shim/guard/policy, recibos/estado GitHub, prompt/config/
+permissões/ambiente allowlisted, executáveis/versões e modelo/metadados zero.
+Credenciais/DB não entram no binding; o catálogo realmente entregue, IDs de
+sessão, eventos/término, outputs CLI e snapshots ficam vinculados à execução
+separadamente. O binding é preparação, não prova de comportamento.
+
+`effective_input_diff` mostra diferenças exatas, inclusive ausência versus null;
+nunca remove hashes nem normaliza texto para aprovar equivalência. Mudanças
+efetivas/materialidade incerta exigem smoke completo. Diferenças só de
+proveniência também ficam sem permissão de reuso automático: revisão independente
+deve mapear bytes/refs imutáveis e explicar relevância. Archive/sync pode mudar
+inputs copiados, live specs ou tarefas: comparar origem **e** fixture realmente
+normalizada; path “docs”/checkbox não é dispensa. Mesmo byte-identical não concede
+gate, e metadados/replay não substituem T1/T5/T7 reais completos.
+
+56 testes focados offline passaram em
+`evidence:ev-20261125T102143Z-697eeb34`, incluindo ACTIVE parado e WAITING
+released reais na fixture, negativos de condição/fonte/efeito/tentativa e
+binding de plano/skill/referência/guard/config/modelo/runtime/arquivo ausente.
+Esta é amostra com diff, **não** suíte final de entrega.
+
+**Pendente:** revisão independente das superfícies alteradas, autorização
+separada para um run real completo T1/T5/T7, T7 em dois turnos no mesmo ID,
+Verify atualizado/strict/archive/preparo e suíte local completa no HEAD final
+limpo exato após todos os commits (repetida após qualquer commit). As sete
+falhas nativas, T5/T7 NOT RUN, seq39/40/41 e diagnóstico pós-segunda falha
+permanecem intactos. Retenção correta é `ev-20261125T093859Z-fc6fed7a`;
+`fc7ef644` era typo, não outro recibo. Sem oitava inferência, push/PR/archive/merge.
+
 ### Sétima observação nativa revisada — 09:32–09:35 UTC, NOT READY
 
 Nova autorização explícita do coordenador após aprovação independente
