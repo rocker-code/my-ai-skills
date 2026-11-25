@@ -37,7 +37,7 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               t1_phase_evaluation, t1_offline_projection,
                                               t1_github_source_proof,
                                               input_files, input_digest, effective_input_binding,
-                                              effective_input_diff, APPROVED_PROPOSAL)
+                                              effective_input_diff, APPROVED_PROPOSAL, PROMPTS)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -1304,12 +1304,26 @@ class ProofBoundaryTest(unittest.TestCase):
         events = [{"type": "tool_use", "sessionID": "ses-t5", "part": {
             "tool": "shell", "state": {"status": "completed",
                 "input": {"command": shlex.join(["gh", *read["args"]])},
+                "metadata": {"metadata": {"exit": 0, "truncated": False}},
                 "output": json.dumps(read["result"])}}} for read in reads]
         self.assertTrue(t5_sources(events, "ses-t5", fixture, github, reads))
         self.assertFalse(t5_sources(events[1:], "ses-t5", fixture, github, reads[1:]))
         self.assertFalse(t5_sources(events[:1], "ses-t5", fixture, github, reads[:1]))
         self.assertFalse(t5_sources(events, "ses-other", fixture, github, reads))
         self.assertFalse(t5_sources([], "ses-t5", fixture, github, reads))
+        # Otherwise-valid SYNTHETIC reads, not the original failed trace or a
+        # fabricated native PASS. The added negative is verbatim retained event19.
+        retained = json.loads((ROOT / "tests/fixtures/resume_t5_denied_verify.json").read_text())
+        denied = retained["event"]
+        session = denied["sessionID"]
+        correlated = [{**event, "sessionID": session} for event in events]
+        self.assertTrue(t5_sources(correlated, session, fixture, github, reads))
+        self.assertFalse(t5_sources([*correlated, denied], session, fixture, github, reads))
+        self.assertFalse(denied["part"]["state"]["metadata"]["providerCall"]["executed"])
+        for status in ("completed", "error", "cancelled", "running"):
+            changed = copy.deepcopy(denied)
+            changed["part"]["state"]["status"] = status
+            self.assertFalse(t5_sources([*correlated, changed], session, fixture, github, reads))
         for field, value in (("headRefOid", "b" * 40), ("statusCheckRollup", []),
                              ("statusCheckRollup", [{"headSha": "b" * 40,
                                  "status": "COMPLETED", "conclusion": "SUCCESS"}]),
@@ -1317,9 +1331,19 @@ class ProofBoundaryTest(unittest.TestCase):
             wrong = {**pr, field: value}
             self.assertFalse(t5_sources(events, "ses-t5", fixture,
                                        {**github, "pulls": {"12": wrong}}, reads))
+        self.assertFalse(t5_sources(events, "ses-t5", {**fixture, "merge_mode": "auto"},
+                                    github, reads))
+        for value in ({}, {**dependency, "number": 14}, {**dependency, "state": "CLOSED"},
+                      {**dependency, "body": "Dependency unknown"}):
+            self.assertFalse(t5_sources(events, "ses-t5", fixture,
+                                        {**github, "issues": {"13": value}}, reads))
         for status in ("error", "cancelled"):
             wrong_events = copy.deepcopy(events)
             wrong_events[0]["part"]["state"]["status"] = status
+            self.assertFalse(t5_sources(wrong_events, "ses-t5", fixture, github, reads))
+        for field, value in (("exit", 1), ("exit", None), ("truncated", True), ("truncated", None)):
+            wrong_events = copy.deepcopy(events)
+            wrong_events[0]["part"]["state"]["metadata"]["metadata"][field] = value
             self.assertFalse(t5_sources(wrong_events, "ses-t5", fixture, github, reads))
         for exit_code in (1, 77, None):
             wrong_reads = [{**reads[0], "exit_code": exit_code}, reads[1]]
@@ -1350,14 +1374,14 @@ class ReadOnlyLocatorTest(unittest.TestCase):
                         "run": "wf-disposable-t1", "checkout": str(self.checkout),
                         "execution_kind": "cooperative_process", "terminal": True, "exit_code": 0}
 
-    def publish(self, receipts, *, case="T1", selected_issue=None):
+    def publish(self, receipts, *, case="T1", selected_issue=None, fixture=None):
         permissions = read_only_permissions(
             self.repo, [self.checkout], self.reader, receipts, self.repo,
             prechoice=case == "T7" and selected_issue is None)
         original = json.dumps(permissions)
         result = read_only_locators(
             self.repo, [self.checkout], self.reader, receipts, permissions,
-            case=case, selected_issue=selected_issue)
+            case=case, selected_issue=selected_issue, fixture=fixture)
         self.assertEqual(json.dumps(permissions), original)
         return result, permissions
 
@@ -1395,9 +1419,12 @@ class ReadOnlyLocatorTest(unittest.TestCase):
         self.assertIn("does NOT enumerate ignored", locator["inventory_scope"])
 
     def test_t5_shared_locator_and_t7_only_after_explicit_choice(self):
-        locator, _ = self.publish({11: self.receipt}, case="T5")
+        fixture = {"repository": "disposable/recovery", "milestone": 3, "issue": 11,
+                   "pr": 12, "dependent_issue": 13, "run": self.receipt["run"]}
+        locator, _ = self.publish({11: self.receipt}, case="T5", fixture=fixture)
         self.assertIn("writer-T1-61", locator["runtime_receipt_command"])
         self.assertNotIn("apply_instructions_locator", locator)
+        self.assertEqual(locator["selected_scope"], fixture)
         receipts = {issue: {**self.receipt, "execution_id": f"writer-T7-{issue}",
                             "run": f"wf-disposable-{issue}"} for issue in (21, 22)}
         ambiguous, _ = self.publish(receipts, case="T7")
@@ -1415,6 +1442,90 @@ class ReadOnlyLocatorTest(unittest.TestCase):
             self.assertIn("inventory_locators", chosen)
         with self.assertRaises(ValueError):
             self.publish(receipts, case="T7", selected_issue=99)
+
+    def test_t5_scope_entrypoint_and_existing_raw_github_locators_are_usable_offline(self):
+        # No model or network: an actual local Git commit, native /bin/sh and
+        # the existing executable GH shim exercise the published commands.
+        gh_root = self.base / "github"
+        gh_root.mkdir()
+        bin_dir = self.base / "bin"
+        bin_dir.mkdir()
+        shim = bin_dir / "gh"
+        shutil.copyfile(ROOT / "tests/fixtures/resume_gh.py", shim)
+        shim.chmod(0o755)
+        env = {"HOME": str(self.base), "PATH": f"{bin_dir}:/usr/bin:/bin",
+               "RESUME_GH_ROOT": str(gh_root), "PYTHONDONTWRITEBYTECODE": "1",
+               "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
+        def git(*args):
+            return subprocess.check_output(["git", *args], cwd=self.repo, env=env,
+                                           text=True).strip()
+        git("init", "-q")
+        plan = self.repo / "openspec/changes" / CHANGE
+        plan.mkdir(parents=True)
+        shutil.copyfile(ROOT / "openspec/changes" / CHANGE / "proposal.md", plan / "proposal.md")
+        self.assertIn("rocker-code/my-ai-skills", (plan / "proposal.md").read_text())
+        git("add", ".")
+        git("-c", "user.name=Unit", "-c", "user.email=unit@localhost", "commit", "-qm", "producer template")
+        head = git("rev-parse", "HEAD")
+        fixture = {"repository": "disposable/recovery", "milestone": 3, "issue": 11, "pr": 12,
+                   "dependent_issue": 13, "run": "wf-disposable-t5",
+                   "pr_head": head, "merge_mode": "manual"}
+        receipt = {**self.receipt, "run": fixture["run"], "execution_id": "writer-T5-11"}
+        published, permissions = self.publish({11: receipt}, case="T5", fixture=fixture)
+        entrypoint = self.repo / "recovery-evidence.json"
+        entrypoint.write_text(json.dumps({**fixture, **published}))
+        self.assertIn("recovery-evidence.json", PROMPTS["T5"])
+        for directed in ("resume-workflow", "openspec-apply-change", ".agents/skills", head):
+            self.assertNotIn(directed, PROMPTS["T5"])
+        self.assertTrue(any(r == {"action": "read", "resource": entrypoint.name, "effect": "allow"}
+                            for r in permissions))
+        selected = json.loads(entrypoint.read_text())["selected_scope"]
+        self.assertEqual(selected, {k: fixture[k] for k in
+                                   ("repository", "milestone", "issue", "pr", "dependent_issue", "run")})
+        self.assertNotEqual(selected["repository"], "rocker-code/my-ai-skills")
+        self.assertNotEqual(selected["issue"], 61)
+        self.assertNotEqual(selected["pr"], 62)
+        self.assertIn("template provenance only", published["copied_plan_scope"])
+        pr = {"number": 12, "state": "OPEN", "headRefOid": head,
+              "statusCheckRollup": [{"headSha": head, "status": "COMPLETED", "conclusion": "SUCCESS"}],
+              "body": "Merge manual. Consumer #13 blocked until merge."}
+        issues = {"11": {"number": 11, "body": f"Milestone 3; run={fixture['run']}; merge_mode=manual"},
+                  "13": {"number": 13, "state": "OPEN",
+                         "body": "Blocked until PR #12 is merged; do not dispatch."}}
+        state = {"issues": issues, "pulls": {"12": pr}}
+        (gh_root / "state.json").write_text(json.dumps(state))
+        original = (gh_root / "state.json").read_bytes()
+        guard = disposable_shell_guard(
+            self.base / "guard-t5", self.repo, [self.checkout], permissions, env)
+        allowed = json.loads(Path(guard["policy"]).read_text())["commands"]
+        expected = {"issue_inventory": list(issues.values()), "pr_inventory": [pr],
+                    "selected_issue": issues["11"], "dependency": issues["13"],
+                    "pr_head_checks_mode": pr, "checks": pr["statusCheckRollup"]}
+        events = []
+        for locator in published["github_locators"]:
+            self.assertIn(locator["command"], allowed[locator["cwd"]])
+            self.assertNotIn("rocker-code", locator["command"])
+            self.assertNotIn("output", locator)  # Locator, not a computed answer.
+            result = subprocess.run(["/bin/sh", "-c", locator["command"]], cwd=locator["cwd"],
+                                    env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), expected[locator["fact"]])
+            events.append({"type": "tool_use", "sessionID": "ses-unit-t5", "part": {
+                "tool": "shell", "state": {"status": "completed", "input": {
+                    "command": locator["command"], "workdir": locator["cwd"]},
+                    "output": result.stdout,
+                    "metadata": {"metadata": {"exit": result.returncode, "truncated": False}}}}})
+        reads = [json.loads(line) for line in (gh_root / "reads.jsonl").read_text().splitlines()]
+        self.assertEqual([r["args"] for r in reads],
+                         [shlex.split(l["command"])[1:] for l in published["github_locators"]])
+        self.assertTrue(t5_sources(events, "ses-unit-t5", fixture, state, reads))
+        self.assertEqual((gh_root / "state.json").read_bytes(), original)
+        for wrong in ({**fixture, "repository": "rocker-code/my-ai-skills"},
+                      {**fixture, "pr": 62}, {**fixture, "dependent_issue": 61}):
+            with self.assertRaises(AssertionError):
+                self.publish({11: receipt}, case="T5", fixture=wrong)
+        with self.assertRaises(ValueError):
+            self.publish({11: receipt}, case="T5")
 
     def test_complete_published_reader_and_all_four_identity_arguments(self):
         locator, _ = self.publish({61: self.receipt})
@@ -1868,7 +1979,8 @@ class ArchivedContractTest(unittest.TestCase):
                 f"{plan}/{name}": sha(source / plan / name) for name in
                 ("proposal.md", "design.md", "tasks.md", "specs/one/spec.md")}}
             model_profile = {"requested": "known-zero", "status": "metadata_eligible"}
-            def binding(candidate="candidate", selected=None, session=None):
+            def binding(candidate="candidate", selected=None, session=None,
+                        prompt="Natural request; no computed model answer"):
                 # Version calls only are stubbed: this test must never launch a
                 # native completion, infer from a model answer or need credentials.
                 with patch("smoke_resume_candidate_opencode.run", return_value="version-unit"), \
@@ -1876,7 +1988,7 @@ class ArchivedContractTest(unittest.TestCase):
                     return effective_input_binding(
                         source, candidate, selected or contract, installed, repo,
                         base / "github", base / "runtime", home, env, phase=1,
-                        prompt="Natural request; no computed model answer", permissions=[],
+                        prompt=prompt, permissions=[],
                         guard=guard, model=model_profile, session=session,
                         approved_contract=contract,
                         runtime_paths={name: str(base / "runtime-tool")
@@ -1892,7 +2004,7 @@ class ArchivedContractTest(unittest.TestCase):
             self.assertFalse(same["reuse_permitted"])  # Never approval of a native run/gate.
             self.assertEqual(same["independent_impact_review"], "required")
             for path in (
-                tasks, repo / ".agents/skills/openspec-explore/SKILL.md",
+                tasks, repo / "recovery-evidence.json", repo / ".agents/skills/openspec-explore/SKILL.md",
                 installed / "skills/resume-workflow/SKILL.md",
                 installed / "protocol/WORKTREES.md",
                 installed / "skills/resume-workflow/references/WORKTREES.md",
@@ -1910,6 +2022,12 @@ class ArchivedContractTest(unittest.TestCase):
             env["OPENCODE_CONFIG_CONTENT"] = '{"permissions":["different"],"plugins":[]}'
             self.assertTrue(effective_input_diff(original, binding())["requires_complete_native_smoke"])
             env["OPENCODE_CONFIG_CONTENT"] = '{"permissions":[],"plugins":[]}'
+            t5_input = binding(prompt=PROMPTS["T5"])
+            prompt_delta = effective_input_diff(original, t5_input)
+            self.assertEqual(prompt_delta["status"], "material_or_uncertain")
+            self.assertTrue(prompt_delta["requires_complete_native_smoke"])
+            self.assertFalse(prompt_delta["reuse_permitted"])
+            self.assertEqual(t5_input["effective"]["wire"]["prompt"], PROMPTS["T5"])
             model_profile["requested"] = "different-runtime-model"
             self.assertTrue(effective_input_diff(original, binding())["requires_complete_native_smoke"])
             self.assertEqual(original["effective"]["wire"]["model_preflight"]["requested"], "known-zero")

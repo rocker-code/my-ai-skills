@@ -2,6 +2,90 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Correção offline T5 — bootstrap de escopo e recusa de tentativa stateful
+
+Entrada limpa `3fea46b81102cdf3283f244012f80aa02c02ca36`, apenas documentação
+desde a fonte observada `45c5b720b84a14072e0d9763944815c2c7721b4b`. Mesmo
+worker `ses_dedd54912ffeUE0O1zucvX95YV`/issue/checkout/branch/run; reserva
+ownerless WAITING adquirida/verificada sem drift. Apply/context/list oficiais
+confirmam **16/18**, com 3.4/4.3 ainda pendentes. Sem novo modelo ou closeout.
+
+**Revisão posterior separada:** o coordenador informa aprovação independente de
+`ses_dee9d76e4ffeR10I59JewObvEC` para o subcenário T1 efetivamente observado em
+45c5b72, sessão `ses_dedb94dbbffeG1BESArNUjvaP5`: nove fatos, condição tipada
+before-write/prior-stopped-owner, final71 seguro/reconcile-ownership/escritafalse
+e resposta/eventos revisados. Isso vale **naqueles inputs**, não é T1 executado
+na candidata corrigida nem F1 completo. Os campos originais
+pending_independent_review/scenario_pass=false ficam intactos; a aprovação é
+externa ao resultado original. Sete falhas históricas permanecem falhas; oitavo
+run inteiro permanece FAILED pelo T5 timeout e T7 NOT RUN.
+
+**Diagnóstico de implementação da fixture, não aplicação/provedor:** T5 seleciona
+`disposable/recovery`, milestone3/issue11/PR12/dependente13/runwf-disposable-t5.
+Remote/registry/shim concordam. O plano copiado descreve o produtor
+`rocker-code/my-ai-skills`/issue61/PR62, somente proveniência, nunca autoridade
+para trocar o alvo. No trace, root12/85 e remote/config112/166–167 foram negados;
+Apply48 devolveu tarefas do produtor, probes51–53 desse alvo foram negados e
+proposal81/design82 reforçaram esse contexto. O entrypoint legível
+recovery-evidence.json não era indicado no prompt T5 nem lido; faltavam locators
+GitHub no manifesto, embora os comandos corretos já fossem permitidos. Logs do
+shim vazios confirmam ausência de leituras efetivas de PR/head/check/manual/
+dependência, não indisponibilidade dos comandos corretos. Não se afirma causa
+cognitiva exclusiva do modelo nem erro/quota de provedor.
+
+Além disso, o agregador T5 consumia t5_sources sem a recusa all-status usada
+pelos outros cenários: um futuro trace com fontes válidas poderia passar apesar
+de verify tentado. O evento19 real tentou
+`worktree-reservation verify --session "$OPENCODE_SESSION_ID"`; foi negado antes
+de spawn, não é efeito consumado. Snapshots iguais não apagam essa tentativa.
+
+**Correção mínima:** prompt T5 aponta primeiro ao manifesto existente, sem nomear
+resume/native skill nem preencher resposta/SHA esperados. Somente T5 publica
+selected_scope e distingue o plano produtor de fontes do alvo. Os seis locators
+GitHub derivam dos objetos reais da fixture, usam shlex.join/cwd e conferem
+membership nos comandos **já permitidos**: issue/pr list, APIs issue11/13,
+pr view12 (head/checks/manual/dependência) e pr checks12. Não há novo endpoint,
+ferramenta, autenticação, política ampliada ou protocolo de produção. T1 mantém
+seu entrypoint; T7 não ganha seleção/locators antes da escolha explícita.
+t5_sources agora recusa toda tentativa stateful por forbidden_attempts, inclusive
+failed/cancelled/running, e exige exit0/saída não truncada nos reads. O relatório
+T5 normal separa essas tentativas de leituras negadas de boundary e mantém
+write_authorized=false. Nenhum campo desse relatório foi retroinserido no timeout.
+
+**Lifecycle:** diagnóstico posterior confirmado na delegação registra último
+assistant T5 finisherror/typeaborted/“Step interrupted” completo às
+10:44:36.098Z e native IDLE seq784/outcomeinterrupted às 10:44:36.100Z, antes
+do terminal cliente10:44:36.152Z. É diagnóstico local posterior, **não** catálogo
+entregue/execution_binding capturado pelo run. ACK remoto de abort e custo final
+continuam UNKNOWN. Nenhum restart/cancel/kill/limpeza de DB foi necessário ou
+executado nesta correção. `ev-20261125T104933Z-6f13151c` permanece retenção
+diagnóstica, não execução nativa substituta.
+
+**Provas offline:** 57 focados passaram em
+`evidence:ev-20261125T110433Z-98093eae`. Teste de locators lê o manifesto
+permitido, distingue seleção do plano produtor e executa os comandos exatos no
+shim real por /bin/sh, com HOME/PATH privados, payload/readlog e commit Git local
+real no PR/head; sem rede/modelo. Positivo source-only e negativos de
+PR/head/check/manual/dependência/exit/truncamento permanecem. O fixture negativo
+retém integralmente o evento19; adicioná-lo a reads unitários sintéticos válidos
+reprova o aceite, sem fabricar uma execução nativa bem-sucedida.
+`evidence:ev-20261125T110541Z-5a43f2e5` confere igualdade desse evento com o
+JSONL real, bindings T1/T5 originais, ausência de captures T5 e hashes inalterados
+dos originais results/JSONLs/terminais/manifesto/execution.log. O log nativo
+continua 1.910.748 bytes/`57fc5810…14c1276`, FAILED, sem edição de observações.
+
+**Impacto F1:** prompt T5 e manifesto preparado são inputs **materiais** novos,
+capturados pelo binding existente (harness, prompt, recovery-evidence e fontes).
+Regressões confirmam invalidação por mudanças nesses bytes. Mesmo com alteração
+concentrada em T5, não presumir reuso de T1: aprovação anterior pertence aos
+inputs45c5b72 e não concede F1 da fonte nova. Alternativa segura mínima era manter
+BLOCKED; publicação dos comandos existentes mais a recusa read-only corrige
+defeitos verificáveis sem aumentar orçamento/timeout/permissões. Próximo passo:
+revisão independente afetada; somente autorização separada poderá iniciar outro
+harness **completo real T1/T5/T7**, sem selector/replay. 3.4/4.3/Verify atualizado/
+archive/preparo/gate local final exato seguem pendentes; qualquer commit posterior
+exige repetir a suíte final. Sem nona inferência, push/PR/archive/merge.
+
 ### Oitava observação — T1 tecnicamente comprovado/pending review, T5 timeout
 
 Autorização nova do coordenador limitada a **observação somente**, sem closeout
@@ -1863,6 +1947,7 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"diagnosis","seq":43,"group":{"obligation":"T5","signature":"runtime.timeout: native observation exceeded 360-second internal limit"},"class":"environment/bootstrap","checked":{"phase":"execute_model communicate timeout360s in T5 before normal catalog/execution-binding/scenario aggregation; transport progressed through217 JSONL events and native Apply116/strict119, but no completed recovery handoff; outer shell1800s did not expire","scope":"exact45c5b72 installed/newapprovede1408daf, isolated HOME/XDG/CODEX_HOME/privateDB/Location; effective_inputs prepared before both T1/T5 and checksums valid; T5 never read recovery-evidence.json or successfully called disposable GitHub shim, empty reads/calls; repeated actual repo/PR source endpoints denied pre-spawn, not evidence correct fixture source unavailable","lifecycle":"T1ses_dedb94dbbffeG1BESArNUjvaP5 terminal0 at10:38:32.499548Z technically proved but independent review pending; T5ses_dedb6cf0dffeS60EcHgP3slpEv pid3349989 timeouttrue/exit143 at10:44:36.152411Z after process-groupSIGTERM;43completedstep_finish cost0 not final cost; no provider error/malformed lines; T7 never started and no ninth model","consumers":"T5 effective PR/head/check/manual/dependency recovery absent despite native skill/strict partial reads; stateful verify19 attempted and denied, original raw events preserved; before/after seven snapshots equal does not erase attempts; T5 delivered catalog/normal execution_binding not captured after timeout; no source/guard/pin/application edit justified by runtime outcome"},"runtime_proof":["evidence:ev-20261125T103548Z-f3771146"],"simplest_alternative":"stop retaining timeout and partial progress for independent T1/T5 event review; never extend timeout/widen guard, force T7 continuation or infer T5 PASS from native skill/strict/snapshots","choice_rationale":"one new complete harness invocation consumed; T1 remains pending_independent_review rather than automatic PASS or resolution of historical failures; actual repeated denied probes suggest source/scope investigation but do not prove internal cause, provider quota or pre-existing failure; no automatic rerun/source correction authorized","next_hypothesis":"independent offline review can inspect T5 locator discoverability and actual source-selection sequence alongside T1 pending semantics, without executing another model or rewriting bindings"}
 ,{"kind":"blocker","seq":44,"group":{"obligation":"T5","signature":"runtime.timeout: native observation exceeded 360-second internal limit"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T103548Z-f3771146"],"diagnosis":"seq:43","options":[],"impact":"complete eighth observation failed in T5; T1 technical facts proved but semantic/event review pending/scenario_passfalse, T7 NOT RUN; no archive/PR/final required gate; independent response/event review and timeout diagnosis needed","researchable":true}
 ,{"kind":"resolution","group":{"obligation":"T5","signature":"runtime.timeout: native observation exceeded 360-second internal limit"},"outcome":"blocked","via_seq":44}
+,{"kind":"diagnosis","seq":45,"group":{"obligation":"T5","signature":"runtime.timeout: native observation exceeded 360-second internal limit"},"class":"fixture/isolation","checked":{"phase":"T5 bootstrap read-only: prompt omitted readable recovery-evidence entrypoint; locator publication omitted already-permitted GitHub source commands; Apply48/proposal81/design82 expose producer scope before any fixture GH reads; future t5_sources aggregate also lacked all-status stateful-attempt rejection","scope":"selected disposable/recovery milestone3 issue11 PR12 dependent13 runwf-disposable-t5, not copied producer rocker-code/my-ai-skills issue61 PR62; actual remote/registry/shim agree; root12/85 and remote/config112/166-167 probes denied; raw permissions/guard unchanged","lifecycle":"eighth T1 actual subscenario independently approved as reported by coordinator at observed45c5b72 inputs, without rewriting pending fields; eighth whole run still FAILED T5 timeout143/no final/empty shim logs, T7 NOT RUN; later local diagnostic assistant aborted/Step interrupted complete10:44:36.098Z then nativeIDLE784 outcomeinterrupted10:44:36.100Z before clientterminal10:44:36.152Z, not original catalog/execution binding; remote abort ACK/finalcost UNKNOWN; no new native run or cleanup","consumers":"T5 prompt, recovery-evidence selected scope/GH locators and t5_sources read-only acceptance; actual denied verify19 must reject otherwise-valid future reads at all statuses; out-of-scope reads disclosed separately; no production application/provider failure established"},"runtime_proof":["evidence:ev-20261125T103548Z-f3771146","evidence:ev-20261125T104933Z-6f13151c","evidence:ev-20261125T110433Z-98093eae","evidence:ev-20261125T110541Z-5a43f2e5"],"simplest_alternative":"keep BLOCKED preserving timeout and safe guard, without another observation; never increase timeout, add paid fallback, widen commands or infer completed PR reads from native Apply/strict/snapshots","choice_rationale":"independent review and explicit offline delegation identify bounded test-bootstrap publication and acceptance defects within approved e1408daf T5 contract; publish only existing raw command/cwd locators derived from fixture objects, distinguish producer provenance and reuse existing all-status rejection; native /bin/sh plus actual GH shim proves usability offline while original trace stays unchanged","next_hypothesis":"after affected independent review and separate authorization only, a complete real T1/T5/T7 run may test corrected material T5 inputs; old T1 approval remains at old inputs, not automatic reuse or whole F1 PASS"}
 ]}
 ```
 
