@@ -4,6 +4,8 @@
 
 ### Corrigido
 
+- Prova residual de retomada OpenCode usa fontes Git/GitHub/OpenSpec read-only, recibo terminal correlacionado e eventos reais da ferramenta de skill nativa; rejeita leitura/prosa como invocação, mantém T7 em dois turnos da mesma sessão e resolve contrato ativo ou arquivado sem restaurar telemetria. [#61](https://github.com/rocker-code/my-ai-skills/issues/61)
+
 - Inspeção Codex interpreta TOML completo com Tomli 2.5.0 incorporado e licenciado em Python 3.10+, sem pacote ambiente ou download extra. Regras canônicas desabilitadas são reconhecidas independentemente da grafia; configuração inválida bloqueia sem expor valores nem alterar config/auth ou a instalação anterior. Novo par imutável instalador/launcher cobre todos os bytes da dependência. [#77](https://github.com/rocker-code/my-ai-skills/issues/77)
 
 ### Adicionado

@@ -15,7 +15,9 @@ from unittest.mock import patch
 
 from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               disposable_path, t7_phase1_proof,
-                                              t7_reinventory, t7_visible_question)
+                                              t7_reinventory, t7_visible_question,
+                                              native_calls, contract_source, CHANGE,
+                                              RUNTIME_READER, inventory, sha)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -248,26 +250,31 @@ class T7ReinventoryTest(unittest.TestCase):
         self.reader = Path("/tmp/opencode/fixture/T7-runtime/read-receipt")
         self.receipts = {
             issue: {"execution_id": f"writer-T7-{issue}", "owner": "seed-T7",
-                    "run": run, "exit_code": 0}
-            for issue, run in ((21, "wf-disposable-a"), (22, "wf-disposable-b"))}
+                    "run": run, "exit_code": 0, "execution_kind": "cooperative_process",
+                    "head": "a" * 40,
+                    "checkout": str(self.worktrees[index])}
+            for index, (issue, run) in enumerate(
+                ((21, "wf-disposable-a"), (22, "wf-disposable-b")))}
         self.events = []
         self.session = "ses-selected"
         self.add("git rev-parse --show-toplevel", str(self.repo))
         for path in self.worktrees:
             self.add(f"git -C {path} rev-parse --show-toplevel", str(path))
-        self.add("worktree-reservation list --repository " + str(self.repo),
+            self.add(f"git -C {path} rev-parse HEAD", "a" * 40)
+            self.add(f"git -C {path} status --porcelain=v1 --untracked-files=all", "")
+        self.add("worktree-reservation list --repository " + str(self.repo) + " --json",
                  json.dumps({"entries": [
                      {"ok": True, "path": str(path), "state": "ACTIVE",
                       "owner": {"run": run}}
                      for path, run in zip(self.worktrees,
                                           ("wf-disposable-a", "wf-disposable-b"))]}))
         for issue in (21, 22):
-            self.add(f"gh api --paginate repos/disposable/recovery/issues/{issue}/comments",
-                     json.dumps([{"body": self.receipts[issue]["run"]}]))
+            self.add(f"gh api --paginate repos/disposable/recovery/issues/{issue}",
+                     json.dumps({"number": issue, "body": self.receipts[issue]["run"]}))
         for verb in ("context", "list"):
             self.add(f"openspec {verb} --json",
                      json.dumps({"root": {"path": str(self.repo)}}))
-        self.add(f"python3 {self.reader} writer-T7-21 seed-T7 wf-disposable-a",
+        self.add(f"python3 {self.reader} writer-T7-21 seed-T7 wf-disposable-a {self.worktrees[0]}",
                  json.dumps({"terminal": True, **self.receipts[21]}))
 
     def add(self, command, output, *, session=None):
@@ -294,7 +301,7 @@ class T7ReinventoryTest(unittest.TestCase):
 
     def test_failed_or_wrong_root_commands_do_not_count(self):
         for command in ("openspec context --json", "openspec list --json",
-                        "worktree-reservation list --repository " + str(self.repo),
+                        "worktree-reservation list --repository " + str(self.repo) + " --json",
                         "git -C " + str(self.worktrees[0]) + " rev-parse --show-toplevel"):
             with self.subTest(command=command):
                 event = next(e for e in self.events
@@ -319,12 +326,12 @@ class T7ReinventoryTest(unittest.TestCase):
         self.events[-1]["sessionID"] = "ses-other"
         self.assertFalse(self.proof())
 
-    def test_both_ledgers_and_selected_reservation_are_required(self):
-        ledger = next(e for e in self.events if
-                      "issues/22/comments" in e["part"]["state"]["input"]["command"])
-        ledger["part"]["state"]["output"] = "[]"
+    def test_both_issue_sources_and_selected_reservation_are_required(self):
+        source = next(e for e in self.events if
+                      "issues/22" in e["part"]["state"]["input"]["command"])
+        source["part"]["state"]["output"] = "[]"
         self.assertFalse(self.proof())
-        ledger["part"]["state"]["output"] = '[{"body": "wf-disposable-b"}]'
+        source["part"]["state"]["output"] = '{"number": 22, "body": "wf-disposable-b"}'
         reservation = next(e for e in self.events if
                            "worktree-reservation list" in
                            e["part"]["state"]["input"]["command"])
@@ -335,9 +342,9 @@ class T7ReinventoryTest(unittest.TestCase):
 
     def test_chained_command_cannot_mask_failure(self):
         for prefix in ("openspec context --json",
-                       "gh api --paginate repos/disposable/recovery/issues/21/comments",
-                       "worktree-reservation list --repository " + str(self.repo),
-                       f"python3 {self.reader} writer-T7-21 seed-T7 wf-disposable-a"):
+                       "gh api --paginate repos/disposable/recovery/issues/21",
+                       "worktree-reservation list --repository " + str(self.repo) + " --json",
+                       f"python3 {self.reader} writer-T7-21 seed-T7 wf-disposable-a {self.worktrees[0]}"):
             for suffix in ("; true", " && echo ok", " || true"):
                 with self.subTest(prefix=prefix, suffix=suffix):
                     event = next(e for e in self.events if
@@ -345,6 +352,170 @@ class T7ReinventoryTest(unittest.TestCase):
                     event["part"]["state"]["input"]["command"] = prefix + suffix
                     self.assertFalse(self.proof())
                     event["part"]["state"]["input"]["command"] = prefix
+
+    def test_incorrect_terminal_identity_or_missing_result_is_not_proof(self):
+        event = self.events[-1]["part"]["state"]
+        original = event["output"]
+        for key, value in (("terminal", False), ("checkout", "/wrong"),
+                           ("owner", "another"), ("run", "wf-other"),
+                           ("execution_id", "unrelated"), ("exit_code", None),
+                           ("execution_kind", "opencode_session")):
+            with self.subTest(key=key):
+                data = json.loads(original)
+                data[key] = value
+                event["output"] = json.dumps(data)
+                self.assertFalse(self.proof())
+        for output in ("", "interrupted", "{invalid", '{"terminal": true}'):
+            event["output"] = output
+            self.assertFalse(self.proof())
+        event["output"] = original
+        self.assertTrue(self.proof())
+
+
+class NativeInvocationTest(unittest.TestCase):
+    def test_only_matching_runtime_skill_event_and_bytes_prove_invocation(self):
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+            native = Path(root) / ".agents/skills/openspec-explore/SKILL.md"
+            native.parent.mkdir(parents=True)
+            native.write_text("name: openspec-explore\n")
+            digest = sha(native)
+            def event(tool, inp, output, session="ses-native"):
+                return {"type": "tool_use", "sessionID": session, "part": {
+                    "tool": tool, "id": "native", "state": {
+                        "status": "completed", "input": inp, "output": output}}}
+            invoked = event("skill", {"id": "openspec-explore"},
+                            f"openspec-explore\nBase directory: {native.parent}")
+            self.assertTrue(native_calls([invoked], "ses-native", native, digest)[1])
+            for negative in (
+                event("read", {"path": str(native)}, native.read_text()),
+                event("shell", {"command": "openspec --help"}, "openspec-explore"),
+                event("skill", {"id": "openspec-explore"}, "I invoked openspec-explore"),
+                event("skill", {"id": "openspec-explore"},
+                      f"openspec-explore {native.parent}", session="ses-other"),
+            ):
+                self.assertFalse(native_calls([negative], "ses-native", native, digest)[1])
+            self.assertFalse(native_calls([invoked], "ses-native", native, "wrong-sha")[1])
+
+
+class ReadOnlyGitHubTest(unittest.TestCase):
+    def test_sources_and_refusal_of_writes_invalid_output_or_missing_data(self):
+        fixture = runpy.run_path(str(Path(__file__).parent / "fixtures/resume_gh.py"))
+        response = fixture["response"]
+        state = {"issues": {"21": {"number": 21, "body": "run=wf-disposable-a"}},
+                 "pulls": {"12": {"number": 12, "headRefOid": "a" * 40,
+                                   "statusCheckRollup": []}}}
+        self.assertEqual(response(["api", "repos/disposable/recovery/issues/21"],
+                                  state), state["issues"]["21"])
+        self.assertEqual(response(["pr", "view", "12"], state), state["pulls"]["12"])
+        for args in (["api", "--method", "PATCH", "repos/disposable/recovery/issues/21"],
+                     ["api", "repos/disposable/recovery/issues/21", "-f", "body=changed"],
+                     ["api", "repos/disposable/recovery/issues/21/comments"],
+                     ["pr", "merge", "12"], ["issue", "edit", "21"],
+                     ["pr", "view", "12", "--jq", ".number"]):
+            with self.subTest(args=args), self.assertRaises((ValueError, KeyError)):
+                response(args, state)
+        # The executable refuses even the obsolete seed switch; source bytes
+        # remain unchanged, with an audit record of the attempted write.
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+            path = Path(root) / "state.json"
+            path.write_text(json.dumps(state))
+            before = path.read_bytes()
+            env = {**os.environ, "RESUME_GH_ROOT": root, "RESUME_GH_SEED": "1",
+                   "PYTHONDONTWRITEBYTECODE": "1"}
+            command = [sys.executable, str(Path(__file__).parent / "fixtures/resume_gh.py")]
+            for args in (["issue", "edit", "21"], ["issue", "view", "999"]):
+                result = subprocess.run([*command, *args], env=env, capture_output=True)
+                self.assertEqual(result.returncode, 77)
+                self.assertEqual(path.read_bytes(), before)
+            path.write_text("{invalid")
+            self.assertNotEqual(subprocess.run([*command, "issue", "view", "21"],
+                                              env=env, capture_output=True).returncode, 0)
+
+
+class TerminalReceiptTest(unittest.TestCase):
+    def test_missing_active_and_wrong_identity_never_prove_stopped_writer(self):
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+            root = Path(root)
+            reader = root / "read-receipt"
+            reader.write_text(RUNTIME_READER)
+            receipt = {"execution_id": "process-21", "execution_kind": "cooperative_process",
+                       "owner": "seed", "run": "wf-21", "checkout": str(root),
+                       "terminal": True, "exit_code": 0}
+            env = {**os.environ, "RESUME_RUNTIME_ROOT": str(root)}
+            args = [sys.executable, str(reader), "process-21", "seed", "wf-21", str(root)]
+            def check(records, command=args):
+                (root / "receipts.json").write_text(json.dumps(records))
+                return subprocess.run(command, env=env, capture_output=True)
+            self.assertEqual(check([receipt]).returncode, 0)
+            self.assertEqual(check([]).returncode, 3)
+            for key, value in (("terminal", False), ("exit_code", None),
+                               ("checkout", "/wrong"), ("owner", "other"),
+                               ("run", "other"), ("execution_id", "other")):
+                with self.subTest(key=key):
+                    self.assertEqual(check([{**receipt, key: value}]).returncode, 3)
+
+
+class ArchivedContractTest(unittest.TestCase):
+    def test_active_archived_missing_and_ambiguous_committed_contracts(self):
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+            repo = Path(root)
+            def git(*args):
+                return subprocess.check_output(["git", *args], cwd=repo, text=True).strip()
+            git("init", "-q")
+            active = repo / "openspec/changes" / CHANGE
+            active.mkdir(parents=True)
+            for name in ("proposal.md", "design.md", "tasks.md"):
+                (active / name).write_text(f"# {name}\n")
+            def commit():
+                git("add", "-A")
+                git("-c", "user.name=Test", "-c", "user.email=test@localhost",
+                    "commit", "-qm", "fixture")
+                return git("rev-parse", "HEAD")
+            revision = commit()
+            self.assertEqual(contract_source(repo, revision)["path"],
+                             f"openspec/changes/{CHANGE}")
+            archive = repo / "openspec/changes/archive" / f"2026-11-25-{CHANGE}"
+            archive.parent.mkdir()
+            active.rename(archive)
+            revision = commit()
+            source = contract_source(repo, revision)
+            self.assertEqual(source["path"], str(archive.relative_to(repo)))
+            self.assertEqual(len(source["files"]), 3)
+            shutil.copytree(archive, active)
+            with self.assertRaises(RuntimeError):
+                contract_source(repo, commit())
+            # Use a commit with no contract, not a hidden uncommitted fallback.
+            empty = git("hash-object", "-t", "tree", "/dev/null")
+            missing = subprocess.check_output(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@localhost",
+                 "commit-tree", empty, "-m", "lost-local-contract"], cwd=repo,
+                text=True).strip()
+            with self.assertRaises(RuntimeError):
+                contract_source(repo, missing)
+
+    def test_inventory_preserves_staged_unstaged_untracked_and_ignored_bytes(self):
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+            repo = Path(root)
+            def git(*args):
+                subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+            git("init", "-q")
+            (repo / ".gitignore").write_text("private.data\n")
+            (repo / "tracked").write_text("base")
+            git("add", "-A")
+            git("-c", "user.name=Test", "-c", "user.email=test@localhost",
+                "commit", "-qm", "base")
+            (repo / "tracked").write_text("staged")
+            git("add", "tracked")
+            (repo / "tracked").write_text("unstaged")
+            (repo / "local-only").write_text("untracked")
+            (repo / "private.data").write_text("ignored")
+            before = inventory(repo, os.environ)
+            self.assertEqual(inventory(repo, os.environ), before)
+            (repo / "private.data").write_text("changed ignored")
+            self.assertNotEqual(inventory(repo, os.environ), before)
+            self.assertIn("tracked", before["index"])
+            self.assertEqual(before["files"]["private.data"]["sha256"],
+                             __import__("hashlib").sha256(b"ignored").hexdigest())
 
 
 if __name__ == "__main__":

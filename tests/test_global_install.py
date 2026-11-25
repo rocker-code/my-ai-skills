@@ -111,8 +111,8 @@ class GlobalInstallTests(unittest.TestCase):
         (self.source / "skills/new-feature/SKILL.md").write_text("---\nname: new-feature\n---\n")
         recovery = self.source / "skills/resume-workflow/SKILL.md"
         recovery.write_text(recovery.read_text().replace(
-            "load this skill with the skill tool first, before inventory or native OpenSpec work",
-            "load this skill with the skill tool first, before inventory or native OpenSpec work (updated revision)",
+            "load this skill first, before inventory or native OpenSpec work",
+            "load this skill first, before inventory or native OpenSpec work (updated revision)",
             1))
         (self.source / "skills/apply-issue/references/TEST_STRATEGY.md").write_text("updated reference\n")
         (self.source / "scripts/issue-context").write_text("#!/usr/bin/env python3\nprint('updated helper')\n")
@@ -713,7 +713,11 @@ class GlobalInstallTests(unittest.TestCase):
                          *(arg for agent in agents for arg in ("--agent", agent)), cwd=self.root, env=env)
         self.assertEqual(installed.returncode, 0, installed.stderr)
         self.assertIn("global command", installed.stdout)
-        guidance = (self.home / ".config/opencode/AGENTS.md").read_bytes()
+        guidance_path = (self.home / ".config/opencode/AGENTS.md" if "opencode" in agents
+                         else self.home / ".codex/AGENTS.md")
+        skill_link = (skill_link if "opencode" in agents
+                      else self.home / ".agents/skills/resume-workflow/SKILL.md")
+        guidance = guidance_path.read_bytes()
         self.assertIn(b"resume-workflow", guidance)
         self.assertEqual(skill_link.read_bytes(),
                          self.git("show", f"{self.revision}:{recovery_path}").stdout.encode())
@@ -747,7 +751,7 @@ class GlobalInstallTests(unittest.TestCase):
         self.assertNotEqual(expected, self.git("show", f"{self.revision}:{recovery_path}").stdout.encode())
         self.assertEqual(skill_link.read_bytes(), expected)
         self.assertEqual((self.data / "active" / recovery_path).read_bytes(), expected)
-        self.assertEqual((self.home / ".config/opencode/AGENTS.md").read_bytes(), guidance)
+        self.assertEqual(guidance_path.read_bytes(), guidance)
         self.assertEqual(call(str(launcher), "list", "--repository", str(self.source),
                               "--json", cwd=self.root, env=env).returncode, 0)
         # Tampering only the dependency bytes also changes the external pin.

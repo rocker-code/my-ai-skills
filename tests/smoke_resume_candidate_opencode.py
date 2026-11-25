@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed model-backed recovery probe against disposable Git/ledger fixtures.
+"""Fail-closed model-backed recovery probe against disposable Git/GitHub fixtures.
 
 Run from a clean candidate commit: python3 tests/smoke_resume_candidate_opencode.py
 This is a separate check from smoke_global_opencode.py (published-revision discovery).
@@ -15,6 +15,7 @@ import re
 import secrets
 import shlex
 import shutil
+import signal
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -23,10 +24,11 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE = "issue-61-opencode-safe-resume"
 MODEL = os.environ.get("RESUME_SMOKE_MODEL", "opencode/glm-5.3-flash-free")
+APPROVED_PROPOSAL = "31cdb42b2d0e409e8820fa71d97177316c07f94a"
 PROMPTS = {
     "T1": (
         "Continue de onde parou nesta issue. Consulte evidências duráveis locais e "
-        "o ledger da issue via gh api (fixture somente leitura). Antes de afirmar "
+        "a issue e suas decisões via gh api (fixture somente leitura). Antes de afirmar "
         "que o antigo writer parou, consulte o comando runtime_receipt_command "
         "em recovery-evidence.json para obter confirmação terminal independente "
         "pelo harness; sem ela bloqueie Apply. "
@@ -37,7 +39,7 @@ PROMPTS = {
     ),
     "T5": (
         "Retome este milestone após interrupção. Reconstitua PR, dependência e "
-        "merge mode da evidência persistida, incluindo ledger via gh api e PR "
+        "merge mode da evidência persistida, incluindo issues via gh api e PR "
         "via gh pr view (fixture somente leitura); descubra as skills OpenSpec nativas "
         "em .agents/skills, invoque a aplicável e execute `openspec validate "
         "issue-61-opencode-safe-resume --strict --no-interactive` somente leitura "
@@ -47,7 +49,7 @@ PROMPTS = {
     ),
     "T7": (
         "Continue de onde parou. Há duas execuções candidatas neste checkout. "
-        "Use evidências duráveis, incluindo ledgers via gh api (fixture somente "
+        "Use evidências duráveis, incluindo issues via gh api (fixture somente "
         "leitura); pode descobrir arquivos das skills OpenSpec nativas "
         "em .agents/skills, mas NÃO invoque nenhuma skill OpenSpec antes da escolha. "
         "Não selecione candidato nem faça takeover ou dispatch. Respeite o gate de "
@@ -70,12 +72,15 @@ import json
 import os
 from pathlib import Path
 import sys
-if len(sys.argv) != 4:
+if len(sys.argv) != 5:
     sys.exit(2)
-execution, owner, run = sys.argv[1:]
+execution, owner, run, checkout = sys.argv[1:]
 records = json.loads((Path(os.environ["RESUME_RUNTIME_ROOT"]) / "receipts.json").read_text())
 matching = [r for r in records if r["execution_id"] == execution and
-            r["owner"] == owner and r["run"] == run and r["exit_code"] == 0]
+             r["owner"] == owner and r["run"] == run and
+             r["checkout"] == str(Path(checkout).resolve()) and
+             r["terminal"] is True and r["execution_kind"] == "cooperative_process" and
+             r["exit_code"] == 0]
 if len(matching) != 1:
     print(json.dumps({"terminal": False, "execution_id": execution}))
     sys.exit(3)
@@ -101,7 +106,8 @@ subprocess.run([reservation,"reserve","--path",path,"--issue",issue,
 v = subprocess.run([reservation,"verify","--path",path,"--session",owner,
     "--run",run_id,"--json"],check=True,capture_output=True,text=True)
 assert json.loads(v.stdout)["ok"]
-print(json.dumps({"pid":os.getpid(),"start":start}), flush=True)
+head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=path, text=True).strip()
+print(json.dumps({"pid":os.getpid(),"start":start,"head":head}), flush=True)
 sys.stdin.read()
 '''
     process = subprocess.Popen(
@@ -121,18 +127,20 @@ sys.stdin.read()
     proc_path = Path(f"/proc/{identity['pid']}/stat")
     assert not proc_path.exists() or process_start(identity["pid"]) != identity["start"]
     receipt = {"execution_id": execution_id, "owner": owner, "run": run_id,
+               "execution_kind": "cooperative_process", "terminal": True,
+               "checkout": str(path.resolve()), "head": identity["head"],
                "pid": identity["pid"], "process_start": identity["start"],
                "exit_code": code, "observed_at": datetime.now(timezone.utc).isoformat(),
                "running_observed_at": observed_at}
     (root / "receipts.json").write_text(json.dumps([receipt]))
     assert subprocess.run(["python3", str(root / "read-receipt"), execution_id,
-                           owner, run_id], cwd=repo, env=case_env,
+                           owner, run_id, str(path)], cwd=repo, env=case_env,
                           capture_output=True).returncode == 0
     assert subprocess.run(["python3", str(root / "read-receipt"), execution_id,
-                           "wrong-owner", run_id], cwd=repo, env=case_env,
+                            "wrong-owner", run_id, str(path)], cwd=repo, env=case_env,
                           capture_output=True).returncode == 3
     assert subprocess.run(["python3", str(root / "read-receipt"), "absent",
-                           owner, run_id], cwd=repo, env=case_env,
+                            owner, run_id, str(path)], cwd=repo, env=case_env,
                           capture_output=True).returncode == 3
     return receipt
 
@@ -156,6 +164,13 @@ def inventory(repo, env):
         "worktrees": git(repo, env, "worktree", "list", "--porcelain"),
         "status": git(repo, env, "status", "--porcelain=v1", "--untracked-files=all"),
         "tracked": git(repo, env, "ls-files"),
+        "index": git(repo, env, "ls-files", "--stage"),
+        # Include local-only and ignored bytes; .git is administrative, captured
+        # separately by refs/index/reservation. Symlinks are never followed.
+        "files": {str(p.relative_to(repo)): (
+            {"symlink": os.readlink(p)} if p.is_symlink() else {"sha256": sha(p)})
+            for p in sorted(repo.rglob("*"))
+            if ".git" not in p.relative_to(repo).parts and (p.is_file() or p.is_symlink())},
         "change": sorted(str(p.relative_to(repo)) for p in
                          (repo / "openspec/changes").rglob("*") if p.is_file())
                   if (repo / "openspec/changes").is_dir() else [],
@@ -168,6 +183,64 @@ def checked_json(args, *, cwd, env):
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def contract_source(root, revision):
+    """Resolve exactly one committed active/archive contract, never a fallback."""
+    paths = git(root, os.environ, "ls-tree", "-r", "--name-only", revision,
+                "--", "openspec/changes").splitlines()
+    roots = sorted({str(Path(p).parent) for p in paths
+                    if p == f"openspec/changes/{CHANGE}/proposal.md" or re.fullmatch(
+                        rf"openspec/changes/archive/\d{{4}}-\d{{2}}-\d{{2}}-{CHANGE}/proposal\.md", p)})
+    if len(roots) != 1:
+        raise RuntimeError(f"Expected one committed active/archive contract, found {roots}")
+    selected = roots[0]
+    files = {p: hashlib.sha256(subprocess.check_output(
+        ["git", "show", f"{revision}:{p}"], cwd=root)).hexdigest()
+        for p in paths if p.startswith(selected + "/")}
+    for name in ("proposal.md", "design.md", "tasks.md"):
+        if f"{selected}/{name}" not in files:
+            raise RuntimeError(f"Incomplete committed contract: {name}")
+    return {"revision": revision, "path": selected, "files": files}
+
+
+def read_only_permissions(repo, worktrees, reader, receipts, *, prechoice=False):
+    """Effective runtime deny-by-default policy; detectors do not sandbox shell."""
+    rules = [{"action": "*", "resource": "*", "effect": "deny"}]
+    for action in ("read", "glob", "skill", "external_directory"):
+        rules.append({"action": action, "resource": "*", "effect": "allow"})
+    commands = ["git rev-parse --show-toplevel", "git rev-parse HEAD",
+                "git rev-parse --path-format=absolute --git-common-dir",
+                "git status --short", "git status --porcelain",
+                "git status --porcelain=v1 --untracked-files=all",
+                "git diff", "git diff --cached", "git log -5 --oneline",
+                "git show --stat HEAD", "git branch --list", "git worktree list --porcelain",
+                "git ls-files", "git ls-files --stage", "worktree-reservation list *",
+                "worktree-reservation status *", "openspec context *",
+                "openspec list *", "openspec status *", "openspec show *",
+                "openspec instructions *", "openspec validate *",
+                "gh api repos/disposable/recovery/issues/*",
+                "gh api --paginate repos/disposable/recovery/issues/*",
+                "gh issue view *", "gh issue list", "gh pr view *", "gh pr list",
+                "gh pr checks *", "ls .agents/skills*", "find .agents/skills *",
+                "ls", "pwd"]
+    for path in worktrees:
+        for args in ("rev-parse --show-toplevel", "rev-parse HEAD", "status --short",
+                     "status --porcelain=v1 --untracked-files=all", "diff", "diff --cached",
+                     "log -5 --oneline", "ls-files --stage"):
+            commands.append(f"git -C {shlex.quote(str(path))} {args}")
+    for receipt in receipts.values():
+        commands.append(shlex.join(["python3", str(reader), receipt["execution_id"],
+                                    receipt["owner"], receipt["run"], receipt["checkout"]]))
+    rules.extend({"action": "shell", "resource": c, "effect": "allow"} for c in commands)
+    if prechoice:
+        rules.extend([
+            {"action": "skill", "resource": "openspec-*", "effect": "deny"},
+            {"action": "read", "resource": ".agents/skills/openspec-*", "effect": "deny"},
+            {"action": "read", "resource": str(repo / ".agents/skills/openspec-*"),
+             "effect": "deny"},
+        ])
+    return rules
 
 
 def disposable_path(home, inherited_path, operator_home):
@@ -209,15 +282,19 @@ def snapshot(repo, worktrees, gh_root, reservation, env, openspec):
     return {"git": inventory(repo, env),
             "checkout_git": {path.name: inventory(path, env) for path in worktrees},
             "reservation": statuses,
-            "ledger": json.loads((gh_root / "state.json").read_text()),
+            "github": json.loads((gh_root / "state.json").read_text()),
+            "registry": json.loads((repo / ".git/ai-workflow/worktrees.json").read_text()),
+            "runtime": json.loads((Path(env["RESUME_RUNTIME_ROOT"]) / "receipts.json").read_text()),
             "openspec": {"context": context, "list": changes},
-            "pr": json.loads((gh_root / "state.json").read_text())["pr"]}
+            }
 
 
-def native_calls(events, session, native):
+def native_calls(events, session, native, expected_sha256=None):
     """Match a real model tool call and its successful output, not prose/CLI alone."""
     path = str(native.resolve())
     name = native.parent.name
+    if not native.is_file() or (expected_sha256 and sha(native) != expected_sha256):
+        return [], [], []
     discovery = []
     invocation = []
     instructions = []
@@ -231,12 +308,12 @@ def native_calls(events, session, native):
         tool = part.get("tool")
         inp = state.get("input", {})
         output = state.get("output", "")
-        if tool == "skill" and inp.get("id") == name and name in output:
+        # Only the runtime's skill tool is invocation. Direct reads/CLI/prose
+        # are auxiliary evidence, never native invocation.
+        if (tool == "skill" and inp.get("id") == name and name in output and
+                str(native.parent) in output):
             invocation.append({"tool": tool, "id": part.get("id"), "name": name,
-                               "event_index": index})
-        elif tool == "read" and inp.get("path") in (path, str(native)) and name in output:
-            invocation.append({"tool": tool, "id": part.get("id"),
-                               "path": inp["path"], "event_index": index})
+                               "path": path, "sha256": sha(native), "event_index": index})
         if tool in ("glob", "shell") and ".agents" in json.dumps(inp) and name in output:
             discovery.append({"tool": tool, "id": part.get("id"), "event_index": index})
         if tool == "shell" and (
@@ -330,7 +407,7 @@ def t7_phase1_proof(events, session, response, before, after, resume_invocation)
         if (e["tool"] == "question" and
             events[e["index"]].get("part", {}).get("state", {}).get("status") ==
             "completed") or
-        e["tool"] in ("write", "edit", "patch", "apply_patch") or
+        e["tool"] in ("write", "edit", "patch", "apply_patch", "subagent") or
         "reconcile" in json.dumps(e["input"]) or
         (e["tool"] == "shell" and isinstance(e["input"].get("command"), str) and
          re.search(r"\b(?:worktree-reservation\s+(?:reserve|handoff|release|checkpoint)"
@@ -380,6 +457,11 @@ def t7_reinventory(events, session, first_native, repo, worktrees, reader, recei
     roots_ok &= all(any(out == str(path) for out in commands(
         ["git", "-C", str(path), "rev-parse", "--show-toplevel"]))
                     for path in worktrees)
+    for path, issue in zip(worktrees, (21, 22)):
+        roots_ok &= any(out == receipts[issue]["head"] for out in commands(
+            ["git", "-C", str(path), "rev-parse", "HEAD"]))
+        roots_ok &= any(out == "" for out in commands(
+            ["git", "-C", str(path), "status", "--porcelain=v1", "--untracked-files=all"]))
     openspec_ok = all(any(
         isinstance(data, dict) and data.get("root", {}).get("path") == root
         for data in json_outputs(["openspec", subcommand, "--json"]))
@@ -393,32 +475,27 @@ def t7_reinventory(events, session, first_native, repo, worktrees, reader, recei
                 and (str(path) not in expected_runs or
                      row.get("owner", {}).get("run") == expected_runs[str(path)])
                 for row in data.get("entries", [])) for path in worktrees)
-        for data in json_outputs(["worktree-reservation", "list", "--repository", root]))
+        for data in json_outputs(["worktree-reservation", "list", "--repository", root, "--json"]))
     # Resolve the terminal receipt to the explicitly chosen run, not merely
     # to a command that mentions the receipt reader.
     receipt_ok = any(
         isinstance(data, dict) and data.get("terminal") is True and
         all(data.get(key) == chosen[key] for key in
-            ("execution_id", "owner", "run", "exit_code"))
+             ("execution_id", "owner", "run", "checkout", "exit_code", "execution_kind"))
         for event in calls
         if (tokens := shlex.split(event["input"]["command"])) and
-        tokens[-5:] == ["python3", str(reader), chosen["execution_id"],
-                        chosen["owner"], chosen["run"]] and
-        len(tokens) in (5, 6) and
-        (len(tokens) == 5 or tokens[0].startswith("RESUME_RUNTIME_ROOT="))
+         tokens == ["python3", str(reader), chosen["execution_id"],
+                    chosen["owner"], chosen["run"], chosen["checkout"]]
         for data in [parse_json_output(event["output"])])
-    ledger_ok = all(any(
-        isinstance(data, list) and any(
-            isinstance(comment, dict) and
-            isinstance(comment.get("body"), str) and
-            receipts[issue]["run"] in comment["body"]
-            for comment in data)
+    sources_ok = all(any(
+        isinstance(data, dict) and data.get("number") == issue and
+        isinstance(data.get("body"), str) and receipts[issue]["run"] in data["body"]
         for argv in (["gh", "api", "--paginate",
-                      f"repos/disposable/recovery/issues/{issue}/comments"],
+                      f"repos/disposable/recovery/issues/{issue}"],
                      ["gh", "api",
-                      f"repos/disposable/recovery/issues/{issue}/comments"])
+                       f"repos/disposable/recovery/issues/{issue}"])
         for data in json_outputs(argv)) for issue in (21, 22))
-    return bool(roots_ok and openspec_ok and reservation_ok and receipt_ok and ledger_ok)
+    return bool(roots_ok and openspec_ok and reservation_ok and receipt_ok and sources_ok)
 
 
 def execute_model(cli, repo, env, base, case, prompt, session=None):
@@ -426,20 +503,35 @@ def execute_model(cli, repo, env, base, case, prompt, session=None):
                "--format", "json"]
     if session:
         command.extend(["--session", session])
+    process = subprocess.Popen([*command, prompt], cwd=repo, env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True, start_new_session=True)
+    timed_out = False
     try:
-        execution = subprocess.run([*command, prompt], cwd=repo, env=env,
-                                   capture_output=True, text=True, timeout=240)
-    except subprocess.TimeoutExpired as error:
-        (base / f"{case}-timeout.log").write_bytes(error.stdout or b"")
-        raise RuntimeError(f"{case}: model timeout; retained {base}") from error
+        stdout, stderr = process.communicate(timeout=360)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            stdout, stderr = process.communicate(timeout=20)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate(timeout=20)
+    (base / f"{case}-terminal.json").write_text(json.dumps({
+        "pid": process.pid, "exit_code": process.returncode, "timed_out": timed_out,
+        "candidate": git(ROOT, os.environ, "rev-parse", "HEAD"),
+        "finished_at": datetime.now(timezone.utc).isoformat()}))
     transcript = base / f"{case}-events.jsonl"
-    transcript.write_text(execution.stdout + "\n")
-    (base / f"{case}-stderr.log").write_text(execution.stderr)
-    events = [json.loads(line) for line in execution.stdout.splitlines()]
+    transcript.write_text(stdout + "\n")
+    (base / f"{case}-stderr.log").write_text(stderr)
+    if timed_out:
+        raise RuntimeError(f"{case}: model timeout (not PASS); retained {base}")
+    events = [json.loads(line) for line in stdout.splitlines() if line.strip()]
     texts = [item["part"]["text"] for item in events
              if item.get("type") == "text" and isinstance(item.get("part", {}).get("text"), str)]
     sessions = sorted({item["sessionID"] for item in events if "sessionID" in item})
-    assert execution.returncode == 0 and texts and len(sessions) == 1
+    assert process.returncode == 0 and texts and len(sessions) == 1, (
+        f"{case}: incomplete terminal/events; retained {base}")
     if session:
         assert sessions == [session], f"{case}: OpenCode changed session"
     return events, "\n".join(texts), sessions[0], str(transcript)
@@ -453,7 +545,12 @@ def main():
     revision = run(["git", "rev-parse", "HEAD"], cwd=ROOT, env=os.environ)
     if run(["git", "status", "--porcelain"], cwd=ROOT, env=os.environ):
         raise RuntimeError("Commit the candidate before installing its exact revision")
-    base = Path(tempfile.mkdtemp(prefix="resume-candidate-", dir="/tmp/opencode"))
+    selected_contract = contract_source(ROOT, revision)
+    output = os.environ.get("RESUME_SMOKE_OUTPUT")
+    base = Path(output) if output else Path(tempfile.mkdtemp(
+        prefix="resume-candidate-", dir="/tmp/opencode"))
+    if output:
+        base.mkdir(exist_ok=False)
     home = base / "home"
     home.mkdir()
     bin_dir = base / "bin"
@@ -465,7 +562,8 @@ def main():
     env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
                XDG_DATA_HOME=str(home / ".local/share"),
                XDG_CACHE_HOME=str(home / ".cache"),
-               XDG_STATE_HOME=str(home / ".local/state"),
+                XDG_STATE_HOME=str(home / ".local/state"),
+                CODEX_HOME=str(home / ".codex"),
                OPENCODE_DB=str(base / "opencode.db"),
                OPENCODE_PASSWORD=secrets.token_hex(24),
                OPENSPEC_TELEMETRY="0", PYTHONDONTWRITEBYTECODE="1")
@@ -476,7 +574,8 @@ def main():
         [cli, "--help"], cwd=ROOT, env=env)
     assert run([openspec, "--version"], cwd=ROOT, env=env).startswith("2.")
     results = {"started_at": datetime.now(timezone.utc).isoformat(),
-               "candidate": revision, "model": MODEL,
+               "candidate": revision, "approved_proposal": APPROVED_PROPOSAL,
+               "contract": selected_contract, "model": MODEL,
                "opencode": run([cli, "--version"], cwd=ROOT, env=env),
                "openspec": run([openspec, "--version"], cwd=ROOT, env=env),
                "scenarios": {}}
@@ -498,15 +597,14 @@ def main():
     results["installed_revision"] = manifest["revision"]
     assert skill.read_bytes() == (ROOT / "skills/resume-workflow/SKILL.md").read_bytes()
     reservation = active / "scripts/worktree-reservation"
-    workflow_event = active / "scripts/workflow-event"
-    workflow_report = active / "scripts/workflow-report"
-    assert all(p.is_file() for p in (reservation, workflow_event, workflow_report))
+    assert reservation.is_file()
+    assert not (active / "scripts/workflow-event").exists()
+    assert not (active / "scripts/workflow-report").exists()
     assert shutil.which("worktree-reservation", path=env["PATH"]) == str(
         home / ".local/bin/worktree-reservation")
     assert os.access(home / ".local/bin/worktree-reservation", os.X_OK)
 
-    # No external GitHub requests. Writes are permitted only while SEED is set;
-    # the model's environment never receives that switch.
+    # No external GitHub requests or write endpoints, even during preparation.
     shim = bin_dir / "gh"
     shutil.copy2(ROOT / "tests/fixtures/resume_gh.py", shim)
     shim.chmod(0o755)
@@ -520,6 +618,14 @@ def main():
         # initializing/updating global or project configuration in the test.
         shutil.copytree(ROOT / ".agents", repo / ".agents")
         shutil.copytree(ROOT / "openspec", repo / "openspec")
+        source = repo / selected_contract["path"]
+        active_change = repo / "openspec/changes" / CHANGE
+        if source != active_change:
+            source.rename(active_change)
+        # This fixture models interruption at the reviewed proposal, regardless
+        # of whether the candidate has already completed/archived its own work.
+        tasks = active_change / "tasks.md"
+        tasks.write_text(tasks.read_text().replace("- [x]", "- [ ]"))
         assert "opencode" in (repo / ".agents/skills/.openspec-target").read_text().splitlines()
         assert not (repo / ".opencode/commands").exists()
         native = repo / ".agents/skills/openspec-apply-change/SKILL.md"
@@ -537,7 +643,7 @@ def main():
                    "proposal_sha": proposal_sha},
             "T5": {"repository": "disposable/recovery", "milestone": 3,
                    "run": "wf-disposable-t5", "merge_mode": "manual",
-                   "issue": 11, "pr": 12, "pr_head": "disposable-pr-head",
+                    "issue": 11, "pr": 12, "pr_head": proposal_sha,
                    "dependent_issue": 13, "dependency": "issue 13 waits for PR 12 merge"},
             "T7": {"repository": "disposable/recovery", "candidates": [
                 {"run": "wf-disposable-a", "issue": 21, "stage": "apply"},
@@ -546,16 +652,37 @@ def main():
         }[case]
         evidence = repo / "recovery-evidence.json"
         fixture["strict_validation"] = validation
+        fixture["candidate_sha"] = revision
+        fixture["approved_source_proposal_sha"] = APPROVED_PROPOSAL
+        fixture["contract_source"] = selected_contract
         evidence.write_text(json.dumps(fixture, indent=2) + "\n")
         git(repo, env, "add", "-A")
         git(repo, env, "-c", "user.name=Smoke", "-c",
             "user.email=smoke@example.org", "commit", "-qm", "interrupted state")
         gh_root = base / f"{case}-github"
         gh_root.mkdir()
-        (gh_root / "state.json").write_text(json.dumps({
-            "comments": [], "pr": ({"number": 12, "headRefOid": fixture["pr_head"],
-                                      "state": "OPEN", "url": "https://github.com/disposable/recovery/pull/12"}
-                                     if case == "T5" else None)}))
+        issue_runs = [(fixture["issue"], fixture["run"])] if case != "T7" else [
+            (candidate["issue"], candidate["run"]) for candidate in fixture["candidates"]]
+        issues = {str(issue): {
+            "number": issue, "url": f"https://github.com/disposable/recovery/issues/{issue}",
+            "title": f"Read-only recovery fixture #{issue}", "state": "OPEN",
+            "body": (f"Scope={'milestone:3' if case == 'T5' else 'single_issue'}; "
+                     f"run={run_id}; merge_mode=manual. "
+                     f"Validated proposal {proposal_sha}; next action "
+                     f"{'review existing PR 12; consumer 13 waits for merge' if case == 'T5' else 'Apply, not executed in this read-only probe'}."),
+            "comments": [{"body": "[DECISION] Read-only recovery. No merge or dispatch."}],
+        } for issue, run_id in issue_runs}
+        if case == "T5":
+            issues["13"] = {"number": 13, "state": "OPEN",
+                            "body": "Blocked until PR #12 is merged; do not dispatch."}
+        pulls = {"12": {"number": 12, "headRefOid": fixture["pr_head"],
+                         "state": "OPEN", "url": "https://github.com/disposable/recovery/pull/12",
+                         "baseRefOid": proposal_sha, "isDraft": False,
+                         "statusCheckRollup": [{"headSha": proposal_sha, "name": "fixture-check",
+                                                "status": "COMPLETED", "conclusion": "SUCCESS"}],
+                         "reviews": [], "body": "Merge manual. Consumer #13 blocked until merge."}
+                 } if case == "T5" else {}
+        (gh_root / "state.json").write_text(json.dumps({"issues": issues, "pulls": pulls}))
         (gh_root / "calls.jsonl").write_text("")
         runtime_root = base / f"{case}-runtime"
         runtime_root.mkdir()
@@ -567,8 +694,6 @@ def main():
                     "RESUME_RUNTIME_ROOT": str(runtime_root)}
         receipts = {}
         worktrees = []
-        issue_runs = [(fixture["issue"], fixture["run"])] if case != "T7" else [
-            (candidate["issue"], candidate["run"]) for candidate in fixture["candidates"]]
         for issue, run_id in issue_runs:
             branch = f"issue-{issue}-fixture"
             path = base / f"{case}-issue-{issue}"
@@ -583,34 +708,6 @@ def main():
                                        case, case_env, runtime_root)
             receipts[issue] = receipt
             (runtime_root / "receipts.json").write_text(json.dumps(list(receipts.values())))
-            seed_env = {**case_env, "RESUME_GH_SEED": "1"}
-            event = [str(workflow_event), "--issue", issue_url, "--run-id", run_id]
-            run([*event, "run-start", *(
-                ["--scope", "milestone", "--milestone-url",
-                 "https://github.com/disposable/recovery/milestone/3"] if case == "T5" else []
-            )], cwd=repo, env=seed_env)
-            if case == "T1":
-                run([*event, "stage-start", "--stage", "proposal_review",
-                     "--worker-id", receipt["owner"], "--execution-kind", "worker",
-                     "--execution-id", receipt["execution_id"]], cwd=repo, env=seed_env)
-                run([*event, "observe", "--stage", "proposal_review", "--worker-id",
-                     receipt["owner"], "--execution-kind", "worker", "--execution-id",
-                     receipt["execution_id"], "--state", "completed", "--source", "runtime_event",
-                     "--next", f"Apply at {proposal_sha}"], cwd=repo, env=seed_env)
-                run([*event, "stage-end", "--stage", "proposal_review", "--worker-id",
-                     receipt["owner"], "--execution-kind", "worker", "--execution-id",
-                     receipt["execution_id"], "--status", "completed"], cwd=repo, env=seed_env)
-            elif case == "T5" and issue == 11:
-                run([*event, "stage-start", "--stage", "pr_audit", "--worker-id",
-                     "reviewer", "--execution-kind", "worker", "--execution-id",
-                     "pr-12"], cwd=repo, env=seed_env)
-                run([*event, "wait-start", "--stage", "pr_audit", "--reason",
-                     "dependency", "--next", "issue 13 waits for PR 12; merge_mode=manual"],
-                    cwd=repo, env=seed_env)
-            else:
-                run([*event, "stage-start", "--stage", "apply", "--worker-id",
-                     "reviewer", "--execution-kind", "worker", "--execution-id",
-                     f"apply-{issue}"], cwd=repo, env=seed_env)
             # The fixture writer has stopped; it is not evidence authorizing
             # takeover. Read-only recovery must leave the owner untouched.
             assert checked_json([str(reservation), "verify", "--path", str(path),
@@ -625,10 +722,6 @@ def main():
         git(repo, env, "add", "-A")
         git(repo, env, "-c", "user.name=Smoke", "-c",
             "user.email=smoke@example.org", "commit", "-qm", "runtime reader locator")
-        # Exercise the public report reader against the actual seeded ledger.
-        report = checked_json([str(workflow_report), issue_url, "--format", "json"],
-                              cwd=repo, env=case_env)
-        assert report["runs"] and report["runs"][0]["run_id"] == run_id
         before = snapshot(repo, worktrees, gh_root, reservation, case_env, openspec)
         calls_before = (gh_root / "calls.jsonl").read_text().splitlines()
         if case == "T7":
@@ -650,24 +743,30 @@ def main():
                 "integral não modificada e status de saída próprio; não use "
                 "echo, redirecionamento, `;`, `&&`, `||`, pipe nem agrupe probes. "
                 "Confira `git rev-parse --show-toplevel` na raiz principal e "
-                "`git -C <checkout> rev-parse --show-toplevel` separadamente "
-                "para CADA um dos dois checkouts; `worktree-reservation list "
-                "--repository <raiz>` (launcher no PATH desta fixture); "
-                "`gh api --paginate repos/disposable/recovery/issues/21/comments` "
-                "e `gh api --paginate repos/disposable/recovery/issues/22/comments` "
+                 "`git -C <checkout> rev-parse --show-toplevel` separadamente "
+                 "para CADA um dos dois checkouts, e também `git -C <checkout> "
+                 "rev-parse HEAD` e `git -C <checkout> status --porcelain=v1 "
+                 "--untracked-files=all`, cada comando separado; `worktree-reservation list "
+                 "--repository <raiz> --json` (launcher no PATH desta fixture); "
+                "`gh api --paginate repos/disposable/recovery/issues/21` "
+                "e `gh api --paginate repos/disposable/recovery/issues/22` "
                 "em chamadas separadas; `openspec context --json` e "
                 "`openspec list --json` em chamadas separadas. Confirme o writer "
                 "anterior com um único comando independente `python3 <caminho de "
-                "runtime_receipt_command> <execution_id> <owner> <run>` usando "
+                "runtime_receipt_command> <execution_id> <owner> <run> <checkout>` usando "
                 f"{selected['execution_id']}, {selected['owner']}, {selected['run']}; "
                 "a variável de ambiente da fixture já está definida. Se qualquer "
                 "probe falhar ou faltar, bloqueie; não substitua por resposta textual. "
                 "Depois da escolha descubra .agents/skills e invoque explicitamente "
-                "openspec-explore nativa em modo somente leitura (arquivo canônico "
-                "ou ferramenta skill), depois execute openspec validate somente "
+                "openspec-explore nativa pela ferramenta skill em modo somente leitura, "
+                "depois execute openspec validate somente "
                 "leitura para conferir o change no contexto da issue. "
                 "Não invoque Apply, faça takeover, dispatch ou escrita.")
         for phase, message in enumerate(prompts, 1):
+            permissions = read_only_permissions(repo, worktrees, reader, receipts,
+                                                prechoice=case == "T7" and phase == 1)
+            case_env["OPENCODE_CONFIG_CONTENT"] = json.dumps({
+                "$schema": "https://opencode.ai/config.json", "permissions": permissions})
             events, response, session, transcript = execute_model(
                 cli, repo, case_env, base, f"{case}-phase{phase}", message, session)
             after = snapshot(repo, worktrees, gh_root, reservation, case_env, openspec)
@@ -677,7 +776,7 @@ def main():
                                      a in ("edit", "create", "merge", "close", "delete")
                                      for a in args) for args in new_calls)
             native_discovery, native_invocation, native_instructions = (
-                native_calls(events, session, native))
+                 native_calls(events, session, native, native_provenance["sha256"]))
             resume_invocation = tool_events(events, session, tool="skill",
                                             contains="resume-workflow") + [
                 e for e in tool_events(events, session, tool="read",

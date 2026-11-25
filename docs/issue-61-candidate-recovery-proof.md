@@ -1,5 +1,84 @@
 # Prova isolada de retomada — issue #61
 
+## Recuperação atual — 25/11/2026
+
+**Handoff canônico da execução residual; merge HELD.** A descrição abaixo de
+16/11 é histórica, não aprovação da candidata atual nem do contrato posterior
+de T1/T7. Os recibos em `/tmp` daquela máquina não estão disponíveis aqui.
+Sem término/relatório acessível, o resultado permanece **UNKNOWN**.
+
+Apply novo `ses_def2616b1ffeSXukxzKlSu6sZ0`, proposta aprovada
+`31cdb42b2d0e409e8820fa71d97177316c07f94a`, revisão independente informada pelo
+coordenador `ses_def28f8abffeBio1TLgi1lXJaB`. Merge não forçado
+`5b0fc0ad5ff553a0e091527ddff6ac4001b46dc4` preserva entrada `d34c1c1` e alvo
+`12ca324faf2865faa62d16e55715d3ddd0adb53a`, incluindo os 38 commits anteriores.
+Nove bytecodes ignorados sem proveniência ficam intocados. Instalador e
+launchers são idênticos ao alvo: A_R1 `7c4cfb4433c4f56b9af463759e8215174b5b9663`,
+B_R1 `a0806493280d062ae477a608ccdcc67a3ca337e5`, digest literal
+`93cd9371b602a47c66b6bc3b20be448f6c124fc88b10a9f5d041f611dddc1a5f`.
+
+### Provas focadas recuperáveis
+
+- I1/D1: `evidence:ev-20261125T040028Z-81a71ed0` (distribuição) e
+  `evidence:ev-20261125T040029Z-17cafeac` (launcher), exit 0 no merge.
+- Fixture/detectores: `evidence:ev-20261125T040644Z-40022db6`, 18/18;
+  reserva `evidence:ev-20261125T040645Z-f4f05567` e evidência
+  `evidence:ev-20261125T040704Z-ff0058bc`, exit 0. São execuções durante
+  implementação, não gates finais nem prova model-backed.
+- Instalador inicial `evidence:ev-20261125T040711Z-a0eec998`: 54/55, falha
+  de fixture introduzida por asserts OpenCode no helper agora compartilhado
+  com Codex-only. Não é falha de produção nem o antigo problema XDG.
+  Correção escolhe guidance/link do agente selecionado sem mudar instalador.
+  Nova execução `evidence:ev-20261125T040830Z-3657e0de`, exit 0.
+
+### Reconciliação antes da nova observação
+
+Os comentários acessíveis relatam seq23 (T1, timeout externo após `--help`
+iniciar modelo), seq28 (T7, formulário cancelado sem pergunta visível),
+falhas posteriores de detector/instalador e observer `observe-61-d34c1c1`
+sem recibo terminal. O attempt-log original não foi recuperado; **não**
+recriamos suas sequências ou diagnósticos, não aprovamos episódios antigos
+e não derivamos diagnóstico terminal da prosa `provider.no-route`.
+Referências: [seq23](https://github.com/rocker-code/my-ai-skills/issues/61#issuecomment-6934965470),
+[seq28](https://github.com/rocker-code/my-ai-skills/issues/61#issuecomment-6936198464),
+[último preflight histórico](https://github.com/rocker-code/my-ai-skills/issues/61#issuecomment-6990765917).
+
+Diagnóstico atual: camada **assertion/fixture** para descoberta, pergunta,
+correlação e probes; **environment/bootstrap** para capacidade/isolamento.
+Fase efetiva: descoberta/instalação → sessão nova → tool events → comparação
+de snapshots, sem Apply de produção. Escopo: HOME/XDG/CODEX_HOME/DB
+descartáveis; consumidores: harness T1/T5/T7, shim gh e instalador público.
+Lifecycle: guard argv sai antes de executar; o writer é observado vivo e
+esperado via `wait()`; cada modelo terá término explícito e timeout de grupo
+de processos, nunca PASS por desaparecimento. A suíte offline referenciada
+comprova guard, PATH/shim, negativos de receipt/native e archive, não quota
+nem invocação de modelo. O runtime real foi consultado isoladamente:
+OpenCode 2.3.2 lista `opencode/glm-5.3-flash-free`; OpenSpec 2.1.1 está
+presente. A listagem sem credenciais reais **não garante capacidade**.
+
+Alternativa mínima: manter bloqueio e esperar evidência recuperável.
+Escolha: uma observação nova e isolada do contrato reconciliado, somente
+após preflight completo e HEAD limpo; não repetir automaticamente e não
+trocar prompt natural T1 por lookup dirigido. Hipótese a verificar: fontes
+atuais e skill tool fornecem prova nativa sem depender do ledger retirado.
+Se não houver sinal/terminal/capacidade, reter UNKNOWN/bloqueio e não arquivar,
+não abrir PR ou declarar suíte final. A revisão independente dos eventos
+caberá a outro contexto real, nunca ao próprio Apply.
+
+O bloco abaixo contém **somente tentativas novas com recibo acessível**, não
+renumera nem substitui o attempt-log histórico perdido. Gate T1/T5/T7 continua
+pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
+
+```attempt-log
+{"attempt_log":1,"entries":[
+{"kind":"attempt","seq":1,"obligation":"D1","signature":"fixture: missing opencode guidance in codex-only public install","target":"test_global_install.py","class":"fixture/isolation","hypothesis":"asserts de atualização OpenCode foram portados ao helper compartilhado sem seleção","change":"portar asserts de bytes/guidance","change_target":"test","observed_effect":"54/55; FileNotFoundError no AGENTS.md OpenCode em seleção Codex-only","result":"fail","evidence":["evidence:ev-20261125T040711Z-a0eec998"]},
+{"kind":"attempt","seq":2,"obligation":"D1","signature":"fixture: missing opencode guidance in codex-only public install","target":"test_global_install.py","class":"fixture/isolation","hypothesis":"consultar guidance e link do agente selecionado preserva contratos de ambos","change":"selecionar paths OpenCode ou Codex no teste público, sem mudar produção","change_target":"test","observed_effect":"55/55, incluindo Codex-only, OpenCode-only e ambos","result":"pass","evidence":["evidence:ev-20261125T040830Z-3657e0de"]},
+{"kind":"resolution","group":{"obligation":"D1","signature":"fixture: missing opencode guidance in codex-only public install"},"outcome":"passed","via_seq":2}
+]}
+```
+
+## Histórico — 16/11/2026 (não é gate atual)
+
 Execução em 2026-11-16 com OpenCode v2.3.0, OpenSpec 2.0.0 e modelo
 `opencode/glm-5.3-flash-free`; pacote instalado em HOME descartável a partir do
 commit candidato `80e5de0dd4351770b61941cda7dfc798b14ed7ac`. A skill carregada
