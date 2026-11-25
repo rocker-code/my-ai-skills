@@ -555,6 +555,11 @@ def main():
     home.mkdir()
     bin_dir = base / "bin"
     opencode_shim = disposable_opencode_shim(bin_dir, cli)
+    # The installer checks gh on PATH. Expose the read-only fixture before that
+    # preflight, never the operator's HOME or real authenticated GitHub CLI.
+    shim = bin_dir / "gh"
+    shutil.copy2(ROOT / "tests/fixtures/resume_gh.py", shim)
+    shim.chmod(0o755)
     env = {key: os.environ[key] for key in ("PATH", "LANG", "TERM") if key in os.environ}
     path_entries = disposable_path(home, os.environ.get("PATH", os.defpath),
                                    os.environ["HOME"]).split(os.pathsep)
@@ -605,10 +610,6 @@ def main():
     assert os.access(home / ".local/bin/worktree-reservation", os.X_OK)
 
     # No external GitHub requests or write endpoints, even during preparation.
-    shim = bin_dir / "gh"
-    shutil.copy2(ROOT / "tests/fixtures/resume_gh.py", shim)
-    shim.chmod(0o755)
-
     for case, prompt in PROMPTS.items():
         repo = base / case
         repo.mkdir()
