@@ -2,6 +2,116 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Oitava observação — T1 tecnicamente comprovado/pending review, T5 timeout
+
+Autorização nova do coordenador limitada a **observação somente**, sem closeout
+mesmo em elegibilidade técnica. Entrada limpa exata
+`45c5b720b84a14072e0d9763944815c2c7721b4b`, plano revisto aprovado
+`e1408dafbb7c6b2251b206afe62a2785708d1e08`, revisão de plano
+`ses_dedd9267effeMuorC3GIpcWxGc` e de implementação
+`ses_dee9d76e4ffeR10I59JewObvEC`. Worker
+`ses_dee5e0a18ffefE7FomnYJ9smc1`, stage `observe61-oracle`, mesmo
+run/checkout/branch; reserve/verify sem drift. Proposal/design/spec/tasks e
+notas atuais lidos, diagnóstico40 pós-segunda falha preservado; check não final
+valid=true/violations=[]/ready=null/BLOCKED antes do lançamento.
+
+Reverificados no HEAD exato: 312 offline
+`ev-20261125T102547Z-becc9cb1`, strict global13/13
+`ev-20261125T102716Z-0dfad130`, change1/1
+`ev-20261125T102716Z-020c83c0`, projeção offline
+`ev-20261125T102716Z-bfcdbc60`, todos verified/passed **sem required gate**.
+Não são suíte final nem aprovação de modelo/replay.
+
+**Uma chamada completa do harness**, `PYTHONDONTWRITEBYTECODE=1 python3 -B
+tests/smoke_resume_candidate_opencode.py`, via `workflow-evidence record`,
+sem `--output-dir` externo; saída única em `/tmp/opencode`, logs próprios
+streamados para execution.log checksum-bound. Timeout shell1.800s/interno360s;
+callback real `sh_21246a3190011AdWxOUtBVwlzA` exit **1**.
+Instalação/HOME/XDG/CODEX_HOME/DB/Location privados novos, sem credenciais/config
+pessoais. OpenCode **2.3.2**, OpenSpec **2.1.1**. Em cada fase, guard fresh
+ativo fonte `b878847767fd9759d7362a6aa71707b4e13f97606258f39448c82b23f255e656`;
+native `/api/model/default` cruzado com `/api/model` no mesmo ambiente/Location
+selecionou `opencode/big-pickle`, enabled/active chat, tools/text→text e
+input/output/cache read/write conhecidos zero. Sem override/fallback.
+
+**T1:** sessão `ses_dedb94dbbffeG1BESArNUjvaP5`, PID3300711,
+terminal exit **0**, sem timeout/provedor/JSONL malformado, às
+`2026-11-25T10:38:32.499548+00:00`. 15 step_finish/41 tools, custo reportado0.
+Nove fatos técnicos **true**, condição `before-write/prior-stopped-owner`
+corroborada, serialization_compliance=passed e proof_complete=true.
+**read_only_acceptance=pending_independent_review, scenario_pass=false,
+write_authorized=false**: não declarar T1 PASS nem resolver episódio por isso.
+
+- Catálogo realmente entregue à mesma sessão (epoch=through4/user5/assistant6
+  concluído), blob `66f5a938235937b9e15fa3f01e95fbc82edb31fddcae5fd5ac499d969b769285`,
+  snapshot `867adff1553273ad883d1bfae664fddeb6a008b1c78d6012927b39c58fe89bb0`;
+  skill Apply nativa32, path/origem/hash canônicos não symlink
+  `71f084a1ea26194f62cb9ed31da8e4aa837fd57abb2b91b9cbb0c6ee8d503b79`.
+- Inventário35–39/41 e receipt40 efetivos; writer
+  `writer-T1-61/seed-T1/wf-disposable-t1/T1-issue-61`, PID3299563 observado vivo
+  e depois esperado; terminal true/exit0. Commit46/ancestralidades45–47/
+  review48/diff49/strict50/Apply42/GitHub61 bem-sucedidos antes do final71.
+  Proposta fixture `3516958b2d1f30b3b13cb421f006dd6f86cab647`, review
+  `3a22c0261d8bd8d3fa3abfc7096c695e6fe368cf`, distintos de candidata/plano.
+- Oito snapshots iguais e pré-requisitos físicos/Git de artefatos verified=true
+  antes/depois. Nenhuma tentativa stateful T1; leituras negadas de boundary
+  permanecem no relato. Resposta e eventos ainda exigem revisão independente.
+
+**T5: falha real por timeout interno**, sessão `ses_dedb6cf0dffeS60EcHgP3slpEv`,
+PID3349989, terminal **143/timed_out=true** em
+`2026-11-25T10:44:36.152411+00:00`. `execute_model` esgotou360s e terminou o
+grupo por SIGTERM; o shell externo não expirou. 217 eventos, 43 step_finish
+com custo reportado0/128 tools antes da interrupção; custo final desconhecido,
+não confundir preços elegíveis ou steps completos com encerramento normal.
+Sem erro de provedor/JSONL malformado; não inferir quota/429 ou falha preexistente.
+
+O modelo permaneceu fazendo leituras/probes, não ficou sem progresso de
+transporte: discovery27/28, skill Apply116 e strict119 ocorreram. Contudo,
+não leu recovery-evidence.json; calls/reads do shim GitHub estão vazios, nenhum
+PR12/head/check/manual/dependência13 foi observado com sucesso, nem receipt.
+Leu o plano copiado e tentou reiteradamente endpoints do repo real/issue61/PR62
+e variantes, **todos negados pré-spawn**. Isso é fato da sequência, não prova
+da causa interna da confusão nem de indisponibilidade dos comandos permitidos.
+Também tentou `worktree-reservation verify --session "$OPENCODE_SESSION_ID"`
+no evento19: tentativa stateful negada, identificada diagnosticamente nos
+eventos originais, não apagada por snapshots iguais. Nenhuma escrita/rede real/
+credencial pessoal foi executada. T5 antes/depois disponíveis/iguais nas sete
+dimensões, mas sem resposta final válida ou gates completos.
+Catálogo entregue e execution_binding T5 não foram capturados no fluxo normal,
+pois o timeout antecedeu a agregação; não os reconstruir como prova concluída.
+**T7 NOT RUN**; nenhuma nona observação ou continuação forçada.
+
+**F1/bindings preparados antes da inferência**, ambos com hash conferido:
+T1 `5264986ca1788be1ef1d7456b105188c7a8149e83b44d7b344f89f0428665978`,
+T5 `99819e08cda9bf3fcee99322151648e4fb6da4a4327790b7ac418b15324300f9`,
+formato `resume-effective-inputs-v1`, source45c5b72/approved e1408daf.
+T1 execution_binding retém sessão, hashes reais eventos/terminal/catálogo,
+source nativa e snapshots `3367c85afc15974aa39758ec0ccbf869a40675f0740de92676f1ca819444e407`.
+T5 snapshots iguais `861e27c67e7f02c6330b31107425a3f33d81f17fd792ca9a3cbed774e281639d`.
+Preparação não é comportamento nem aprovação de reuso; somente a nota factual
+de falha será commitada, sem alterar os inputs/resultados observados.
+
+**Prova** `evidence:ev-20261125T103548Z-f3771146`, execution.log1.910.748 bytes,
+SHA-256 `57fc58105265ded7d1ba451f899ae3ed53825ef8a71ed4ab63e61b21a14c1276`,
+verificada antes desta nota **verified/failed**, exit3/no_required_gate,
+`--tool opencode=2.3.2 --tool openspec=2.1.1 --env-id
+sandbox=observe61-45c5b72-ses_dee5e0a18ffe`. Retém results/preparações/bindings/
+snapshots/guard/policy/audit/receipts e eventos/terminais/stderr de T1/T5.
+Originais `/tmp/opencode/issue61-observe-45c5b72-ses_dee5e0a18ffe`:
+results `a737062d2918fa9520f4bc5e4969d508688915452ef3462a53c396fd2771c0df`;
+T1 JSONL `91a5b71a9cda92470ab67b1dd7d4adceee600bab7aca328a1d3059d48fc5e90f`,
+terminal `45fb38a513c2d103a109116c9addcb32f7b378ac0ce721ed7bfba88e6b89f9d8`;
+T5 JSONL `133c2924c757e627a0cd4c1031dff2fa05093846b63fdc84d486c32f7ba72df6`,
+terminal `9057e1ee32ccc1bd68b2b72b5fa9f8020d7c2759cd0acc98a4b100677216c6d3`.
+
+**Parada por falha T5:** sem autocorreção, fonte/teste/guard/pins alterados,
+retry, nono modelo, archive/sync/PR/push/merge ou suíte final. T1 continua
+pendente de revisão independente; todas as sete falhas originais e seq39/40/41
+intactas. Seq42–44 registram timeout/diagnóstico/bloqueio T5, não PASS T1.
+Próxima ação mínima: revisão independente de T1 e do trace T5/inventário de
+locators/escopo antes de eventual decisão separada; não ampliar timeout/guard
+nem lançar modelo para pesquisar a causa. Saída limpa ownerless WAITING.
+
 ### Apply offline da revisão e1408daf — sem nova observação nativa
 
 Worker novo `ses_dedd54912ffeUE0O1zucvX95YV`, mesmo checkout/branch/issue/run.
@@ -1749,6 +1859,10 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"diagnosis","seq":40,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"class":"assertion/contract","checked":{"phase":"post-terminal t1_handoff rejects final90 nonempty blockers; final JSON2281bytes, valid structure/eight limitations/next_actionreconcile-ownership allowed; proposal/Apply/inventory predicates true, no other failed gate demonstrated; actual receipt25/native79/strict46/Apply45 and commit38/ancestry37-39/review41/full-change diff40 pre-final","scope":"exactfca6a97 fresh private credential-free HOME/XDG/CODEX_HOME/DB/Location; artifact prerequisites verifiedtrue before/after equal and eight full snapshots equal; worktrees47/status-index48-51/reservationlist52 really observed; ACTIVEseed-T1 owner and run/path/HEAD/digest match terminal prior writer receipt, no drift/extra unknown; no recovery write grant","lifecycle":"ses_dedf35f74ffeFTglzDI0fB5HPP pid2106145 exit0 at09:35:30.773677Z, no provider error/timeout/malformed JSONL;16steps cost0;49tools; harness1T1 then stop, T5/T7 never launched; no eighth model; guard active both hooks cleanup; boundary denials retained separately from forbidden_attempts[]","consumers":"strict handoff model classifies stopped prior ACTIVE owner and mandatory reconciliation before effects as current blocker despite choosing reconcile-ownership; unlike seq34 inventory now actually proved and known scope/future caveats mostly separated into limitations; same nonempty-blocker signature retained for second failure, not reset; fixture global-reference reads6-8 and envpipe5 denied before execution, not operator data read"},"runtime_proof":["evidence:ev-20261125T093223Z-ff1be68e"],"simplest_alternative":"stop preserving failed response and request independent offline assessment of ownership precondition versus read-only last-gate handoff; do not delete blocker text or reinterpret outcome as PASS","choice_rationale":"second same-signature failure now has complete post-failure diagnosis before any future attempt; all native proof improvements do not authorize automatic eighth model, matcher relaxation, source edit, ownership transfer or archive/PR","next_hypothesis":"independent review can compare the actual ACTIVEstopped-owner inventory/receipt and reconcile-ownership action to approved read-only stage semantics before deciding any separately authorized correction or observation"}
 ,{"kind":"blocker","seq":41,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T093223Z-ff1be68e"],"diagnosis":"seq:40","options":[],"impact":"T1 seventh observation failed handoff; T5/T7 NOT RUN; tasks3.4/4.3 pending; no archive/final required suite/PR; independent offline ownership/handoff review needed","researchable":true}
 ,{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"outcome":"blocked","via_seq":41}
+,{"kind":"attempt","seq":42,"obligation":"T5","signature":"runtime.timeout: native observation exceeded 360-second internal limit","target":"45c5b72 complete native harness T5 phase1 after technically eligible T1","class":"environment/bootstrap","hypothesis":"new reviewed e1408daf oracle with all native facts mandatory permits one complete real T1/T5/T7 observation for independent review","change":"one explicitly authorized observation-only run on approved45c5b72 with fresh guarded credential-free setup, native zero-price default and effective input binding","change_target":"test","observed_effect":"T1 proof_complete with nine facts/typed condition true but pending_independent_review/scenario_passfalse; T5 model exceeded360s and exited143 after SIGTERM,43 completedsteps/128tools, no final reply or successful GitHub fixture reads/receipt; stateful verify19 denied; snapshots available/equal; harness1; T7 NOT RUN","result":"fail","evidence":["evidence:ev-20261125T103548Z-f3771146"]}
+,{"kind":"diagnosis","seq":43,"group":{"obligation":"T5","signature":"runtime.timeout: native observation exceeded 360-second internal limit"},"class":"environment/bootstrap","checked":{"phase":"execute_model communicate timeout360s in T5 before normal catalog/execution-binding/scenario aggregation; transport progressed through217 JSONL events and native Apply116/strict119, but no completed recovery handoff; outer shell1800s did not expire","scope":"exact45c5b72 installed/newapprovede1408daf, isolated HOME/XDG/CODEX_HOME/privateDB/Location; effective_inputs prepared before both T1/T5 and checksums valid; T5 never read recovery-evidence.json or successfully called disposable GitHub shim, empty reads/calls; repeated actual repo/PR source endpoints denied pre-spawn, not evidence correct fixture source unavailable","lifecycle":"T1ses_dedb94dbbffeG1BESArNUjvaP5 terminal0 at10:38:32.499548Z technically proved but independent review pending; T5ses_dedb6cf0dffeS60EcHgP3slpEv pid3349989 timeouttrue/exit143 at10:44:36.152411Z after process-groupSIGTERM;43completedstep_finish cost0 not final cost; no provider error/malformed lines; T7 never started and no ninth model","consumers":"T5 effective PR/head/check/manual/dependency recovery absent despite native skill/strict partial reads; stateful verify19 attempted and denied, original raw events preserved; before/after seven snapshots equal does not erase attempts; T5 delivered catalog/normal execution_binding not captured after timeout; no source/guard/pin/application edit justified by runtime outcome"},"runtime_proof":["evidence:ev-20261125T103548Z-f3771146"],"simplest_alternative":"stop retaining timeout and partial progress for independent T1/T5 event review; never extend timeout/widen guard, force T7 continuation or infer T5 PASS from native skill/strict/snapshots","choice_rationale":"one new complete harness invocation consumed; T1 remains pending_independent_review rather than automatic PASS or resolution of historical failures; actual repeated denied probes suggest source/scope investigation but do not prove internal cause, provider quota or pre-existing failure; no automatic rerun/source correction authorized","next_hypothesis":"independent offline review can inspect T5 locator discoverability and actual source-selection sequence alongside T1 pending semantics, without executing another model or rewriting bindings"}
+,{"kind":"blocker","seq":44,"group":{"obligation":"T5","signature":"runtime.timeout: native observation exceeded 360-second internal limit"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T103548Z-f3771146"],"diagnosis":"seq:43","options":[],"impact":"complete eighth observation failed in T5; T1 technical facts proved but semantic/event review pending/scenario_passfalse, T7 NOT RUN; no archive/PR/final required gate; independent response/event review and timeout diagnosis needed","researchable":true}
+,{"kind":"resolution","group":{"obligation":"T5","signature":"runtime.timeout: native observation exceeded 360-second internal limit"},"outcome":"blocked","via_seq":44}
 ]}
 ```
 
