@@ -31,7 +31,8 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               delivered_skill_catalog, forbidden_attempts,
                                               read_only_locators, disposable_shell_guard,
                                               artifact_comparison_prerequisites,
-                                              STRICT_VALIDATE)
+                                              STRICT_VALIDATE, t1_inventory_proof,
+                                              read_scope_attempts, terminal_receipt)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -799,7 +800,8 @@ class T1ProposalProofTest(unittest.TestCase):
         value = {"issue": 61, "run": "wf-unit", "evidence_scope": "controlled_fixture",
                  "proposal_sha": self.proposal, "review_sha": self.facts["review_sha"],
                  "status": "RECOVERED", "last_verified_gate": "proposal_review_validated",
-                 "next_action": "apply-issue", "apply_executed": False, "blockers": []}
+                 "next_action": "apply-issue", "apply_executed": False, "blockers": [],
+                 "limitations": []}
         value.update(changes)
         return {"type": "text", "sessionID": self.session,
                 "part": {"text": json.dumps(value)}}
@@ -850,12 +852,18 @@ class T1ProposalProofTest(unittest.TestCase):
         def check(event):
             return t1_handoff(self.events + [event], self.session, fixture, self.facts)[0]
         self.assertTrue(check(self.handoff_event()))
+        self.assertTrue(check(self.handoff_event(
+            next_action="reconcile-ownership", limitations=[
+                "Controlled fixture review is not independent approval of the real candidate.",
+                "No model-executed sha256sum; Git comparison and prospective checks bound integrity.",
+                "Post-Apply tests/smoke/CI have not run at this pre-Apply recovery gate."])))
         for field, value in (
             ("status", "BLOCKED"), ("next_action", "bloquear Apply"),
             ("last_verified_gate", "NÃO comprovado"), ("blockers", ["hash mismatch"]),
             ("proposal_sha", "0" * 40), ("review_sha", "1" * 40),
             ("evidence_scope", "real_candidate"), ("issue", 62), ("run", "other"),
             ("apply_executed", True), ("contradictory_extra", "bloquear Apply"),
+            ("limitations", "hide current blockers here"), ("limitations", [None]),
         ):
             self.assertFalse(check(self.handoff_event(**{field: value})))
         for text in (
@@ -1338,6 +1346,13 @@ class ReadOnlyLocatorTest(unittest.TestCase):
                          commands[apply["cwd"]])
         self.assertNotIn("terminal", locator["runtime_receipt_identity"])
         self.assertNotIn("exit_code", locator["runtime_receipt_identity"])
+        inventory_locators = locator["inventory_locators"]
+        self.assertEqual({item["fact"] for item in inventory_locators},
+                         {"branch_checkouts", "registered_owners", "dirty_untracked", "index"})
+        for item in inventory_locators:
+            self.assertIn(item["command"], commands[item["cwd"]])
+            self.assertNotIn("output", item)  # Locators, not a native answer.
+        self.assertIn("does NOT enumerate ignored", locator["inventory_scope"])
 
     def test_t5_shared_locator_and_t7_only_after_explicit_choice(self):
         locator, _ = self.publish({11: self.receipt}, case="T5")
@@ -1349,12 +1364,15 @@ class ReadOnlyLocatorTest(unittest.TestCase):
         self.assertNotIn("runtime_receipt_command", ambiguous)
         self.assertNotIn("runtime_receipt_identity", ambiguous)
         self.assertNotIn("apply_instructions_locator", ambiguous)
+        self.assertNotIn("inventory_locators", ambiguous)
+        self.assertNotIn("inventory_scope", ambiguous)
         for selected in (21, 22):
             chosen, permissions = self.publish(receipts, case="T7", selected_issue=selected)
             self.assertEqual(chosen["runtime_receipt_identity"]["execution_id"],
                              receipts[selected]["execution_id"])
             self.assertIn(chosen["runtime_receipt_command"],
-                          [r["resource"] for r in permissions if r["action"] == "shell"])
+                           [r["resource"] for r in permissions if r["action"] == "shell"])
+            self.assertIn("inventory_locators", chosen)
         with self.assertRaises(ValueError):
             self.publish(receipts, case="T7", selected_issue=99)
 
@@ -1376,6 +1394,240 @@ class ReadOnlyLocatorTest(unittest.TestCase):
         self.assertEqual(subprocess.run(args[:2], env=env, capture_output=True).returncode, 2)
         (self.runtime / "receipts.json").write_text(json.dumps([{**self.receipt, "terminal": False}]))
         self.assertEqual(subprocess.run(args, env=env, capture_output=True).returncode, 3)
+
+
+class T1ObservedInventoryTest(unittest.TestCase):
+    """Real Git/reservation/receipt readouts in synthetic events, NOT a model run."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="resume inventory ", dir="/tmp/opencode")
+        self.addCleanup(self.temp.cleanup)
+        self.base = Path(self.temp.name)
+        self.repo = self.base / "repo"
+        self.repo.mkdir()
+        self.checkout = self.base / "writer checkout"
+        self.runtime = self.base / "runtime"
+        self.runtime.mkdir()
+        self.reader = self.runtime / "read-receipt"
+        self.reader.write_text(RUNTIME_READER)
+        self.env = {**os.environ, "HOME": str(self.base), "GIT_CONFIG_GLOBAL": "/dev/null",
+                    "GIT_CONFIG_NOSYSTEM": "1", "PYTHONDONTWRITEBYTECODE": "1",
+                    "RESUME_RUNTIME_ROOT": str(self.runtime)}
+        self.session = "ses-unit-inventory"
+        self.reservation = ROOT / "scripts/worktree-reservation"
+        self.fixture = {"repository": "disposable/recovery", "issue": 61, "run": "wf-unit"}
+        self.invoke(["git", "init", "-q"])
+        (self.repo / ".gitignore").write_text("*.cache\n")
+        (self.repo / "tracked").write_text("reviewed fixture\n")
+        self.invoke(["git", "add", "."])
+        self.invoke(["git", "-c", "user.name=Unit", "-c", "user.email=unit@localhost",
+                     "commit", "-qm", "fixture"])
+        self.invoke([str(self.reservation), "reserve", "--planned", "--path", str(self.checkout),
+                     "--repository", str(self.repo), "--issue",
+                     "https://github.com/disposable/recovery/issues/61",
+                     "--branch", "issue-61-fixture", "--session", "seed-T1", "--run", "wf-unit",
+                     "--json"])
+        self.invoke(["git", "worktree", "add", "-qb", "issue-61-fixture", str(self.checkout)])
+        # Keep the existing cooperative receipt helper unchanged; own/close the
+        # real child pipes here so unittest's ResourceWarning mode stays clean.
+        children = []
+        popen = subprocess.Popen
+        def capture(*args, **kwargs):
+            child = popen(*args, **kwargs)
+            children.append(child)
+            return child
+        try:
+            with patch("subprocess.Popen", side_effect=capture):
+                self.receipt = terminal_receipt(
+                    self.reservation, self.repo, self.checkout,
+                    "https://github.com/disposable/recovery/issues/61",
+                    "wf-unit", "T1", self.env, self.runtime)
+        finally:
+            for child in children:
+                if child.stdin and not child.stdin.closed:
+                    child.stdin.close()
+                child.wait(timeout=20)
+                for stream in (child.stdout, child.stderr):
+                    if stream:
+                        stream.close()
+        self.before = self.snapshot()
+        self.permissions = read_only_permissions(
+            self.repo, [self.checkout], self.reader, {61: self.receipt}, self.repo)
+        self.locators = read_only_locators(
+            self.repo, [self.checkout], self.reader, {61: self.receipt},
+            self.permissions, case="T1")
+        self.events = []
+        for locator in self.locators["inventory_locators"]:
+            argv = shlex.split(locator["command"])
+            if argv[0] == "worktree-reservation":
+                argv[0] = str(self.reservation)
+            self.add(locator["command"], self.invoke(argv, Path(locator["cwd"])),
+                     cwd=locator["cwd"])
+        self.add(self.locators["runtime_receipt_command"],
+                 self.invoke(shlex.split(self.locators["runtime_receipt_command"])))
+
+    def invoke(self, args, cwd=None):
+        return subprocess.check_output(args, cwd=cwd or self.repo, env=self.env,
+                                       text=True).strip()
+
+    def snapshot(self):
+        row = json.loads(self.invoke(
+            [str(self.reservation), "status", "--path", str(self.checkout), "--json"]))
+        return {"git": inventory(self.repo, self.env),
+                "checkout_git": {self.checkout.name: inventory(self.checkout, self.env)},
+                "reservation": {self.checkout.name: row}}
+
+    def add(self, command, output, *, cwd=None):
+        self.events.append({"type": "tool_use", "sessionID": self.session, "part": {
+            "tool": "shell", "id": str(len(self.events)), "state": {
+                "status": "completed", "input": {"command": command,
+                                                "workdir": str(cwd or self.repo)},
+                "output": output, "metadata": {"metadata": {"exit": 0, "truncated": False}}}}})
+
+    def proof(self, *, events=None, before=None, after=None, receipt=None, boundary=None):
+        return t1_inventory_proof(
+            self.events if events is None else events, self.session,
+            self.repo, [self.checkout], self.reader,
+            self.receipt if receipt is None else receipt, self.fixture,
+            self.before if before is None else before,
+            self.snapshot() if after is None else after,
+            handoff_index=len(self.events) if boundary is None else boundary)
+
+    def test_observed_closed_fixture_allows_only_last_gate_recovery_with_limitations(self):
+        self.assertTrue(self.proof())
+        provenance = {"proposal_sha": "a" * 40, "review_sha": "b" * 40}
+        limits = [
+            "controlled_fixture_seed is not real independent approval of candidate627/source31c.",
+            "No sha256sum66; transformed task bytes differ from source by design.",
+            "Post-Apply tests/smoke/CI and 0/16 tasks remain future work, not this read-only gate."]
+        handoff = {"issue": 61, "run": "wf-unit", "evidence_scope": "controlled_fixture",
+                   **provenance, "status": "RECOVERED",
+                   "last_verified_gate": "proposal_review_validated",
+                   "next_action": "reconcile-ownership", "apply_executed": False,
+                   "blockers": [], "limitations": limits}
+        def outcome(value):
+            return t1_handoff([*self.events, {"type": "text", "sessionID": self.session,
+                                             "part": {"text": json.dumps(value)}}],
+                              self.session, self.fixture, provenance)[0]
+        self.assertTrue(outcome(handoff))
+        # Fourth actual context: inventory was not observed. No JSON label fixes that.
+        self.assertFalse(self.proof(events=[]))
+        self.assertFalse(outcome({**handoff, "blockers": ["Current inventory not observed."]}))
+        # Last-gate recovery never reserves or authorizes effects.
+        self.assertEqual(self.before, self.snapshot())
+        self.assertNotEqual(self.before["reservation"][self.checkout.name]["owner"]["session"],
+                            self.session)
+
+    def test_each_fact_needs_successful_same_fixture_session_output_before_handoff(self):
+        for index in range(len(self.events)):
+            for mutation in ("missing", "error", "session", "cwd", "output", "exit", "truncated"):
+                with self.subTest(index=index, mutation=mutation):
+                    events = copy.deepcopy(self.events)
+                    state = events[index]["part"]["state"]
+                    if mutation == "missing":
+                        events[index] = {}
+                    elif mutation == "error":
+                        state["status"] = "error"
+                    elif mutation == "session":
+                        events[index]["sessionID"] = "other-session"
+                    elif mutation == "cwd":
+                        state["input"]["workdir"] = "/other"
+                    elif mutation == "output":
+                        state["output"] = "Claimed correct fixture inventory, not a readout."
+                    elif mutation == "exit":
+                        state["metadata"]["metadata"]["exit"] = 1
+                    else:
+                        state["metadata"]["metadata"]["truncated"] = True
+                    self.assertFalse(self.proof(events=events))
+        self.assertFalse(self.proof(boundary=len(self.events) - 1))
+        self.assertFalse(self.proof(events=self.events[-1:]))  # Receipt is not inventory.
+
+    def test_equivalent_existing_git_cwd_forms_and_empty_native_marker(self):
+        events = copy.deepcopy(self.events)
+        for event in events:
+            state = event["part"]["state"]
+            if state["input"]["workdir"] == str(self.checkout):
+                state["input"]["command"] = shlex.join([
+                    "git", "-C", str(self.checkout), *shlex.split(state["input"]["command"])[1:]])
+                state["input"]["workdir"] = str(self.repo)
+            if state["output"] == "":
+                state["output"] = "(no output)"
+        self.assertTrue(self.proof(events=events))
+
+    def test_unknown_or_live_conflicting_owner_cannot_reuse_old_terminal_receipt(self):
+        index = next(i for i, event in enumerate(self.events) if
+                     event["part"]["state"]["input"]["command"].startswith("worktree-reservation"))
+        for change in (
+            {"owner": None},
+            {"owner": {**self.before["reservation"][self.checkout.name]["owner"],
+                       "session": "other-live-writer", "pid": os.getpid()}},
+            {"owner": {**self.before["reservation"][self.checkout.name]["owner"],
+                       "pid": os.getpid()}},
+            {"state": "WAITING", "owner": None},  # Unknown transition needs reconciliation.
+            {"drift": {"changed": True}}, {"unknown_untracked_paths": ["local"]},
+            {"path": "/unrelated"}, {"head": "0" * 40},
+        ):
+            with self.subTest(change=change):
+                events = copy.deepcopy(self.events)
+                state = events[index]["part"]["state"]
+                data = json.loads(state["output"])
+                data["entries"][0].update(change)
+                state["output"] = json.dumps(data)
+                # Even a matched snapshot cannot bind an unrelated/live owner to the OLD receipt.
+                before = copy.deepcopy(self.before)
+                before["reservation"][self.checkout.name].update(change)
+                self.assertFalse(self.proof(events=events, before=before, after=before))
+        events = copy.deepcopy(self.events)
+        state = events[index]["part"]["state"]
+        data = json.loads(state["output"])
+        data["entries"].append({**data["entries"][0], "path": "/other", "owner": None})
+        state["output"] = json.dumps(data)
+        self.assertFalse(self.proof(events=events))
+
+    def test_missing_unknown_or_wrong_identity_terminal_receipt_blocks(self):
+        for field, value in (("terminal", False), ("exit_code", None),
+                             ("owner", "other"), ("run", "wf-other"),
+                             ("execution_id", "other-execution"), ("checkout", "/other"),
+                             ("head", "0" * 40), ("execution_kind", "pid_only")):
+            with self.subTest(field=field):
+                self.assertFalse(self.proof(receipt={**self.receipt, field: value}))
+        self.assertFalse(self.proof(receipt={}))
+        self.assertFalse(self.proof(events=self.events[:-1]))
+
+    def test_ignored_or_untracked_physical_data_is_not_proved_by_status_or_registry(self):
+        for name in ("ignored.cache", "untracked"):
+            with self.subTest(name=name):
+                path = self.checkout / name
+                path.write_text("local data not observed by the model\n")
+                before = self.snapshot()
+                if name.endswith(".cache"):
+                    self.assertEqual(before["checkout_git"][self.checkout.name]["status"], "")
+                self.assertFalse(self.proof(before=before, after=before))
+                path.unlink()
+        changed = copy.deepcopy(self.before)
+        changed["checkout_git"][self.checkout.name]["index"] = "changed index"
+        self.assertFalse(self.proof(after=changed))
+
+    def test_scope_read_attempts_are_distinct_from_stateful_and_other_denials(self):
+        events = copy.deepcopy(self.events)
+        def denied(command):
+            return {"type": "tool_use", "sessionID": self.session, "part": {
+                "tool": "shell", "state": {"status": "error", "input": {"command": command},
+                "error": "fixture shell: raw command/cwd denied",
+                "metadata": {"providerCall": {"executed": False}}}}}
+        # Actual sixth-trace variants: real-repo read61 vs unsupported checksum66.
+        events += [denied("gh api repos/rocker-code/my-ai-skills/issues/61"),
+                   denied("sha256sum openspec/changes/example/tasks.md"),
+                   denied("git status --porcelain=v1 -b && git worktree list --porcelain"),
+                   denied("worktree-reservation status --json")]
+        result = read_scope_attempts(
+            events, self.session, self.repo, self.permissions, self.fixture["repository"])
+        self.assertEqual(len(result["out_of_scope_reads"]), 1)
+        self.assertFalse(result["out_of_scope_reads"][0]["provider_executed"])
+        self.assertEqual(len(result["other_denied_attempts"]), 3)
+        self.assertFalse(forbidden_attempts(events, self.session))
+        # Labels are diagnostic, not a new rule that every denied read fails.
+        self.assertTrue(self.proof(events=events, boundary=len(events)))
 
 
 class TerminalReceiptTest(unittest.TestCase):

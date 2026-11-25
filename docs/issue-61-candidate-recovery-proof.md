@@ -2,6 +2,110 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Correção offline pós-sexta falha — inventário observado e limites do handoff
+
+Writer `ses_deeb219ebffecKs4h8aN9D00bl`, stage
+`workerfix61-inventory-handoff`, mesmo checkout/branch/run; entrada limpa
+`875aab2463ac317ebdbf9f5d2593a0b2119b86f3`, source627b89a inalterado.
+Reserva ownerless WAITING adquirida/verificada com identidade nativa real;
+nove ignorados/histórico preservados. Revisão independente recebida de
+`ses_dee9d76e4ffeR10I59JewObvEC`; nenhuma sétima inferência autorizada.
+
+**ANNOTATED CORRECTION sem apagar seq35:** blockers vazio continua
+obrigatório para RECOVERED, mas o prompt chamava blockers de “lista de
+lacunas”, misturando três limites não bloqueantes com um gap real:
+
+1. Seed controlled_fixture prova somente a revisão da fixture, não aprovação
+   independente real da candidata/source31cdb42 — limite de escopo honesto.
+2. SHA256 não recomputado pelo modelo/namespace source019aef5d versus fixture
+   be3b9397 — limite de método/transformação, não checksum adicional exigido;
+   review30/diff39 e pré-requisitos prospectivos já provaram integridade.
+3. **Inventário realmente não observado**: branch/checkouts/índice/dirty/
+   reservas não foram consultados com sucesso; preservação pelo harness não
+   substitui inspeção pelo modelo. Status5 composto e list/status70–71 foram
+   corretamente negados. Os comandos permitidos não estavam publicados
+   integralmente/cwd, apesar do texto “Published list commands”.
+4. Testes/smoke/CI pós-Apply ainda ausentes com 0/16 tarefas são limites do
+   estágio futuro; retomada read-only identifica o último gate anterior.
+   O relato sobre “versão declarada” não cria critério de bloqueio novo.
+
+Fonte de execução `ev-20261125T083810Z-4711919b`, sessão
+`ses_dee25002cffeyXijaW40o1kU0x`: modelo exit0/custo reportado0, harness1/T1,
+T5/T7 NOT RUN, sem erro de provedor/timeout. O trace real usa receipt17,
+Apply41, native50, strict42, proposta25/ancestralidades28–29/review30/diff39,
+final79; todos os gates anteriores ao handoff foram comprovados. O final
+RECOVERED+quatro blockers é incoerente e o inventário está genuinamente
+ausente. A execução original continua **FAILED**.
+
+Fase efetiva: asserção pós-terminal, contrato de saída da fixture e lacuna
+de observação do consumidor de inventário; não aplicação ou paid route.
+Scope: HOME/XDG/DB/Location privados novos, oito dimensões/pré-requisitos
+capturados antes/depois iguais. Lifecycle: terminal completo, writer
+cooperante real confirmado; isso não transfere posse nem autoriza escrita.
+Mesmo receipt antigo não pode aprovar um owner atual diferente/vivo ou
+inconclusivo no registry observado.
+
+Contrato já aprovado: delta
+`openspec/changes/issue-61-opencode-safe-resume/specs/interrupted-workflow-resume/spec.md:27`
+e `skills/resume-workflow/SKILL.md:10,14,18` exigem inventário/reconciliação.
+Publicar locators existentes de status completo, worktree porcelain,
+índice staged e reservation list com repository/cwd corretos; confrontar
+outputs efetivos da mesma sessão com as identidades reais da fixture e do
+receipt, antes do handoff. Não impor quota se fontes nativas equivalentes
+cobrirem os fatos. T7 só recebe esses locators após escolha; manter sua
+ordem/reinventário e todas as tentativas de conteúdo pré-escolha proibidas.
+
+Limite importante: `git status --untracked-files=all` não enumera ignored;
+`worktree-reservation list` também não é status fresco de bytes ignorados.
+Para a fixture fechada formada por arquivos rastreados, confrontar índice/
+status realmente observados com o inventário físico completo antes/depois
+sem paths extras; nunca alegar um scan nativo de ignored que não ocorreu.
+Dados locais extras/unknown sem observação suficiente bloqueiam a ação
+dependente. Inventário observado não é permissão de iniciar writer:
+reconciliação/reserva seguem sendo pré-condição de qualquer efeito.
+
+Segurança distinta: evento61 tentou `gh api repos/rocker-code/my-ai-skills/
+issues/61`, repo real fora de `disposable/recovery`; guard negou **pré-spawn**.
+Não houve leitura real de rede/operador. forbidden_attempts vazio significa
+nenhuma tentativa stateful classificada, não zero boundary attempts.
+Registrar essa tentativa de scope separadamente das variantes benignas/
+unsupported negadas (ex. sha256sum66). Não transformar toda leitura negada
+em falha automática, nem ampliar permissões. IDs candidate/source são
+traceabilidade do produtor, não autorização de acesso ao repo real.
+O replay também conserva read11 do diretório pai do sandbox, fora das
+raízes declaradas: negado pré-execução, tipo filesystem; distinto do
+endpoint real de repository61. Não foi leitura de arquivo do operador.
+
+Alternativa mínima: manter bloqueio. Escolha: esclarecer blockers atuais
+versus limitations de escopo/método/futuro, publicar comandos existentes e
+exigir prova nativa de inventário/owner correlacionada ao receipt. Schema
+pequeno somente da fixture, sem juiz LLM, wordlist, output de produção ou
+resposta calculada pelo harness. RECOVERED com blocker atual continua
+inválido; rótulos/limitations não substituem observações obrigatórias.
+Seq34 FAILED/seq35 diagnóstico/seq36 BLOCKED são preservados; seq37 anota
+esta correção sem resetar episódio. Check não final antes de novas provas;
+check final continua ready=false. Sem sétimo modelo/PR/push/archive/merge;
+próximo passo posterior é revisão afetada independente.
+
+**Implementação limitada à fixture e provas com diff (não gates finais):**
+
+| Contrato / risco | Prova |
+| --- | --- |
+| Separação contextual dos quatro relatos reais | `ev-20261125T091054Z-842ba1ac`: 60/60 focados. Handoff adiciona somente `limitations: list[str]` (até oito itens; JSON total limitado como antes), mantendo `blockers=[]` para RECOVERED. `next_action` também aceita `reconcile-ownership` antes de efeitos, sem novo estágio/CLI de produção. Seed, método SHA/namespace e pós-Apply são limites; inventário atual desconhecido é gap real. Sem wordlist/juiz semântico: provas tool/source continuam mandatórias. |
+| Locators, não resposta injetada | Mesmo grupo executa readouts reais de Git e registry em repo/worktree descartáveis, com receipt do helper cooperante existente. Comandos/cwds publicados conferem literalmente com policy gerada; sem campos owner/resultado esperados. Formas existentes `git -C` ou cwd do checkout cobrem os mesmos fatos; não há quota de variantes. T7 não recebe inventário selecionado antes de escolha explícita. |
+| Prova nova de inventário T1 | Mesmo grupo exige saída nativa bem-sucedida, não truncada, mesma sessão/cwd/identidade, pré-handoff: branch/checkouts, índice staged e status completos no root e worktree, reservation list e receipt correlacionado por execução/owner/run/checkout/HEAD. Ausência/erro/saída falsa/cwd errado, owner desconhecido ou outro vivo, receipt desconhecido/errado e duplicata conflitante falham. Snapshot/inventário físico de local-only/ignored continua independente e não concede posse. |
+| Limites de dados locais / escrita | Inventário físico de fixture deve permanecer igual e conter apenas paths rastreados antes/depois; extra ignored/untracked não pode passar pela falta de enumeração de ignored no status/list. `write_authorized=false` é limite da observação, não resposta a ser repetida pelo modelo. Owner antigo parado ainda exige reconciliação/reserva antes de efeitos; nunca se assume posse do modelo. |
+| Sexta falha não é reclassificada | `ev-20261125T091107Z-3bf7c926`: diagnóstico offline retém hashes originais de results/eventos/terminal, FAILED/proof_complete=false, cadeia nativa válida e oito snapshots iguais. Novo model_inventory_proved=false e handoff_outcome=false; nem uma mudança de interpretação de limitations supre as observações faltantes. T5/T7 continuam NOT RUN. Não injeta evento nem altera o trace/fixture antigo. |
+| Safety e histórico | Mesmo diagnóstico guarda eventos11/61 negados pré-execução em out_of_scope_reads (filesystem/repository), separados de outras variantes negadas. Mantém forbidden_attempts como stateful somente. Compara permissões byte-a-byte e funções antigas exceto handoff/locators/main; guard/reader/receipt/snapshot/pins/seleção de modelo e T5/T7 permanecem inalterados. Todos os registros históricos até seq36 preservados literalmente e nove ignorados byte-identical. |
+
+Falha inicial do novo teste foi preparação incompleta do repo descartável
+(faltava a reserva planned antes de criar o worktree), corrigida no teste
+seguindo o helper atual, sem alteração do receipt. Nenhuma tentativa de
+modelo. As provas acima têm dirty=true; antes de retornar, repetir focados,
+suíte offline integral, strict e diagnóstico/check não final no HEAD limpo,
+sem flags de required gate. IDs clean-HEAD ficam externos ao commit; saída
+limpa ownerless WAITING não altera ready=false do episódio.
+
 ### Sexta observação nativa revisada — 08:38–08:41 UTC, NOT READY
 
 Autorização nova explícita do coordenador após aprovação independente
@@ -1388,7 +1492,8 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"attempt","seq":34,"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers","target":"627b89a T1 phase1 native default","class":"assertion/contract","hypothesis":"independently approved scoped Git comparison with verified artifact prerequisites yields complete coherent T1 handoff","change":"one newly authorized native observation on reviewed627b89a after seq33 semantic diagnosis; mandatory native provenance gates retained and body locators optional","change_target":"test","observed_effect":"model exit0/cost0 and harness1; before/after artifact prerequisites verified/equal and model_proposal_provedtrue/model_apply_gate_provedtrue; native50/receipt17/strict42/Apply41 and full provenance succeed; final79 RECOVERED includes four blockers so outcomefalse/proof_completefalse; all eight snapshots dimensions equal; forbidden_attempts empty; T5/T7 NOT RUN","result":"fail","evidence":["evidence:ev-20261125T083810Z-4711919b"]}
 ,{"kind":"diagnosis","seq":35,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"class":"assertion/contract","checked":{"phase":"post-terminal strict t1_handoff expects coherent RECOVERED with blockers[]; final79 has four nonempty entries despite positive proposal/Apply predicates; exact commit25/ancestry28-29/review30/full-scope diff39/strict42/Apply41/native50 before final and real receipt17; optional five bodies33-36/40 also read","scope":"exact reviewed627b89a installed in fresh credential-free HOME/XDG/CODEX_HOME/privateDB/Location; artifact_comparison captured prospectively before/after verifiedtrue and equal with five physical/index/proposal hashes/modes/flags/config/attributes; no historic config fabrication; all eight snapshot dimensions equal","lifecycle":"ses_dee25002cffeyXijaW40o1kU0x pid1050443 exit0 at08:41:28.306891Z, no timeout/provider error/malformed JSONL;19steps cost0;42tools; harness1 T1 then stop;T5/T7 never launched; no seventh model; raw guard active both hooks cleanup; forbidden_attempts empty but denied raw read variants retained","consumers":"strict JSON handoff matcher/outcome and model interpretation of controlled_fixture seed/source/transformation versus post-Apply gates and inventory-source availability; scope/hash/post-Apply caveats listed as blockers; compound status5 and list/status70-71 lacking published args denied, no successful inventory tool observations; this differs from seq30 five-body overconstraint now corrected and verified prospective prerequisites, not renaming same absent proof"},"runtime_proof":["evidence:ev-20261125T083810Z-4711919b"],"simplest_alternative":"stop preserving failed strict outcome for independent offline review; do not strip blockers, widen raw guard or reinterpret final JSON as PASS","choice_rationale":"one new explicitly authorized observation consumed after affected independent review and seq33 diagnosis; successful prerequisites/provenance/receipt do not override actual contradictory strict handoff or justify automatic model rerun; no application/production defect established","next_hypothesis":"independent offline review can distinguish legitimate fixture-scope caveats from unresolved recovery blockers and inspect denied inventory command spelling/locators before any separately authorized contract-preserving correction"}
 ,{"kind":"blocker","seq":36,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T083810Z-4711919b"],"diagnosis":"seq:35","options":[],"impact":"T1 sixth native observation failed strict handoff; T5/T7 NOT RUN; tasks3.4/4.3 pending; no archive/final required suite/PR; independent offline handoff review required","researchable":true}
-,{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"outcome":"blocked","via_seq":36}
+ ,{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"outcome":"blocked","via_seq":36}
+ ,{"kind":"diagnosis","seq":37,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; recovered handoff carries nonempty blockers"},"class":"fixture/isolation","checked":{"phase":"healthy model completed; post-terminal handoff fixture schema ambiguously called all gaps blockers while mandatory observed inventory was not asserted/published; four final79 entries split scope seed, observation method/namespace, genuine unobserved inventory, future post-Apply stage","scope":"627b89a isolated HOME/XDG/DB/Location; eight prospective snapshots equal/prerequisites true; receipt17/Apply41/native50/strict42/proposal25/ancestry28-29/review30/diff39 actual; no new SHA-sum requirement or real candidate approval inside controlled fixture; ignored coverage must be honestly bounded, not inferred from status/list alone","lifecycle":"ses_dee25002cffeyXijaW40o1kU0x exit0/cost0/harness1 T1; T5/T7 not run; final79 RECOVERED plus four blockers correctly failed; no seventh model; stopped prior writer receipt does not grant ownership or approve different/live current registry owner","consumers":"T1 fixture metadata/locators, handoff blockers-versus-limitations schema and new native observed inventory proof; stateful forbidden_attempts distinct from denied out-of-scope repo read61 and benign unsupported variants; T5 checks/T7 prechoice and reinventory unchanged; guards/raw commands/permissions/pins unchanged"},"runtime_proof":["evidence:ev-20261125T083810Z-4711919b"],"simplest_alternative":"keep blocked; never strip actual blockers or assume snapshots equal means model inspected inventory or owns checkout","choice_rationale":"fresh independent review ses_dee9d76e4ffeR10I59JewObvEC distinguishes three honest nonblocking limitations from missing native inventory under approved spec27/resume-workflow10/14/18; publish existing exact inventory commands/cwds and require actual correct identity/owner/receipt observations; clarify read-only last-gate recovery versus permission before effects without new protocol/stage or LLM judge","next_hypothesis":"bounded schema with limitations plus real native inventory sources admits honest recovered fixture handoff only; unknown/live/conflicting owner or missing receipt/inventory still blocks regardless labels; retained sixth trace remains failed for genuine gap and nonempty blockers; independent affected review before any separately authorized seventh observation"}
 ]}
 ```
 
