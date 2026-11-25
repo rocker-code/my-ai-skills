@@ -22,7 +22,9 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               RUNTIME_READER, inventory, sha,
                                               read_only_permissions, prepared_phase,
                                               execute_model, ModelExecutionError,
-                                              model_preflight, t5_sources)
+                                              model_preflight, t5_sources,
+                                              seed_proposal_review, t1_proposal_proof,
+                                              STRICT_VALIDATE)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -133,6 +135,7 @@ class T7VisibleQuestionTest(unittest.TestCase):
                                                      "input": inp}}}
 
         discovery = [
+            event("read", {"path": ".agents/skills"}, "completed"),
             event("glob", {"pattern": ".agents/skills/openspec-*/SKILL.md"}, "completed"),
             event("shell", {"command": "find .agents/skills -name SKILL.md"}, "completed"),
             event("shell", {"command": "rg --files .agents/skills/openspec-explore/SKILL.md"},
@@ -417,6 +420,63 @@ class T7ReinventoryTest(unittest.TestCase):
 
 
 class NativeInvocationTest(unittest.TestCase):
+    def test_native_directory_read_is_discovery_only_before_invocation(self):
+        with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+            native = Path(root) / ".agents/skills/openspec-apply-change/SKILL.md"
+            native.parent.mkdir(parents=True)
+            native.write_text("name: openspec-apply-change\n")
+            session = "ses-native"
+            # V2 event31 shape: listing entries, not SKILL.md content.
+            listing = {"type": "tool_use", "sessionID": session, "part": {
+                "tool": "read", "id": "directory", "state": {
+                    "status": "completed",
+                    "input": {"path": ".agents/skills", "offset": 1, "limit": 200},
+                    "output": "Read directory .agents/skills, entries 1-8\n"
+                              "openspec-apply-change/\nopenspec-archive-change/\n"
+                              "openspec-explore/\nopenspec-propose/\n"
+                              "openspec-sync-specs/\nopenspec-update-change/\n"
+                              "openspec-verify-change/\n.openspec-target"}}}
+            invoked = {"type": "tool_use", "sessionID": session, "part": {
+                "tool": "skill", "id": "invoke", "state": {
+                    "status": "completed", "input": {"id": native.parent.name},
+                    "output": f"{native.parent.name}\nBase directory: {native.parent}"}}}
+            def check(events):
+                return native_calls(events, session, native, sha(native))
+            discovered, invocation, _ = check([listing, invoked])
+            self.assertEqual(discovered[0]["event_index"], 0)
+            self.assertEqual(invocation[0]["event_index"], 1)
+            self.assertTrue(check([listing])[0])  # T7 prechoice listing is allowed.
+            self.assertFalse(check([listing])[1])  # Listing is never invocation.
+            self.assertFalse(check([invoked, listing])[0])
+            absolute = copy.deepcopy(listing)
+            state = absolute["part"]["state"]
+            state["input"]["path"] = str(native.parent.parent)
+            state["output"] = state["output"].replace(
+                "Read directory .agents/skills,", f"Read directory {native.parent.parent},")
+            self.assertTrue(check([absolute, invoked])[0])
+            for path in ("other/.agents/skills", ".agents/skills/openspec-apply-change",
+                         str(native), "/wrong/.agents/skills"):
+                wrong = copy.deepcopy(listing)
+                wrong["part"]["state"]["input"]["path"] = path
+                wrong["part"]["state"]["output"] = wrong["part"]["state"]["output"].replace(
+                    "Read directory .agents/skills,", f"Read directory {path},")
+                self.assertFalse(check([wrong, invoked])[0], path)
+            for output in ("I found openspec-apply-change",
+                           "Read file .agents/skills, lines 1-2\n1: openspec-apply-change/",
+                           "Read directory .agents/skills, entries 1-1\nopenspec-apply-change-extra/",
+                           "Read directory /wrong, entries 1-1\nopenspec-apply-change/",
+                           "Read directory .agents/skills, entries 1-1\n1: openspec-apply-change/"):
+                wrong = copy.deepcopy(listing)
+                wrong["part"]["state"]["output"] = output
+                self.assertFalse(check([wrong, invoked])[0], output)
+            for status in ("error", "cancelled", "running"):
+                wrong = copy.deepcopy(listing)
+                wrong["part"]["state"]["status"] = status
+                self.assertFalse(check([wrong, invoked])[0])
+            wrong = copy.deepcopy(listing)
+            wrong["sessionID"] = "ses-other"
+            self.assertFalse(check([wrong, invoked])[0])
+
     def test_only_matching_runtime_skill_event_and_bytes_prove_invocation(self):
         with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
             native = Path(root) / ".agents/skills/openspec-explore/SKILL.md"
@@ -439,6 +499,123 @@ class NativeInvocationTest(unittest.TestCase):
             ):
                 self.assertFalse(native_calls([negative], "ses-native", native, digest)[1])
             self.assertFalse(native_calls([invoked], "ses-native", native, "wrong-sha")[1])
+
+
+class T1ProposalProofTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(dir="/tmp/opencode")
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name)
+        def git(*args):
+            return subprocess.check_output(["git", *args], cwd=self.repo, text=True).strip()
+        self.git = git
+        git("init", "-q")
+        change = self.repo / "openspec/changes" / CHANGE
+        change.mkdir(parents=True)
+        for name in ("proposal.md", "design.md", "tasks.md",
+                     "specs/first/spec.md", "specs/second/spec.md"):
+            path = change / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"# Fixture {name}\n")
+        git("add", "-A")
+        git("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-qm", "proposal")
+        self.proposal = git("rev-parse", "HEAD")
+        # Unit fixture validation is declarative here; separate native executor
+        # proof runs the REAL CLI. Never label these synthetic tool events native.
+        self.facts = seed_proposal_review(
+            self.repo, os.environ, self.proposal, f"Change '{CHANGE}' is valid",
+            "a" * 40, "b" * 40)
+        self.session = "ses-proposal"
+        self.invocation = [{"event_index": 0}]
+        self.events = [self.event(p["command"], p["output"]) for p in self.facts["probes"]]
+        self.events.append(self.event(STRICT_VALIDATE, self.facts["validation_output"]))
+
+    def event(self, command, output):
+        return {"type": "tool_use", "sessionID": self.session, "part": {
+            "tool": "shell", "state": {"status": "completed",
+                "input": {"command": command, "workdir": str(self.repo)},
+                "metadata": {"metadata": {"exit": 0, "truncated": False}},
+                "output": output}}}
+
+    def proof(self, events=None, invocation=None):
+        return t1_proposal_proof(self.events if events is None else events,
+                                 self.session, self.repo, self.facts,
+                                 self.invocation if invocation is None else invocation)
+
+    def test_correlated_commit_all_artifacts_review_and_strict_observations(self):
+        self.assertTrue(self.proof())
+        self.assertEqual(len(self.facts["review"]["files"]), 5)
+        self.assertNotEqual(self.proposal, self.facts["review_sha"])
+        self.assertEqual(self.facts["review"]["kind"], "controlled_fixture_seed")
+        self.assertEqual(self.facts["review"]["source_candidate"], "a" * 40)
+        self.assertEqual(self.facts["review"]["source_approved_proposal"], "b" * 40)
+        self.assertFalse(self.proof(invocation=[]))
+        self.assertFalse(self.proof(invocation=[{"event_index": len(self.events)}]))
+
+    def test_sha_echo_declarative_files_and_ready_instructions_are_not_proof(self):
+        for tool, inp, output in (
+            ("shell", {"command": f"echo {self.proposal}"}, self.proposal),
+            ("read", {"path": "recovery-evidence.json"}, json.dumps(self.facts)),
+            ("shell", {"command": f"openspec instructions apply --change {CHANGE} --json"},
+             json.dumps({"state": "ready", "proposal_sha": self.proposal})),
+        ):
+            event = self.event("", output)
+            event["part"]["tool"] = tool
+            event["part"]["state"]["input"] = inp
+            self.assertFalse(self.proof(events=[event]))
+
+    def test_native_empty_capture_marker_requires_terminal_zero_and_complete_capture(self):
+        for event in self.events:
+            state = event["part"]["state"]
+            if state["output"] == "":
+                state["output"] = "(no output)"
+        self.assertTrue(self.proof())
+        for field, value in (("exit", 1), ("exit", None), ("truncated", True)):
+            wrong = copy.deepcopy(self.events)
+            wrong[1]["part"]["state"]["metadata"]["metadata"][field] = value
+            self.assertFalse(self.proof(events=wrong))
+        wrong = copy.deepcopy(self.events)
+        wrong[1]["part"]["state"].pop("metadata")
+        self.assertFalse(self.proof(events=wrong))
+
+    def test_missing_mismatched_failed_other_session_or_cwd_sources_fail(self):
+        original = copy.deepcopy(self.events)
+        for index in range(len(original)):
+            with self.subTest(source=index):
+                self.assertFalse(self.proof(events=original[:index] + original[index + 1:]))
+                for field, value in (("status", "error"), ("status", "cancelled"),
+                                     ("output", "declaration only " + self.proposal)):
+                    wrong = copy.deepcopy(original)
+                    wrong[index]["part"]["state"][field] = value
+                    self.assertFalse(self.proof(events=wrong))
+                wrong = copy.deepcopy(original)
+                wrong[index]["part"]["state"]["metadata"]["metadata"]["exit"] = 1
+                self.assertFalse(self.proof(events=wrong))
+                wrong = copy.deepcopy(original)
+                wrong[index]["sessionID"] = "ses-other"
+                self.assertFalse(self.proof(events=wrong))
+                for field, value in (("workdir", "/wrong"), ("command", "git show HEAD"),
+                                     ("command", original[index]["part"]["state"]["input"]["command"]
+                                      + "; true")):
+                    wrong = copy.deepcopy(original)
+                    wrong[index]["part"]["state"]["input"][field] = value
+                    self.assertFalse(self.proof(events=wrong))
+        review_index = 3
+        for field, value in (("proposal_sha", "c" * 40), ("decision", "pending"),
+                             ("files", {}), ("reviewer", "unknown"),
+                             ("validation", {"exit_code": 1})):
+            wrong = copy.deepcopy(original)
+            data = json.loads(wrong[review_index]["part"]["state"]["output"])
+            data[field] = value
+            wrong[review_index]["part"]["state"]["output"] = json.dumps(data)
+            self.assertFalse(self.proof(events=wrong))
+        wrong = copy.deepcopy(original)
+        wrong[0]["part"]["state"]["output"] = "c" * 40
+        self.assertFalse(self.proof(events=wrong))
+        wrong = copy.deepcopy(original)
+        wrong[4]["part"]["state"]["output"] += "\nchanged artifact"
+        self.assertFalse(self.proof(events=wrong))
 
 
 class ReadOnlyGitHubTest(unittest.TestCase):

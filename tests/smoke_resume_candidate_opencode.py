@@ -24,6 +24,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE = "issue-61-opencode-safe-resume"
 APPROVED_PROPOSAL = "31cdb42b2d0e409e8820fa71d97177316c07f94a"
+STRICT_VALIDATE = f"openspec validate {CHANGE} --strict --no-interactive"
 PROMPTS = {
     "T1": (
         "Continue de onde parou nesta issue. Consulte evidências duráveis locais e "
@@ -34,7 +35,11 @@ PROMPTS = {
         "OpenSpec; descubra as skills nativas em .agents/skills e invoque a "
         "skill OpenSpec aplicável para conferir o próximo gate. Diga o último "
         "gate comprovado e a próxima ação. Esta prova é "
-        "somente leitura: não inicie Apply nem crie branch, worktree ou change."
+        "somente leitura: não inicie Apply nem crie branch, worktree ou change. "
+        "Confronte o commit da proposta, seus artefatos, validação estrita e "
+        "revisão imutável nas fontes disponíveis, não apenas declarações de estado. "
+        "Os comandos somente leitura publicados pela fixture têm argv e diretório "
+        "restritos; use-os sem composição. Relate fontes verificadas e lacunas."
     ),
     "T5": (
         "Retome este milestone após interrupção. Reconstitua PR, dependência e "
@@ -203,7 +208,79 @@ def contract_source(root, revision):
     return {"revision": revision, "path": selected, "files": files}
 
 
-def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoice=False):
+def seed_proposal_review(repo, env, proposal_sha, validation, candidate, source_proposal):
+    """Controlled fixture seed, NOT an independent review of the real candidate.
+
+    Pin all proposal bytes and the successful strict result to an immutable Git
+    review record. Keep candidate/source approval/fixture SHAs distinct.
+    """
+    contract = contract_source(repo, proposal_sha)
+    review_path = ".fixture/proposal-review.json"
+    review = {
+        "kind": "controlled_fixture_seed", "reviewer": "fixture-reviewer",
+        "decision": "approved", "proposal_sha": proposal_sha,
+        "files": contract["files"],
+        "validation": {"command": STRICT_VALIDATE, "exit_code": 0, "output": validation},
+        "source_candidate": candidate, "source_approved_proposal": source_proposal,
+        "limit": "Seeded test input; not real independent approval of the candidate.",
+    }
+    path = repo / review_path
+    path.parent.mkdir()
+    path.write_text(json.dumps(review, indent=2) + "\n")
+    git(repo, env, "add", review_path)
+    git(repo, env, "-c", "user.name=Smoke", "-c", "user.email=smoke@example.org",
+        "commit", "-qm", "controlled fixture proposal review")
+    review_sha = git(repo, env, "rev-parse", "HEAD")
+    # Facts independently read by the harness; model observations are checked
+    # separately below. The declarative recovery file is only a locator.
+    probes = [
+        (["git", "show", "--format=%H", "--no-patch", proposal_sha], proposal_sha),
+        (["git", "merge-base", "--is-ancestor", proposal_sha, review_sha], ""),
+        (["git", "merge-base", "--is-ancestor", review_sha, "HEAD"], ""),
+        (["git", "show", f"{review_sha}:{review_path}"], path.read_text()),
+    ]
+    for name, digest in contract["files"].items():
+        content = git(repo, env, "show", f"{proposal_sha}:{name}")
+        # git() strips output; hash the unstripped committed bytes instead.
+        assert hashlib.sha256(subprocess.check_output(
+            ["git", "show", f"{proposal_sha}:{name}"], cwd=repo, env=env)).hexdigest() == digest
+        assert sha(repo / name) == digest
+        probes.append((["git", "show", f"{proposal_sha}:{name}"], content))
+    probes.append((["git", "diff", "--exit-code", proposal_sha, "--", contract["path"]], ""))
+    for argv, expected in probes:
+        assert run(argv, cwd=repo, env=env) == expected.strip()
+    return {"proposal_sha": proposal_sha, "review_sha": review_sha,
+            "review_path": review_path, "review": review,
+            "probes": [{"command": shlex.join(argv), "output": expected.strip()}
+                       for argv, expected in probes],
+            "validation_command": STRICT_VALIDATE, "validation_output": validation.strip()}
+
+
+def shell_output_matches(output, expected):
+    # V2's native shell capture renders a successful empty stream this way.
+    # Callers must ALSO prove exit=0; this marker never proves success alone.
+    return isinstance(output, str) and (
+        output.strip() == expected or (expected == "" and output.strip() == "(no output)"))
+
+
+def t1_proposal_proof(events, session, repo, provenance, native_invocation):
+    """Require actual successful same-session tool observations, never SHA echo."""
+    calls = tool_events(events, session, tool="shell")
+    def observed(command, expected, *, after=-1):
+        return any(e["input"].get("command") == command and
+                   e["input"].get("workdir", str(repo)) == str(repo) and
+                   e["exit_code"] == 0 and e["truncated"] is False and
+                   e["index"] > after and shell_output_matches(e["output"], expected)
+                   for e in calls)
+    return bool(
+        provenance and native_invocation and
+        all(observed(p["command"], p["output"]) for p in provenance["probes"]) and
+        observed(provenance["validation_command"], provenance["validation_output"],
+                 after=min(i["event_index"] for i in native_invocation)))
+
+
+def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoice=False,
+                          provenance=None):
     """V2 ordered rules (last match wins), not a shell sandbox.
 
     grep authorizes the regexp and glob the pattern, NOT the target directory.
@@ -234,7 +311,7 @@ def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoic
                  f"openspec status --change {CHANGE} --json",
                  f"openspec show {CHANGE} --json",
                  f"openspec instructions apply --change {CHANGE} --json",
-                 f"openspec validate {CHANGE} --strict --no-interactive",
+                 STRICT_VALIDATE,
                  "gh issue list", "gh pr list",
                  "ls .agents/skills", "find .agents/skills -name SKILL.md", "pwd"]
     for issue in receipts:
@@ -256,6 +333,8 @@ def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoic
     for receipt in receipts.values():
         commands.append(shlex.join(["python3", str(reader), receipt["execution_id"],
                                     receipt["owner"], receipt["run"], receipt["checkout"]]))
+    if provenance:
+        commands.extend(p["command"] for p in provenance["probes"])
     rules.extend({"action": "shell", "resource": c, "effect": "allow"} for c in commands)
     if prechoice:
         rules.extend([
@@ -279,7 +358,7 @@ def disposable_path(home, inherited_path, operator_home):
     return os.pathsep.join([str(home / ".local/bin"), *system_paths])
 
 
-def disposable_shell_guard(directory, repo, worktrees, permissions, env):
+def disposable_shell_guard(directory, repo, worktrees, permissions, env, *, repo_only_commands=()):
     """Materialize a temporary native V2 guard, not a distributed plugin.
 
     Shell permissions operate on scanner output and cannot constrain raw input.
@@ -300,7 +379,8 @@ def disposable_shell_guard(directory, repo, worktrees, permissions, env):
                     GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.fsmonitor",
                     GIT_CONFIG_VALUE_0="false")
     roots = [str(p.resolve(strict=True)) for p in (repo, *worktrees)]
-    policy = {"commands": {root: commands for root in roots}, "env": safe_env,
+    policy = {"commands": {root: [c for c in commands if root == roots[0] or
+                                  c not in repo_only_commands] for root in roots}, "env": safe_env,
               "audit": str(directory / "audit.jsonl")}
     policy_path = directory / "policy.json"
     policy_path.write_text(json.dumps(policy, indent=2) + "\n")
@@ -388,11 +468,28 @@ def native_calls(events, session, native, expected_sha256=None):
                                "path": path, "sha256": sha(native), "event_index": index})
         if tool in ("glob", "shell") and ".agents" in json.dumps(inp) and name in output:
             discovery.append({"tool": tool, "id": part.get("id"), "event_index": index})
+        if tool == "read" and isinstance(inp.get("path"), str) and isinstance(output, str):
+            requested = inp["path"]
+            directory = native.parent.parent
+            # Actual V2 directory-read format. A file containing the skill name,
+            # a different listing, or prose about discovery is not discovery.
+            target = Path(requested)
+            canonical = (target if target.is_absolute() else directory.parent.parent / target)
+            lines = output.splitlines()
+            if (canonical == directory and lines and re.fullmatch(
+                    rf"Read directory {re.escape(requested)}, entries \d+-\d+", lines[0]) and
+                    name + "/" in lines[1:]):
+                discovery.append({"tool": tool, "id": part.get("id"), "event_index": index})
         if tool == "shell" and (
             "openspec instructions " in inp.get("command", "") or
             "openspec validate " in inp.get("command", "")
         ) and output:
             instructions.append({"tool": tool, "id": part.get("id"), "event_index": index})
+    # A later directory read cannot retroactively discover an invoked skill.
+    # With no invocation yet (T7 ambiguity turn), retain listing-only discovery.
+    if invocation:
+        discovery = [d for d in discovery if d["event_index"] < min(
+            i["event_index"] for i in invocation)]
     return discovery, invocation, instructions
 
 
@@ -411,7 +508,9 @@ def tool_events(events, session, *, tool=None, contains=None, completed_only=Tru
             continue
         found.append({"index": index, "input": state.get("input", {}),
                       "output": state.get("output", ""), "tool": part.get("tool"),
-                      "id": part.get("id")})
+                      "id": part.get("id"),
+                      "exit_code": state.get("metadata", {}).get("metadata", {}).get("exit"),
+                      "truncated": state.get("metadata", {}).get("metadata", {}).get("truncated")})
     return found
 
 
@@ -904,6 +1003,8 @@ def main():
         git(repo, env, "-c", "user.name=Smoke", "-c",
             "user.email=smoke@example.org", "commit", "-qm", "validated proposal")
         proposal_sha = git(repo, env, "rev-parse", "HEAD")
+        provenance = (seed_proposal_review(repo, env, proposal_sha, validation, revision,
+                                           APPROVED_PROPOSAL) if case == "T1" else None)
         fixture = {
             "T1": {"repository": "disposable/recovery", "issue": 61,
                    "run": "wf-disposable-t1", "scope": "single_issue",
@@ -923,6 +1024,12 @@ def main():
         fixture["candidate_sha"] = revision
         fixture["approved_source_proposal_sha"] = APPROVED_PROPOSAL
         fixture["contract_source"] = selected_contract
+        if provenance:
+            fixture["proposal_sources"] = {
+                key: provenance[key] for key in
+                ("proposal_sha", "review_sha", "review_path", "validation_command")}
+            fixture["proposal_sources"]["commands"] = [
+                p["command"] for p in provenance["probes"]]
         evidence.write_text(json.dumps(fixture, indent=2) + "\n")
         git(repo, env, "add", "-A")
         git(repo, env, "-c", "user.name=Smoke", "-c",
@@ -1035,15 +1142,19 @@ def main():
         for phase, message in enumerate(prompts, 1):
             permissions = read_only_permissions(repo, worktrees, reader, receipts,
                                                 active,
-                                                prechoice=case == "T7" and phase == 1)
+                                                prechoice=case == "T7" and phase == 1,
+                                                provenance=provenance)
             guard = disposable_shell_guard(
-                runtime_root / f"shell-guard-phase{phase}", repo, worktrees, permissions, case_env)
+                runtime_root / f"shell-guard-phase{phase}", repo, worktrees, permissions, case_env,
+                repo_only_commands=[p["command"] for p in provenance["probes"]]
+                if provenance else [])
             case_env["OPENCODE_CONFIG_CONTENT"] = json.dumps({
                 "$schema": "https://opencode.ai/config.json", "permissions": permissions,
                 "plugins": [guard["plugin"]]})
             record = {"phase": phase, "prompt": message, "before": before,
                       "native": native_provenance, "runtime_receipts": receipts,
                       "shell_guard": guard,
+                      "fixture_proposal_facts": provenance,
                       "permissions": permissions, "previous_session_id": session,
                       "model_preflight": {}}
 
@@ -1079,7 +1190,7 @@ def main():
                              if '"terminal": true' in e["output"] or
                                 '"terminal":true' in e["output"]]
             if case == "T1":
-                expected = (str(fixture["issue"]), fixture["run"], proposal_sha[:7], "Apply")
+                expected = (str(fixture["issue"]), fixture["run"], "Apply")
             elif case == "T5":
                 expected = ("12", fixture["pr_head"], "manual", "13")
             elif phase == 1:
@@ -1088,6 +1199,8 @@ def main():
                 expected = ("21", "wf-disposable-a")
             outcome = (t7_visible_question(response) if case == "T7" and phase == 1
                        else all(term.lower() in response.lower() for term in expected))
+            proposal_proved = (t1_proposal_proof(events, session, repo, provenance,
+                                                native_invocation) if case == "T1" else None)
             record.update({"phase": phase, "prompt": message, "session_id": session,
                       "response": response, "events": transcript, "before": before,
                       "after": after, "unchanged": before == after,
@@ -1098,10 +1211,13 @@ def main():
                       "resume_invocation": resume_invocation, "runtime_receipts": receipts,
                        "runtime_reads": receipt_reads, "outcome": outcome,
                        "github_reads": new_reads, "status": "observed"})
+            record["model_proposal_proved"] = proposal_proved
             phases.append(record)
             persist(base, results)
             required = before == after and calls_safe and new_calls and outcome
             required &= any(args[:1] == ["api"] for args in new_calls)
+            if case == "T1":
+                required &= proposal_proved
             if case == "T5":
                 required &= t5_sources(events, session, fixture, before["github"], new_reads)
             if case == "T7" and phase == 1:

@@ -92,6 +92,23 @@ console.log(JSON.stringify(cases.map(([command,cwd]) => {
         self.assertEqual(set(policy["commands"]), {str(self.repo), str(self.worktree)})
         self.assertNotIn("export", " ".join(policy["commands"][str(self.repo)]))
 
+    def test_pinned_provenance_commands_are_repo_only_not_general_git_permission(self):
+        proposal = "a" * 40
+        command = f"git show {proposal}:openspec/changes/fixture/proposal.md"
+        permissions = [*self.permissions,
+                       {"action": "shell", "resource": command, "effect": "allow"}]
+        self.guard = disposable_shell_guard(
+            self.base / "provenance-guard", self.repo, [self.worktree], permissions,
+            {"HOME": str(self.base), "PATH": "/usr/bin:/bin"},
+            repo_only_commands=[command])
+        self.assertEqual(self.evaluate([
+            [command, str(self.repo)], [command, str(self.worktree)],
+            [command.replace(proposal, "b" * 40), str(self.repo)],
+            [command + "; true", str(self.repo)],
+            [command + " extra", str(self.repo)],
+            ["git show HEAD:openspec/changes/fixture/proposal.md", str(self.repo)],
+        ]), [True, False, False, False, False, False])
+
     def test_unsafe_generated_allowlist_blocks_before_plugin_creation(self):
         with self.assertRaisesRegex(RuntimeError, "literal simple"):
             disposable_shell_guard(self.base / "unsafe", self.repo, [],

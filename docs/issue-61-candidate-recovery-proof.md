@@ -2,6 +2,195 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Correção offline T1 — descoberta e proveniência, sem nova inferência
+
+Writer delegado `ses_deecfd284ffeAQqQpQZa0BoTGX`,
+`workerfix61-T1-correlation`, mesmo run/checkout/branch, entrada `ea49c81`.
+Reserva ownerless WAITING adquirida com ID nativo próprio e verificada;
+nota dirty do observer abaixo preservada e estendida, sem aceitar drift.
+Os nove bytecodes continuam preservados. Escopo exclusivo: harness, regressões
+e este handoff. Sem produção, instalador, pins, pacote global, credenciais,
+PR/push/merge, archive/sync ou nova observação model-backed.
+`protocol/TEST_STRATEGY.md` comparado com `31cdb42`: `policy: ok`; políticas
+canônicas atuais e skills oficiais locais prevalecem sobre o global antigo.
+`context/list/status/instructions apply` oficiais confirmam este root,
+schema `spec-driven`, **14/16**; 3.4/4.3 continuam abertas. `state=ready`
+do OpenSpec não comprova review imutável nem autoriza declarar teste aprovado.
+
+**Diagnóstico independente recebido:** revisão
+`ses_def0f16a9ffeAEin2bLMykHlkm`, tentativa consumida
+`ev-20261125T051622Z-335af867`. A releitura offline recuperável
+`ev-20261125T053935Z-6d9799ef` confirma dois problemas distintos:
+
+- **Detector:** evento 31 é `read` bem-sucedido do diretório canônico
+  `.agents/skills`, com entrada exata `openspec-apply-change/`, antes da
+  invocação nativa 57. Leituras de conteúdo 51–53 não são descoberta nem
+  invocação. A correção aceita somente o envelope nativo de listagem,
+  diretório solicitado correto, sessão/status corretos e ordem anterior
+  à invocação. Skill tool continua sendo a única invocação.
+- **Proveniência faltante, não só SHA ausente na resposta:** a proposta
+  `5ac5413e79b2a83656fdafa3ed4433bdae6beaa7` é ancestral real e todos os
+  cinco artefatos atuais coincidem, conferidos pelo harness. Porém a sessão
+  do modelo só leu o SHA declarativo no evento 30 e na issue 38; não
+  inspecionou commit/review. Strict nos eventos 63/69/133 foi **negado**
+  por argv diferente da allowlist. Isso não é validação executada.
+  Fatos conferidos pelo executor não são observações feitas pelo modelo.
+
+**Preservação de contrato (design 33/43/49/61):** substituir o fraco eco de
+SHA na resposta por exigência **adicional e obrigatória de ferramentas**:
+commit exato, ancestralidade proposta→review→HEAD, leitura Git de todos os
+artefatos, diff zero dos artefatos contra a proposta, review imutável
+correlacionado a SHA/hashes/validação, e strict bem-sucedido depois da skill.
+Issue/run/Apply na resposta e todos os demais gates continuam obrigatórios.
+Somente leitura declarativa, prosa/echo, commit/review/artefatos diferentes,
+falha/ausência de exit, truncamento, sessão/cwd errados ou validação anterior
+à invocação não aprovam. Não há requisito aprovado de repetir literalmente
+o SHA na resposta final; não foi dispensada a correlação real.
+
+O review semeado é explicitamente `controlled_fixture_seed`,
+`fixture-reviewer`, não uma alegação de aprovação independente da candidata
+real. Seu commit Git distinto fixa decisão, proposta, hashes e resultado
+strict real da preparação. SHA da candidata instalada, proposta fonte
+`31cdb42`, proposta da fixture e review da fixture são campos distintos.
+`recovery-evidence.json` publica somente locators/comandos; fatos derivados
+do Git ficam em `fixture_proposal_facts`, observações do modelo em
+`model_proposal_proved`, sem confundi-los.
+
+Allowlist prospectiva mínima: comandos literais `git show --format=%H
+--no-patch <proposal>`, dois `git merge-base --is-ancestor`, `git show
+<review>:<review-path>`, um `git show <proposal>:<artifact>` para cada artefato
+e `git diff --exit-code <proposal> -- <change-root>`, **somente no cwd raiz
+da fixture**. Nenhum `git show` genérico, wildcard, interpretador arbitrário,
+export/env/composto ou argumento extra. O strict canônico existente
+`openspec validate issue-61-opencode-safe-resume --strict --no-interactive`
+fica publicado explicitamente; variantes negadas no run anterior continuam
+negadas e são negativos da prova nativa. Não há relaxamento por prefixo.
+Os dois hooks raw pré-spawn e substituição do ambiente ficam intactos.
+T7 pré-escolha continua permitindo listagem, proibindo conteúdo/invocação
+inclusive failed/cancelled, sem alteração de política ou skill de produção.
+Prompt T1 só acrescenta confronto natural de fontes/revisão/validação,
+sem nomear `resume-workflow`, SHA esperado ou lookup nativo dirigido.
+
+**Provas durante a correção, ainda com diff (não gates finais):**
+
+| Evidência | Resultado e limite |
+| --- | --- |
+| `ev-20261125T053654Z-24269ff7` | 36/36 offline antes do ajuste do envelope vazio. |
+| `ev-20261125T053701Z-e632fccb` | Prova nativa falhou no assert de saída vazia: exit 0 real retornou `(no output)`, não `""`; nenhuma inferência. |
+| `ev-20261125T053809Z-80f9bfe0` | 37/37 offline; negativos de listagem, proveniência e captura vazia/exit/truncamento. |
+| `ev-20261125T053809Z-b1276c50` | Executor nativo 2.3.2, sessão `ses_deec9da27ffe3n6CD1yH6V9R39`: 12 leituras exatas permitidas (inclui strict real) e 21 rejeições pré-spawn; zero mensagens/tokens/custo, bytes do repo e ambiente do operador inalterados. |
+
+A falha intermediária foi diagnosticada como **assertion/fixture**, fase de
+comparação pós-executor, não autorização nem CLI: fonte oficial v2.3.2
+`packages/core/src/{tool/plugin/shell.ts,shell/result.ts}` e captura nativa
+mostram o marcador de stream vazio. Alternativa mínima seria manter bloqueio;
+correção escolhida reconhece `(no output)` somente quando o resultado esperado
+é vazio **e** exit terminal é 0, sem truncamento. Unit negativo rejeita o mesmo
+marcador sem exit/exit≠0. Prova nativa seguinte confirmou strict e todas as
+rejeições, sem marker fsmonitor ou progress de spawn nos negativos.
+Documentação oficial V2 de plugins/server e fonte do executor foram
+reconsultadas; o bridge existente chama `ctx.tool.list().find(id=shell).execute`,
+não dispatcher/modelo. Fontes/policy/audit/resultados/log nativo ficam em
+stdout checksum-bound de `workflow-evidence`, originais em
+`/tmp/opencode/issue61-correlation-native2-ses_deecfd284ffe`.
+Revisão da serialização detectou variável de loop sobrescrevendo o envelope
+`native_results` impresso: corrigida antes do commit. A prova com diff acima
+tem audit/proof/log completos, mas imprime só o último resultado individual;
+o arquivo original contém todos. Exigir a nova prova no HEAD limpo com
+envelope integral checksum-bound, sem atribuir esse complemento à antiga.
+
+**Handoff:** registrar/verificar novamente suíte offline e prova nativa no
+HEAD limpo após este commit; IDs ficam fora do commit conforme TEST_STRATEGY.
+São provas **pre-smoke sem required gate**, não fechamento da entrega.
+Solicitar ao mesmo revisor independente inspeção das superfícies afetadas,
+proveniência/allowlist/provas; só depois cabe ao coordenador autorizar
+**uma observação separada**, se segura. Este writer não lança modelo nem
+retry. T1 atual continua **FAILED/NOT PROVEN**, T5/T7 **NOT RUN**; nenhuma
+aprovação retroativa. Recibo Dell/observer antigo permanece **UNKNOWN**.
+Devolver checkout limpo com reserva ownerless **WAITING**; nada arquivado.
+O receipt de verify foi consumido pelo checkpoint intermediário; antes de
+novo checkpoint/commit, renovar no baseline exato, preservando e reaplicando
+somente o delta próprio com hashes conferidos, sem aceite de drift e sem
+descartar a nota herdada do observer.
+
+### Observação única residual — 05:16–05:19 UTC, NOT READY
+
+Worker real `ses_deedf03e1ffeIEi5jKBFwDgALP`, `observe61-isolated`,
+run `wf-20261116T064328Z-45cb0ecc`, mesmo checkout/branch, HEAD limpo
+`ea49c81a3a40daa54f1d2f04b3fda10aeaf85a74`. Reserva ownerless WAITING
+adquirida/verificada com essa identidade; nove bytecodes/histórico preservados.
+Proposta `31cdb42` e revisão independente informada
+`ses_def0f16a9ffeAEin2bLMykHlkm` autorizavam uma observação, sem merge.
+Políticas atuais do checkout prevalecem sobre o pacote global antigo:
+sem audit/ready, ledger novo, comentários rotineiros ou outra issue.
+AUTO-IF-GREEN posterior cabe ao gate independente do coordenador.
+Provas do mesmo HEAD verificadas e reutilizadas: 279 testes offline
+`ev-20261125T050925Z-18d70bf7` e 31 focados
+`ev-20261125T050925Z-bf589b97`, sem required gate, não suítes finais.
+Instalador/pins inalterados; sem M2T/lockfile de aplicação relevante.
+
+**Comando:** `PYTHONDONTWRITEBYTECODE=1 python3 -B tests/smoke_resume_candidate_opencode.py`,
+sem argumentos, wrapper `workflow-evidence record`, timeout externo 1.800 s,
+interno 360 s/turno. Instalação/manifesto/skill no HEAD exato em HOME/XDG/
+CODEX_HOME/DB descartáveis, sem configuração/credenciais pessoais.
+OpenCode **2.3.2**, OpenSpec **2.1.1**, Python **3.14.8**.
+Imediatamente antes da inferência, no mesmo ambiente/Location,
+`/api/model/default` selecionou **`opencode/big-pickle`**, confirmado em
+`/api/model`: chat enabled/active, tools=true, text→text, todos os preços
+input/output/cache read/write conhecidos e zero. Nenhum override/fallback.
+Fonte do guard privado SHA-256
+`b878847767fd9759d7362a6aa71707b4e13f97606258f39448c82b23f255e656`,
+policy `9d8f3d2f545804da7f9836f11318eb4947bf49309061cb8bb76dfb5de7782935`;
+ativação fresh da fonte exata comprovada antes do modelo. Audit também
+registra setup/active do modelo, comandos literais aceitos nos dois hooks,
+compostos/argv/cwd alheios rejeitados pré-spawn e cleanup/disposed.
+Allowlist não foi afrouxada.
+
+**Resultado:** harness exit **1**, T1 `proof_complete=false`, `outcome=false`;
+**T5/T7 NOT RUN**. Única sessão model-backed
+`ses_deeddc510ffe4gvwkMrfPETB0I`, processo 1036247, terminal exit **0** às
+`2026-11-25T05:19:54.686012+00:00`, sem timeout, JSONL malformado ou evento
+de erro de provedor. Os 34 `step_finish` reportam custo zero, não zero tokens.
+Falha no primeiro gate de cenário: `native_discovery=[]` e resposta sem
+SHA/prefixo exigido da proposta da fixture
+`5ac5413e79b2a83656fdafa3ed4433bdae6beaa7`.
+Existe listagem via `read .agents/skills` no evento 31, mas `native_calls`
+aceita descoberta somente por glob/shell: analisar independentemente
+contrato/detector, não converter em PASS. Existem invocação natural
+`skill(resume-workflow)` no evento 2, `skill(openspec-apply-change)` no 57,
+`openspec instructions apply` no 70 e consulta do recibo independente
+`writer-T1-61` com owner/run/checkout corretos e terminal true no 130.
+Não preenchem os critérios faltantes. **Snapshots before/after disponíveis
+e iguais**, incluindo Git/checkouts/reservas/OpenSpec/GitHub/receipts.
+Igualdade não prova ausência de tentativa: os comandos negados ficam no audit.
+Falha atual de prova/assertion é distinta do HTTP 400 histórico; nenhum novo
+400/429/timeout. Não houve segunda observação ou autocorreção.
+
+**Prova:** `evidence:ev-20261125T051622Z-335af867`, execution.log 633.790 bytes,
+SHA-256 `9276633f6ce364119365fddea81e11d1c26dc69112cb72203490321e79938c8c`,
+retém results/preparação/snapshots, JSONL/stderr/terminal, guard/policy/audit
+e receipts em stdout checksum-bound, não somente caminho temporário.
+Verificado antes desta anotação com `--tool opencode=2.3.2 --tool
+openspec=2.1.1 --env-id sandbox=observe61-isolated-ses_deedf03e1ffe`:
+`state=verified/result=failed`, exit 3 `no_required_gate`.
+Originais em `/tmp/opencode/issue61-observe-ses_deedf03e1ffe`.
+`results.json` SHA-256
+`1adfc9018c18e2feda616a4e477b25edfae3a87d2ea48f1ac704fe311b39e63a`;
+JSONL `f46df518d0aababd7b5f7c837fde16320fade50be1574b5228ceb93067c055ca`;
+terminal `b38a665c8e2d93ec59c3787e35a7ed1ccdea85043f41c920f3857ea23c9c1fb3`.
+A fase registra `status=failed`; top-level `status`/`finished_at` ausentes
+na falha de asserção, sem reconstruí-los nem inferir PASS.
+
+**Parada:** tarefas 3.4/4.3 pendentes; sem archive/sync, suíte final,
+commit/push/PR/merge. Próxima ação mínima: revisão independente dos eventos
+e critérios faltantes, preservando prompt natural e guard, antes de qualquer
+correção/execução separadamente revisada. Só esta anotação permanece dirty,
+deliberadamente sem commit; a execução falha torna-se documentalmente stale,
+não gate final. Checkpoint inicial da nota foi recusado por receipt de verify
+consumido pelo checkpoint anterior: restaurada somente a própria anotação,
+confirmado diff zero, verify renovado e nota reaplicada; sem aceite de drift.
+Checkout retido e reserva devolvida a **WAITING**.
+
 **Handoff canônico da execução residual; gates pendentes.** A descrição abaixo de
 16/11 é histórica, não aprovação da candidata atual nem do contrato posterior
 de T1/T7. Os recibos em `/tmp` daquela máquina não estão disponíveis aqui.
@@ -271,7 +460,12 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 {"kind":"attempt","seq":6,"obligation":"T1","signature":"provider.invalid-request: upstream request failed: model is unavailable","target":"opencode/glm-5.3-flash-free at 33e193565009f8da5744eda218878d6a9a3e847c","class":"environment/bootstrap","hypothesis":"modelo listado no runtime isolado aceita a observação após setup válido","change":"nenhuma mudança após diagnóstico/setup; uma observação sem fallback","change_target":"none","observed_effect":"HTTP 400 Model is unavailable; sessão ses_def153ec6ffevyM1h9hymDQ8O1, exit 1, zero tool calls; T5/T7 NOT RUN","result":"fail","evidence":["evidence:ev-20261125T041548Z-ed5ea997"]},
 {"kind":"diagnosis","seq":7,"group":{"obligation":"T1","signature":"provider.invalid-request: upstream request failed: model is unavailable"},"class":"environment/bootstrap","checked":{"phase":"primeiro step do provedor antes de qualquer ferramenta","scope":"OpenCode 2.3.2 standalone; HOME/XDG/DB novos, sem credenciais do operador","lifecycle":"sessão nativa criada, erro terminal 400 e exit 1; nenhum timeout ou retry","consumers":"modelo público listado, instruções globais e skills carregadas no instruction_state da mesma sessão"},"runtime_proof":["evidence:ev-20261125T041548Z-ed5ea997","evidence:ev-20261125T041711Z-36eb7ff7"],"simplest_alternative":"consultar suporte/capacidade real do provedor antes de nova observação; não editar aplicação ou enfraquecer detector","choice_rationale":"listagem confirma descoberta, mas evento terminal nega disponibilidade; causa interna do provedor não é demonstrada","next_hypothesis":"somente nova disponibilidade comprovada ou seleção explicitamente fundamentada de runtime/modelo permitirá nova tentativa limitada"},
 {"kind":"blocker","seq":8,"group":{"obligation":"T1","signature":"provider.invalid-request: upstream request failed: model is unavailable"},"type":"technical","wait_reason":"external","evidence":["evidence:ev-20261125T041548Z-ed5ea997","evidence:ev-20261125T041711Z-36eb7ff7"],"diagnosis":"seq:7","options":[],"impact":"T1 bloqueado; T5/T7 não executados; sem archive, suíte final de entrega ou PR","researchable":false},
-{"kind":"resolution","group":{"obligation":"T1","signature":"provider.invalid-request: upstream request failed: model is unavailable"},"outcome":"blocked","via_seq":8}
+{"kind":"resolution","group":{"obligation":"T1","signature":"provider.invalid-request: upstream request failed: model is unavailable"},"outcome":"blocked","via_seq":8},
+{"kind":"attempt","seq":9,"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha","target":"ea49c81 T1 phase1 opencode/big-pickle","class":"assertion/contract","hypothesis":"reviewed guard and current native eligible default support complete natural recovery proof","change":"reviewed R1-R4 harness at exact clean HEAD; native model default revalidated without override","change_target":"test","observed_effect":"harness exit 1 after model exit 0; native_discovery empty and outcome false; before/after equal and available; T5/T7 not run","result":"fail","evidence":["evidence:ev-20261125T051622Z-335af867"]},
+{"kind":"diagnosis","seq":10,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha"},"class":"assertion/contract","checked":{"phase":"post-terminal T1 proof assertions, not provider/bootstrap; directory read event31 excluded by glob/shell discovery matcher; response lacks fixture proposal prefix","scope":"same isolated HOME/XDG/DB/Location and exact installed ea49c81 candidate; no operator credentials or model override","lifecycle":"native ses_deeddc510ffe4gvwkMrfPETB0I exit0 without timeout/provider error; outer harness exit1 and no next scenario; snapshots available/equal","consumers":"native_calls and T1 outcome matcher; successful natural resume skill, native Apply skill, instructions and independent writer receipt do not satisfy missing criteria"},"runtime_proof":["evidence:ev-20261125T051622Z-335af867"],"simplest_alternative":"retain failure and independently inspect directory-listing discovery semantics plus missing proposal correlation without another model","choice_rationale":"approved one-observation budget consumed; no guard relaxation, autocorrection, fallback or second observation authorized","next_hypothesis":"independent evidence review can distinguish discovery detector mismatch from response-correlation failure before any separately reviewed fix"},
+{"kind":"blocker","seq":11,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha"},"type":"technical","wait_reason":"dependency","evidence":["evidence:ev-20261125T051622Z-335af867"],"diagnosis":"seq:10","options":[],"impact":"T1 failed proof; T5/T7 not run; tasks 3.4/4.3 pending; no archive/final delivery suite/PR; independent event review needed","researchable":true},
+{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha"},"outcome":"blocked","via_seq":11},
+{"kind":"diagnosis","seq":12,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; native discovery absent and response missing proposal sha"},"class":"fixture/isolation","checked":{"phase":"post-terminal assertion plus model source inspection: directory event31 genuinely discovers before skill57; proposal commit/review uninspected; strict63/69/133 denied exact argv","scope":"same historical isolated fixture; actual Git ancestor and five artifact hashes independently checked; factual verification is separate from model-observed evidence","lifecycle":"historical model exit0 and harness exit1 preserved; no new inference; offline native bridge exits successfully with zero messages/tokens/cost; no dispatcher claim","consumers":"native_calls directory detector and T1 provenance matcher; raw tool/shell hooks unchanged; T7 prechoice content and failed/cancelled guard unchanged"},"runtime_proof":["evidence:ev-20261125T051622Z-335af867","evidence:ev-20261125T053935Z-6d9799ef","evidence:ev-20261125T053809Z-b1276c50"],"simplest_alternative":"retain failed proof; never drop final-SHA echo alone or substitute OpenSpec ready for immutable review","choice_rationale":"approved design requires real commit/artifact/validation/review correlation, not literal final response SHA; add exact bounded read-only sources and require same-session successful probes; fixture review explicitly controlled seed not real candidate approval","next_hypothesis":"after affected independent review, a separately authorized observation may prove native directory discovery and all immutable provenance probes plus strict canonical command; offline proof does not approve T1"}
 ]}
 ```
 

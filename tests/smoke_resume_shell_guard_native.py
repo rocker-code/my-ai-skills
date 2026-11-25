@@ -17,7 +17,9 @@ import subprocess
 import tempfile
 
 from smoke_resume_candidate_opencode import (
-    disposable_shell_guard, read_only_permissions, sha, shell_guard_preflight, redact)
+    disposable_shell_guard, read_only_permissions, sha, shell_guard_preflight, redact,
+    seed_proposal_review, contract_source, CHANGE, ROOT, APPROVED_PROPOSAL, STRICT_VALIDATE,
+    shell_output_matches)
 
 
 BRIDGE = r'''
@@ -70,8 +72,9 @@ def main():
     parser.add_argument("--output-dir", type=Path, help="new disposable directory to retain proof")
     args = parser.parse_args()
     cli = shutil.which("opencode")
-    if not cli:
-        raise RuntimeError("installed OpenCode V2 required; no inference fallback")
+    openspec = shutil.which("openspec")
+    if not cli or not openspec:
+        raise RuntimeError("installed OpenCode V2 and OpenSpec required; no inference fallback")
     base = args.output_dir
     if base is None:
         base = Path(tempfile.mkdtemp(prefix="issue61-native-rawguard-", dir="/tmp/opencode"))
@@ -84,13 +87,13 @@ def main():
     home, repo = base / "home", base / "repo"
     home.mkdir()
     repo.mkdir()
-    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
+    env = {"HOME": str(home), "PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8",
            "XDG_CONFIG_HOME": str(home / ".config"),
            "XDG_DATA_HOME": str(home / ".local/share"),
            "XDG_CACHE_HOME": str(home / ".cache"),
            "XDG_STATE_HOME": str(home / ".local/state"),
            "OPENCODE_DB": str(base / "opencode.db"), "OPENCODE_PASSWORD": secrets.token_hex(24),
-           "PYTHONDONTWRITEBYTECODE": "1"}
+           "OPENSPEC_TELEMETRY": "0", "PYTHONDONTWRITEBYTECODE": "1"}
     operator_env_before = dict(os.environ)
 
     def command(args, cwd=repo):
@@ -107,9 +110,21 @@ def main():
 
     checked(["git", "init", "-q"])
     (repo / "tracked").write_text("unchanged\n")
-    checked(["git", "add", "tracked"])
+    # Same real committed/validated contract and immutable fixture review as T1.
+    candidate = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                                        text=True).strip()
+    source = contract_source(ROOT, candidate)
+    shutil.copytree(ROOT / "openspec", repo / "openspec")
+    source_path = repo / source["path"]
+    active = repo / "openspec/changes" / CHANGE
+    if source_path != active:
+        source_path.rename(active)
+    validation = checked([openspec, "validate", CHANGE, "--strict", "--no-interactive"]).strip()
+    checked(["git", "add", "-A"])
     checked(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
-             "commit", "-qm", "fixture"])
+              "commit", "-qm", "fixture"])
+    proposal = checked(["git", "rev-parse", "HEAD"]).strip()
+    provenance = seed_proposal_review(repo, env, proposal, validation, candidate, APPROVED_PROPOSAL)
     marker, hook = base / "hook-executed", base / "harmless-fsmonitor"
     hook.write_text(f"#!/bin/sh\nprintf 'harmless hook executed\\n' >> '{marker}'\nprintf '\\n'\n")
     hook.chmod(0o700)
@@ -122,13 +137,20 @@ def main():
         "command": exploit, "exit": control.returncode, "stdout": control.stdout,
         "stderr": control.stderr, "hook_sha256": sha(hook)}))
 
-    permissions = read_only_permissions(repo, [], base / "read-receipt", {}, repo)
-    guard = disposable_shell_guard(base / "guard", repo, [], permissions, env)
+    other = base / "other-fixture-checkout"
+    other.mkdir()
+    permissions = read_only_permissions(repo, [other], base / "read-receipt", {}, repo,
+                                        provenance=provenance)
+    guard = disposable_shell_guard(base / "guard", repo, [other], permissions, env,
+                                   repo_only_commands=[p["command"] for p in provenance["probes"]])
     bridge = base / "bridge"
     bridge.mkdir()
     (bridge / "index.mjs").write_text(BRIDGE)
-    inputs = [
-        {"command": "git status --short", "workdir": str(repo)},
+    allowed_inputs = [{"command": "git status --short", "workdir": str(repo)},
+                      *[{"command": p["command"], "workdir": str(repo)}
+                        for p in provenance["probes"]],
+                      {"command": STRICT_VALIDATE, "workdir": str(repo)}]
+    inputs = [*allowed_inputs,
         {"command": exploit, "workdir": str(repo)},
         {"command": f"GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0={hook} git status --short"},
         {"command": f"env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0={hook} git status --short"},
@@ -139,6 +161,19 @@ def main():
         {"command": "$(printf git) status --short"},
         {"command": "git status --short", "workdir": str(base)},
         {"command": "git status --short --ignored", "workdir": str(repo)},
+        {"command": provenance["probes"][0]["command"], "workdir": str(other)},
+        {"command": provenance["probes"][0]["command"].replace(proposal, "0" * 40)},
+        {"command": provenance["probes"][3]["command"].replace(provenance["review_sha"], "HEAD")},
+        {"command": provenance["probes"][4]["command"] + " extra"},
+        {"command": provenance["probes"][4]["command"] + "; pwd"},
+        {"command": "git show HEAD:.fixture/proposal-review.json"},
+        {"command": "python3 -c 'print(1)'"},
+        # Actual denied commands in the consumed T1 observation. Only the
+        # canonical, published strict argv is admitted; never silently skip it.
+        {"command": f'openspec validate "{CHANGE}" --strict --json'},
+        {"command": f"openspec validate {CHANGE} --strict"},
+        {"command": STRICT_VALIDATE + " --json"},
+        {"command": STRICT_VALIDATE + "; pwd"},
     ]
     input_path, output = base / "inputs.json", base / "native-results.json"
     input_path.write_text(json.dumps(inputs))
@@ -175,18 +210,23 @@ def main():
     result = json.loads(output.read_text())
     assert result["sessionID"] == session and result["toolID"] == "shell"
     results = result["results"]
-    assert results[0]["status"] == "completed", results[0]
-    assert results[0]["result"]["output"]["exitCode"] == 0, results[0]
-    assert all(r["status"] == "rejected" and not r["progress"] for r in results[1:]), results
+    allowed = len(allowed_inputs)
+    assert all(r["status"] == "completed" and r["result"]["output"]["exitCode"] == 0
+               for r in results[:allowed]), results[:allowed]
+    for probe, probe_result in zip(provenance["probes"], results[1:allowed - 1]):
+        assert shell_output_matches(
+            probe_result["result"]["output"]["output"], probe["output"]), probe_result
+    assert results[allowed - 1]["result"]["output"]["output"].strip() == validation
+    assert all(r["status"] == "rejected" and not r["progress"] for r in results[allowed:]), results
     assert not marker.exists(), "rejected raw command executed the fsmonitor hook"
     assert before == {str(p.relative_to(repo)): sha(p) for p in repo.rglob("*") if p.is_file()}
     assert operator_env_before == dict(os.environ)
     audit = [json.loads(line) for line in Path(guard["audit"]).read_text().splitlines()]
     checks = [a for a in audit if a["boundary"] == "shell.create.before"]
     assert len(checks) == len(inputs), checks
-    assert checks[0]["decision"] == "allow"
-    assert all(a["decision"] == "deny" for a in checks[1:])
-    assert checks[1]["command"] == exploit
+    assert all(a["decision"] == "allow" for a in checks[:allowed])
+    assert all(a["decision"] == "deny" for a in checks[allowed:])
+    assert checks[allowed]["command"] == exploit
     state = api("get", f"/api/session/{session}")
     assert state["cost"] == 0
     messages = api("get", f"/api/session/{session}/message")
@@ -196,7 +236,8 @@ def main():
     proof = {
         "runtime": version, "session": session, "guard": guard,
         "native_executor": "ctx.tool.list().find(id=shell).execute",
-        "bridge_sha256": sha(bridge / "index.mjs"), "allowed": 1, "rejected": len(inputs) - 1,
+        "bridge_sha256": sha(bridge / "index.mjs"), "allowed": allowed,
+        "rejected": len(inputs) - allowed, "fixture_proposal_facts": provenance,
         "hook_calls": len(checks), "hook_marker_absent": True, "repo_bytes_unchanged": True,
         "operator_env_unchanged": True, "cost": state["cost"], "messages": messages,
         "limitation": "native executor via command bridge, not model-driven tool dispatcher",
@@ -210,8 +251,8 @@ def main():
                       "bridge_source": (bridge / "index.mjs").read_text(),
                       "policy": json.loads(Path(guard["policy"]).read_text()),
                       "native_log": redact((home / ".local/share/opencode/log/opencode.log").read_text(), env)}))
-    print(json.dumps({"proof": str(base / "proof.json"), "native_allowed": 1,
-                      "native_rejected": len(inputs) - 1, "inference": "NOT RUN"}))
+    print(json.dumps({"proof": str(base / "proof.json"), "native_allowed": allowed,
+                       "native_rejected": len(inputs) - allowed, "inference": "NOT RUN"}))
 
 
 if __name__ == "__main__":
