@@ -52,7 +52,9 @@ invocação, strict após Explore. MessageID presente deve corresponder a step_s
 anterior da mesma sessão; não aceitar output de outro step.
 
 T7 permanece **Explore-only**, conforme design:45/prompt. Cada fase recaptura o
-DB privado read-only; continuidade requer mesma identidade/baseline/blob/source/
+DB privado read-only; Apply é rejeitado em qualquer status mesmo após reinventário
+ou junto de Explore válido, sem ampliar a política de ferramentas. Cada captura do
+DB para continuidade requer mesma identidade/baseline/blob/source/
 sessão, snapshot novo e user/assistant **do turno atual** obtidos do DB/correlacionados
 ao step_start. Baseline alterado, stale/prepared metadata ou identidade inconclusiva
 não qualificam discovery. Catálogo antes da escolha é metadata, não conteúdo,

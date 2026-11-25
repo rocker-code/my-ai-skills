@@ -828,6 +828,12 @@ class T1NativeInspectionTest(unittest.TestCase):
             self.assertTrue(inspect(early)[2])
             self.assertFalse(t7_reinventory(
                 early, self.session, native_index + 1, self.repo, worktrees, reader, receipts))
+            other_skill = {"type": "tool_use", "sessionID": self.session, "part": {
+                "tool": "skill", "state": {"status": status, "input": {"id": "openspec-apply-change"}}}}
+            both = [*phase2[:native_index], other_skill, *phase2[native_index:]]
+            self.assertTrue(inspect(both)[2])  # Genuine Explore still observed, never a waiver.
+            self.assertFalse(t7_reinventory(
+                both, self.session, native_index + 1, self.repo, worktrees, reader, receipts))
 
     def test_catalog_capture_binds_current_turn_from_owned_private_sqlite_not_stale_preparation(self):
         import sqlite3

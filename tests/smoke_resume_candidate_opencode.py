@@ -1646,6 +1646,9 @@ def t7_reinventory(events, session, first_native, repo, worktrees, reader, recei
     if forbidden_attempts(events, session):
         return False
     boundaries = native_attempts(events, session)
+    if any(e["tool"] == "skill" and e["input"].get("id") != "openspec-explore"
+           for e in boundaries):
+        return False  # T7 prohibits Apply even after reinventory or beside valid Explore.
     if boundaries:
         first_native = min(first_native, min(e["index"] for e in boundaries))
     chosen = receipts[21]
