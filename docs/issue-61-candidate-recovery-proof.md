@@ -2,6 +2,107 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Décima segunda observação — T1 rejeita campo estruturado extra, T5/T7 NOT RUN
+
+Novo harness completo explicitamente autorizado após aprovação da emenda
+`a0b4796fb1a2646125c6e62bfa6ca450d2118e7e` pelo revisor
+`ses_ded1cc759ffeKg9V7T7ZcvaIka` e da implementação limpa
+`908724380bc8e4719b8f5ad0ed05a887e1baa5e8` por
+`ses_ded2cde46ffejUezPSz4fYw6cx`. Mesmo worker real
+`ses_dee5e0a18ffefE7FomnYJ9smc1`/issue/branch/checkout/run, stage
+`observe61-t5-verify-amendment`; reserva própria/checkpoint/verify sem drift,
+nove ignorados preservados. Diagnóstico pós-segunda falha seq54 e check não
+final lidos antes do launch: valid=true/violations=[]/ready=null.
+Reverificados no HEAD exato: 320 testes `ev-20261125T135437Z-87ba3020`,
+strict1/1 `ev-20261125T135437Z-250f8cb8`, global13/13
+`ev-20261125T135437Z-2b32772c`, verified/passed/no_required_gate, não gate final.
+
+**Uma chamada completa** `python3 -B tests/smoke_resume_candidate_opencode.py`,
+override explícito `RESUME_SMOKE_MODEL=opencode/deepseek-v4.1-flash-free`,
+sem fallback/pop, patch de fonte ou prompt padding. HOME/XDG/config/CODEX_HOME/
+DB novos privados, sem auth de operador; OpenCode2.3.2/OpenSpec2.1.1, guard fresh
+ativo de hash `b878847767fd9759d7362a6aa71707b4e13f97606258f39448c82b23f255e656`.
+Interno360s/externo1.800s, nenhum timeout/cancel. Callback real
+`sh_213072d06001QK6OZ2rt4ublPO` **exit1**.
+Preflight T1 source RESUME_SMOKE_MODEL, match único enabled/active/chat/tools,
+input text+image/output text, um tier com input/output/cache read/write0.
+Todos os **15 assistants** nativos registram opencode/deepseek-v4.1-flash-free,
+variant default do runtime, sem alteração global/variante.
+
+**T1:** `ses_decf8c2b7ffeC3R4OUj3kLUXQF`, PID3127605, terminal0 em
+`2026-11-25T14:09:32.320609+00:00`, sem provider error/malformed, stderr vazio.
+67 eventos/15 steps/35 tools, custo reportado0. Os **nove fatos de fonte são
+true**, ownership_condition_proven=true; oito snapshots iguais e pré-requisitos
+físicos/Git verified=true antes/depois. Porém **read_only_facts_proven=false,
+read_only_acceptance=blocked, proof_complete=false, scenario_pass=false,
+serialization_compliance=failed, write_authorized=false**. Não confundir esses
+nove predicados com o aceite completo nem transportar aprovação T1 antiga.
+
+**Causa efetiva localizada:** handoff65 é JSON único legível de **3.878 bytes**
+(abaixo4096), com identidade/proposal/review/ação/status corretos, blockers=[]
+e oito limitations de tipos/tamanhos válidos. A condição tipada confere com
+fontes. Há, contudo, **um campo estruturado desconhecido `sources_verified`**,
+lista de dez strings. `t1_handoff` linha658 recusa a chave fora de
+expected|diagnostics; todos os demais predicados desse helper foram conferidos
+true sobre o valor original. RuntimeError2480: `T1 phase 1: recovery proof
+incomplete`. Não é estouro de tamanho/JSON inválido/blocker não vazio, erro de
+provider ou ausência de fonte. O oráculo atual rejeita claims estruturados
+desconhecidos: não apagar a chave, estender allowset, reescrever resposta ou
+chamar isso de mero diagnóstico legado automaticamente. Revisão independente
+continua necessária; o status armazenado é **blocked**, não pending-review/PASS.
+
+Provas anteriores ao final: receipt28/inventário25/29–31/34/37, proposta32/
+review33/ancestralidade35–36/diff46/cinco blobs42–45/47, Apply CLI50/strict51,
+GitHub53 e invocação nativa **Apply59** canônica
+`71f084a1ea26194f62cb9ed31da8e4aa837fd57abb2b91b9cbb0c6ee8d503b79`.
+Proposta fixture `46a15286ee778623a002bf8558a08ea239646d12`,
+review `8eead30abf7fb16f9dcfef5f1bead79e857e3f75`, não aprovações reais.
+Verify52 foi só read de arquivo em T1, sem tentativa de invocação proibida.
+forbidden_attempts=[] não apaga shell5/6, reads9/12/15/21 e comments56 negados;
+reads12/15 externos foram bloqueados, sem acessar dados do operador.
+
+**T5 e T7 NOT RUN**, nem preparados nos resultados. A fonte Verify2.1.1/hash
+canônico foi checada antes do modelo; perfis T5/T7 têm só prova offline anterior.
+A emenda T5 **não
+teve advertisement/catálogo entregue/dispatch ou PR facts observados neste run**.
+Não concluir sucesso/falha causal da emenda a partir da parada T1. Nenhum ID,
+escolha, continuidade ou reinventário T7 fabricados; nenhum décimo terceiro run.
+
+Lifecycle: writer `writer-T1-61/seed-T1/wf-disposable-t1`, PID3126572, observado
+vivo e depois terminal0/checkout/head correlacionados. DB nativo T1 IDLE succeeded;
+cliente3127605/writer3126572 ausentes em /proc após término, sem kill/restart/
+limpeza. Contadores registrados dos assistants: input69202/output4359/
+reasoning11263/cache read307968/write0; custos reportados0, liquidação final
+do provedor **UNKNOWN**. Isso não é faturamento nem sucesso do harness.
+
+Binding resume-effective-inputs-v1 original, checksum conferido:
+`20ae597a5236ca6f17b23f0a9aa8de10c070136aaa0ddebf4774f62d5ccac0ad`,
+candidate9087243/approveda0b4796. Execution binding/catálogo nativo retidos;
+snapshot before=after
+`088a9ad62e6ff17710f0d6dffc2eaf8345cbb9f337e496a4653ea9c5bb1039c3`.
+`native-assistant-models.json` SHA-256
+`ad3fecd77553faeb225fa57de3f8fdabc8cbfb15dec1b6c4c53647dafd421781`.
+
+**Prova** `evidence:ev-20261125T140607Z-20bd532b`, verified/failed antes desta
+nota, no_required_gate; log **1.005.410 bytes**,
+SHA-256 `372787d084691c51dfe929443aaf1a2d42f62944d159d07ce65d591efa25a42c`,
+final `2026-11-25T14:09:32.736991Z`. Originais em
+`/tmp/opencode/issue61-observe-9087243-deepseek-ses_dee5e0a18ffe/`.
+Results `1260a7db1266400d837997bd0a9ec381a004db93b22513f1792aaa5b0dc220f7`;
+JSONL `b71ae1a776d702e315e43c59547c9b6bf558b69c6ad4305d6f97132891f1a5b0`;
+terminal `bb5b41001f82262857df2dd3793d7ff968b6911e9a4ec632988080b09e7a0ebf`.
+Perfil opencode2.3.2/openspec2.1.1, sandbox observe61-9087243-deepseek-ses_dee5e0a18ffe,
+model-override opencode/deepseek-v4.1-flash-free.
+
+Parada sem correção de fonte/oráculo/gate/guard/permissão/prompt/timeout,
+autorretry, outra rota/modelo, suíte final/archive/sync/PR/push/merge/tag/release.
+Onze falhas anteriores e recibos de metadados/bindings/pending fields preservados;
+seq56–58 registram esta falha T1 e seu diagnóstico, sem resolver/resetar episódios.
+Próximo passo mínimo: revisão independente da resposta/eventos e do claim extra
+sob o contrato aprovado, sem inferência nova. Closeout previsto só documental:
+commit desta retenção, verify e release WAITING confirmados pelo callback,
+final readiness false/F1 incompleto.
+
 ### Apply offline a0b4796 — capacidade Verify exclusiva de T5
 
 Emenda aprovada `a0b4796fb1a2646125c6e62bfa6ca450d2118e7e`, Apply novo
@@ -2593,6 +2694,10 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"diagnosis","seq":54,"group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; no native OpenSpec invocation, Verify file read only"},"class":"assertion/contract","checked":{"phase":"second same-signature failure after seq50, complete post-failure diagnosis before any further work; T5 aggregate native conjunction2366-2370 fails, RuntimeError2438 persisted statusfailed/proof_completefalse; sole skill tool resume-workflow5, Verify read30/prose not native dispatch; list35/strict40 genuine but selected native source null/discovery/invocation/instructions empty cannot be filled from file read or CLI","scope":"exactclean930b1bc installed, reviewed code703 byte-identical, approvede1408daf; explicit parent selected only opencode/deepseek-v4.1-flash-free through existing process-local override, not default big-pickle; fresh T1/T5 unique literal enabled/active/chat/tools/text/image known-zero-all-tier native metadata, source RESUME_SMOKE_MODEL; private HOME/XDG/config/CODEX_HOME/DB and unchanged raw guard, no operator auth/real GH; T5 manifest2/GH9-14 prove disposable/recovery milestone3 issue11 PR12/headfb9ebc519fba3784dcea18f5d91bc02deef22f11/checkSUCCESS/manual/dependent13; t5_sources true, snapshots seven equal, forbidden_attempts[]","lifecycle":"T1ses_ded38ec4cffeYMkMO5YUGlftet pid1751971 terminal0 at12:58:09.166281Z,8steps/30tools; T5ses_ded36fea1ffeUJ8eNr61DIvTiV pid1790205 terminal0 at13:00:42.139052Z,12steps/32tools; no timeout/cancel/malformed/provider error, stderr empty, both private native idle outcomes succeeded;20actualassistant raw model fields all DeepSeek/default runtime variant, sumreportedcost0 but settled provider finalcost UNKNOWN; clients and terminal-cooperating writer1750845/1789060 absent, no kill/restart/cleanup; T7 not launched, no twelfth model","consumers":"T5 inventory18-23/receipt24 and response63 keep existing PR review/manual/dependent13 blocked; Verify tool not allowed despite readable canonical file, Explore/Apply delivered and allowed but neither invoked; quoted status33/instructions36 and Git43/44/46-49 denied pre-spawn, .git read60 denied, no out_of_scope reads; raw quotes are not exact published commands and do not prove permitted locators unavailable; T1 facts9/typed ownership/serializationpassed/eight snapshots/prereqs true with nativeApply37 but independent semantic review pending/scenario_passfalse/write_authorizedfalse; prepared/execution/catalog bindings retained unchanged with T5 source null and material actual model linked via native DB receipt"},"runtime_proof":["evidence:ev-20261125T125602Z-c3f672d3"],"simplest_alternative":"stop retaining second real missing-dispatch failure and actual model identity for independent offline review; do not widen raw guard, add Verify, force Apply, infer native invocation from read/CLI, pad prompts, retry or select another route","choice_rationale":"new model experiment explicitly authorized once after same-profile metadata, not automatic fallback; changed actual model still omitted native OpenSpec dispatch, which is a behavioral observation not proof of exclusive model/root-cause or router/matcher defect; keep seq50-52 and ten earlier whole FAILED runs, no episode/budget reset or retrospective PASS; complete T7/F1 remains unproved","next_hypothesis":"independent parent review can compare both real same-signature traces and actual source/catalog/model fields without executing another model or granting a code/gate fix"}
 ,{"kind":"blocker","seq":55,"group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; no native OpenSpec invocation, Verify file read only"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T125602Z-c3f672d3"],"diagnosis":"seq:54","options":[],"impact":"eleventh whole native experiment FAILED T5 missing native dispatch despite actual explicit DeepSeek route; second same signature fully diagnosed; T1 current technical facts true but independent review pending, T7 NOT RUN/F1 incomplete; no final unit gate/archive/PR; no further inference authorized","researchable":true}
 ,{"kind":"resolution","group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; no native OpenSpec invocation, Verify file read only"},"outcome":"blocked","via_seq":55}
+,{"kind":"attempt","seq":56,"obligation":"T1","signature":"assertion: recovery proof incomplete; unknown structured handoff field sources_verified","target":"9087243 full native harness under new approved a0b4796 T5 capability amendment, stopped in T1","class":"assertion/contract","hypothesis":"one newly authorized complete native observation with reviewed T5-only Verify capability and same explicit DeepSeek override can prove current whole inputs without reusing prior T1 approval","change":"one parent-authorized complete harness at exactclean9087243/approveda0b4796, fresh isolated guard/profile/model preflight, no runtime source edits or fallback","change_target":"test","observed_effect":"T1 terminal0, all nine source facts/typed condition true/eight snapshots/prereqs equal, but final65 unique bounded JSON adds sources_verified; current semantic allowed-key check rejects it, read_only_acceptanceblocked/proof_completefalse/serializationfailed; actual15assistants allDeepSeek; harness1; T5/T7 NOT RUN","result":"fail","evidence":["evidence:ev-20261125T140607Z-20bd532b"]}
+,{"kind":"diagnosis","seq":57,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; unknown structured handoff field sources_verified"},"class":"assertion/contract","checked":{"phase":"post-terminal T1 t1_handoff line658 rejects unknown structured key sources_verified in final65; 3878byte JSON parses uniquely below4096, identity/proposal/review/next_action/status/blockers/limitations/types all other clauses true; sources_verified is list10, not an allowed semantic/diagnostic field; t1_phase_evaluation semantic conjunction false despite facts9true/ownershiptrue; RuntimeError2480 after failed result persisted","scope":"exactclean9087243 installed approveda0b4796; T5-only material Verify amendment reviewed separately, T1 gate/prompt unchanged; fresh isolated HOME/XDG/config/CODEX_HOME/privateDB, canonical2.1.1Verify hash checked pre-model, T1 default-deny Verify tool preserved; nativeApply59 source/path/body/hash/session and delivered catalog proved, CLIApply50/strict51/receipt28/inventory25/29-31/34/37/GitHub53/proposal32/review33/ancestries35-36/full diff46/fiveblobs42-45/47 all observed before final","lifecycle":"ses_decf8c2b7ffeC3R4OUj3kLUXQF pid3127605 terminal0 at14:09:32.320609Z,67events/15completedsteps/35tools; no timeout/cancel/provider error/malformed lines, stderr empty, private nativeIDLEsucceeded;15assistant rawmodel fields all opencode/deepseek-v4.1-flash-free/default runtimevariant, sourceRESUME_SMOKE_MODEL with uniqueenabledactivechattoolstext all knownzeroprices; sumreportedcost0 but settled provider finalcost UNKNOWN; cooperative writer3126572 observed live then terminal0, client/writer absent afterward, no kill/restart/DB cleanup","consumers":"T1 before/after eight snapshots and artifact prerequisites verifiedtrue/equal, forbidden_attempts[]/write_authorizedfalse; typed before-write/prior-stopped-owner matches realreceipt but cannot override unsupported claim; out_of_scope reads12/15 denied plus shell5/6/read9/21/comments56 boundary denials retained; Verify52 direct file read not forbidden skill attempt; T5/T7 never prepared/launched, no actual amended T5 advertisement/dispatch/PR proof or T7 choice/session proof; original effective/execution/catalog/model receipts preserved without dropping extra key"},"runtime_proof":["evidence:ev-20261125T140607Z-20bd532b"],"simplest_alternative":"stop retaining exact unsupported structured claim and all successful source predicates for independent review; never delete sources_verified, expand allowed keys/size, classify this as legacy serialization-only PASS, bypass T1 to force T5/T7, alter source/prompt or run thirteenth model","choice_rationale":"new parent authorization consumed one complete harness; this is a real unknown-key semantic gate failure rather than old nonempty-blocker or T5 missing-dispatch signature, with all old episodes kept blocked and budgets not reset; no provider issue or causal success/failure of the unexecuted T5 capability amendment established; current acceptance stays blocked, not pending or approved","next_hypothesis":"independent offline response/event review can assess the extra structured source claims against approved bounded-handoff contract while preserving factual original failure and all inputs; any later contract/code/model experiment needs separate decision"}
+,{"kind":"blocker","seq":58,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; unknown structured handoff field sources_verified"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T140607Z-20bd532b"],"diagnosis":"seq:57","options":[],"impact":"twelfth whole observation FAILED T1 unknown-key handoff gate despite all nine source facts and typed condition true; T5 amended native capability not behaviorally tested, T7 NOT RUN/F1 incomplete; final readiness false; no archive/final unit gate/PR or further inference authorized","researchable":true}
+,{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; unknown structured handoff field sources_verified"},"outcome":"blocked","via_seq":58}
 ]}
 ```
 
