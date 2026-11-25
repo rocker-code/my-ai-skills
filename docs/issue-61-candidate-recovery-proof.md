@@ -2,6 +2,61 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Um GET de catálogo privado — ausência exata de Tidepool comprovada nesta resposta
+
+Autorização separada somente para **um** GET `/api/model`, sem default reread,
+refresh, fallback ou inferência. Entrada limpa `acd7f2188cf15a4f7bfcbd980fd5a28e5f2bda94`,
+mesmo worker `ses_dee5e0a18ffefE7FomnYJ9smc1`/issue/run, stage
+`metadata61-one-catalog`, reserva própria verificada sem drift. O diagnóstico
+independente `ses_ded47d8eefferzm2mJPYKxv6mt` informa parser oficial correto:
+envelope location/data, array de modelos habilitados/chat, match providerID/id;
+o wrapper anterior perdia projeção/count no reject. Nenhum bug de fonte provado.
+
+OpenCode **2.3.2**, perfil existente
+`/tmp/opencode/issue61-metadata-tidepool-ses_dee5e0a18ffe-profile/`,
+Location exato `T5`, HOME/XDG/config/DB/guard/permissões originais preservados.
+Override process-local somente como candidato: `opencode/tidepool-alpha-free`,
+source RESUME_SMOKE_MODEL; nenhum modelo selecionado para execução.
+GET em `2026-11-25T12:48:17.506534+00:00`, resposta
+`12:48:18.208140+00:00`, **exit0**, stderr vazio; `{location:object,data:array}`
+com root keys data/location e Location conferido. Projeção não secreta persistida
+**antes** do julgamento, limite100, **sem truncamento**.
+
+**12 linhas**, provider opencode=12/type chat=12; **0** matches canônicos da
+referência exata e **0** matches diagnósticos por modelID; **0** refs duplicadas.
+Logo Tidepool está ausente **nesta resposta completa**, não ambíguo. Não recuperar
+retroativamente as linhas perdidas do GET anterior nem deduzir causa de cache.
+Suas capacidades/preços locais continuam UNKNOWN; candidate_metadata_eligible=false.
+As 12 refs efetivamente retornadas, todas prefixadas `opencode/`, são:
+`big-pickle`, `deepseek-v4.1-flash-free`, `glm-5.3-flash-free`, `hy4-flash-free`,
+`iceman-free`, `inkling-2-small-free`, `longcat-2.5-free`, `flint-40b-free`,
+`nemotron-3.5-super-vl-free`, `beam-free`, `mimo-v2.6-flash-free`,
+`nemotron-3.5-lightning-free`. Todas têm enabled=true **literal**, status active,
+type chat, tools=true, text input/output; cada uma tem **um** tier completo com
+input/output/cache read/write **0**. Isso é elegibilidade de metadados, não
+acesso/inferência ou escolha de alternativa. Nenhum preço veio de listagem global.
+
+DB antes/depois: sessions/messages/parts/user/assistant/credential **0**; requests
+generate/completion/tokens/custo registrado **0**. Exatamente um GET de catálogo,
+zero GET default, sem outros model routes. Cliente1611867 e version1611857
+terminaram0, PIDs ausentes; guard setup/disposed, sem kill/restart global.
+Nenhuma credencial importada/consultada. Sem refresh explícito ou espera por
+refresh; cold-cache/bundle/refresh assíncrono permanecem hipóteses, não causas provadas.
+
+Prova `evidence:ev-20261125T124817Z-20b151f6`, **verified/passed/no_required_gate**
+da observação de catálogo, distinta do candidato bloqueado. Artefatos no perfil,
+`one-catalog-projection/catalog-projection.json` e `catalog-verdict.json`.
+SHA-256 projeção `4c88f1a182f65c25c9a015b49488268a7cdd3d437decbca054414c923cf1cd7d`;
+verdict `af28dce8b7d43dd565094650520a26f97be479418949678087aff93197661935`;
+JSON root completo (sem dump de campos desconhecidos)
+`ee02067900be4879b8cd5a3b27efc13a2a91ab628b998bd0a7261350d2cb3ba5`.
+Próxima ação é decisão **separada do pai** sobre os fatos/refs retornados, sem
+selecionar rota, registrar modelo ou executar experimento automaticamente.
+Fonte/guard/pins e todo histórico FAILED/T1 aprovado nos inputs antigos/T5 sem
+dispatch/T7 NOT RUN/F1 pendente intactos; final readiness false. Closeout previsto:
+commit só desta nota, verify e release WAITING confirmados pelo callback, sem
+suíte completa, modelo, archive/PR/push/merge.
+
 ### Revisão independente do décimo trace e preflight somente de metadados
 
 O coordenador informa revisão independente de
