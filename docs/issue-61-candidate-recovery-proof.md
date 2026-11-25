@@ -2,6 +2,103 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Quinta observação nativa — 07:48–07:51 UTC, NOT READY
+
+Continuação explicitamente autorizada pelo coordenador após a recusa
+pré-spawn seq26–28: essa chamada não havia consumido observação de modelo.
+Mesmo worker `ses_dee5e0a18ffefE7FomnYJ9smc1`, run/branch/checkout e
+stage `observe61-locators`; entrada limpa
+`77b0242df6ced96de8eab52937d05d611cba368f`. Reserva ownerless WAITING
+readquirida/verificada, sem drift. Diff contra `3c85548` contém somente
+65 linhas do handoff; harness, guard, instalador e pins byte-idênticos.
+Revisão de fonte `ses_dee9d76e4ffeR10I59JewObvEC` continua aplicável à
+fonte inalterada, não constitui revisão final deste resultado.
+
+**Correção somente da chamada:** removido `--output-dir` externo do wrapper.
+`RESUME_SMOKE_OUTPUT` continua em diretório único sob `/tmp/opencode`;
+execution.log retém os bytes/hashes dos artefatos próprios. Nenhuma mudança
+de fonte, guarda, quote, autorização, fixture ou matcher. Preflight
+determinístico **sem modelo** `ev-20261125T074735Z-bdc7dcf0` confirmou
+argumentos/perfis, identidade dos bytes e check não final valid=true.
+Verificado antes da inferência como verified/passed/exit3/no_required_gate;
+esse resultado não é smoke. Seq26–28 e sua falha original são preservados.
+
+**Uma chamada real** `PYTHONDONTWRITEBYTECODE=1 python3 -B
+tests/smoke_resume_candidate_opencode.py`, via wrapper de captura
+`workflow-evidence record`, sem a exclusão externa. Timeout shell explícito
+1.800 s/interno 360 s; callback completo
+`sh_211ad22cf0017IkHnxV3FqPHJu`. HOME/XDG/CODEX_HOME/DB/Location e
+instalação novos, privados e sem credenciais/config do operador.
+OpenCode **2.3.2**, OpenSpec **2.1.1**. Guard fresh ativo antes da inferência,
+fonte `b878847767fd9759d7362a6aa71707b4e13f97606258f39448c82b23f255e656`,
+policy `6602c5c07a078338c240ba7e7b3240b61532646dd071e98c08a83faef19100dc`;
+audit registra ambos hooks e cleanup. Native `/api/model/default` cruzado
+com `/api/model` no mesmo ambiente/Location selecionou
+**`opencode/big-pickle`**, enabled/active chat, tools/text→text, input/output/
+cache read/write conhecidos zero. Sem override, fallback ou import de credencial.
+
+**Terminal real:** sessão `ses_dee52cf22ffeF4k4USxgA4K3at`, PID 3471029,
+exit **0**, `timed_out=false`, terminou
+`2026-11-25T07:51:04.112762+00:00`, sem erro de provedor/JSONL malformado.
+12 step_finish/custo reportado **0**, 34 tool events. **Harness exit 1/T1**,
+T5/T7 **NOT RUN**, nenhuma sexta observação. Snapshots before/after
+disponíveis/iguais nas sete dimensões; forbidden_attempts vazio não apaga
+as tentativas de comandos compostos/leitura não permitida que foram negadas.
+Top-level status/finished_at ausentes na falha de asserção, sem reconstrução.
+
+**Fatos e limite do resultado:**
+
+- Roteamento natural `skill(resume-workflow)` evento **1**. Diretório nativo
+  lido no **17**; catálogo inicial realmente entregue à mesma sessão,
+  epoch=through=4/user5/assistant6 concluído, blob
+  `66f5a938235937b9e15fa3f01e95fbc82edb31fddcae5fd5ac499d969b769285`,
+  snapshot `3556ae453fb05c215d66bf80906cda5233ec96c5226201ec37df323892151082`.
+  Skill Apply nativa **53**, origem/path canônicos não symlink e hash
+  `71f084a1ea26194f62cb9ed31da8e4aa837fd57abb2b91b9cbb0c6ee8d503b79`.
+  Catálogo não substitui invocação nem observação de artefatos.
+- **Locators funcionaram realmente:** reader **21** usa comando completo/cwd
+  publicado e retorna exit0, terminal true, execution `writer-T1-61`, owner
+  `seed-T1`, run `wf-disposable-t1`, checkout `T1-issue-61`; writer PID
+  3470085 observado vivo e depois esperado pelo harness, não inferido por
+  ausência. Apply instructions **22** é o literal sem aspas, exit0/ready,
+  0/16 e tasks corretos; `model_apply_gate_proved=true`.
+- Proposta fixture `0ac18eb710d2476f53dc3983e5a3ed0582940f53`, review
+  fixture `69f5523e3ba2e4402749fdbe5dc010702ab80844`; não são candidata
+  real ou proposta aprovada `31cdb42`. Commit **37**, ancestralidades
+  **47/48**, review **50**, diff zero **49** e strict **39** têm exit0,
+  sem truncamento e saídas esperadas antes do final **57**.
+- **Faltam todos os cinco probes `git show <proposal>:<artifact>`**:
+  design, proposal, dois specs e tasks. Não foram tentados, não foram
+  negados por quotes/cwd e não há conteúdo equivalente observado em tools.
+  Os comandos completos estavam publicados no evidence **11**.
+  Metadata/review/diff e checks independentes da preparação não substituem
+  observações da própria sessão. `model_proposal_proved=false`.
+- Final **57** é JSON coerente `RECOVERED`, Apply próximo/não executado,
+  `outcome=true`, mas **proof_complete=false**. A declaração é
+  insuficientemente fundamentada; não transformar outcome em PASS nem
+  enfraquecer o gate de artefatos. A falha efetiva difere de seq22:
+  receipt/Apply/handoff agora ocorreram, mas faltam cinco leituras imutáveis.
+
+**Prova** `evidence:ev-20261125T074809Z-c869767e`, execution.log
+508.037 bytes/SHA-256
+`d63e31a153afeb124615081b8b22c7379e164c368201d88e0949259702ddf50c`.
+Preparação/results/snapshots/catálogo/proveniência, eventos/stderr/terminal,
+guard/policy/audit/receipts retidos checksum-bound. Verificada antes desta
+nota: **verified/failed**, exit3/no_required_gate com `--tool opencode=2.3.2
+--tool openspec=2.1.1 --env-id sandbox=observe61-77b0242-ses_dee5e0a18ffe`.
+Originais `/tmp/opencode/issue61-observe-77b0242-ses_dee5e0a18ffe`;
+results SHA-256 `ab872c132bf2bcd233432c6e342fad7a6f5739a568763f3b8d1dcad132ad2068`,
+JSONL `9c8fd6148785a57a568c3769faadaa949cb7a309c138ce7d706afd8223539688`,
+terminal `73ea666eee463b07944d7c2975713b0be06105aa0c2a47072d360cca17f00577`.
+
+**Parada:** sem autocorreção/retry/modelo adicional, archive/sync,
+suíte final, push/PR/merge ou alteração de produção. Tarefas 3.4/4.3
+pendentes; histórico FAILED/UNKNOWN intacto. Próxima ação mínima:
+revisão independente offline das cinco observações ausentes e do relato
+RECOVERED sem fundamentação completa, sem alterar guard ou critérios.
+Somente handoff factual será commitado para saída limpa ownerless WAITING;
+esse commit documental não aprova runtime nem satisfaz gate final.
+
 ### Observação autorizada não iniciada — wrapper recusado no prelaunch
 
 Worker `ses_dee5e0a18ffefE7FomnYJ9smc1`, stage `observe61-locators`,
@@ -1073,6 +1170,12 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"diagnosis","seq":27,"group":{"obligation":"setup","signature":"evidence-wrapper: path must remain inside checkout"},"class":"environment/bootstrap","checked":{"phase":"record argument validation at workflow_evidence.py285 before evidence allocation293 and subprocess spawn313; original shell callback exit2 and raw error retained","scope":"operator-side evidence wrapper only, exact clean3c85548; no disposable HOME/XDG/DB/Location or model preflight created; output directory absent","lifecycle":"outer shell sh_211a48aac001ATv7V152CjRros completed exit2 with explicit1800s timeout, not timeout/cancellation; no harness/model/writer child or terminal, prepared data or snapshots","consumers":"workflow-evidence safe_relative on output exclusions; external sandbox is not checkout output; no application, guard, permissions or harness defect established"},"runtime_proof":["evidence:ev-20261125T074002Z-fee6cd0b"],"simplest_alternative":"stop now preserving exact reviewed code and record failure; do not repeat the command, move sandbox inside checkout or widen evidence helper","choice_rationale":"explicit stop-first-failure controls even prelaunch failure; diagnostics only confirm original error and absence, never count as successful setup or observation","next_hypothesis":"after independent offline invocation review and separate authorization, existing execution.log capture can retain external artifact bytes without declaring an external checkout exclusion; fresh guard/model eligibility still mandatory"}
 ,{"kind":"blocker","seq":28,"group":{"obligation":"setup","signature":"evidence-wrapper: path must remain inside checkout"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T074002Z-fee6cd0b"],"diagnosis":"seq:27","options":[],"impact":"authorized observation did not launch; T1/T5/T7 NOT RUN, previous T1 failed proof still blocked; tasks3.4/4.3 pending; no archive/final required gate/PR; coordinator must review capture invocation before separately authorizing launch","researchable":true}
 ,{"kind":"resolution","group":{"obligation":"setup","signature":"evidence-wrapper: path must remain inside checkout"},"outcome":"blocked","via_seq":28}
+,{"kind":"attempt","seq":29,"obligation":"setup","signature":"evidence-wrapper: path must remain inside checkout","target":"77b0242 explicitly reauthorized capture invocation","class":"environment/bootstrap","hypothesis":"omit external output exclusion while retaining sandbox artifacts in checksum-bound execution.log","change":"remove only --output-dir external argument; preserve RESUME_SMOKE_OUTPUT external path and unchanged harness/source","change_target":"none","observed_effect":"no-model capture preflight succeeds and actual harness installs candidate, prepares isolated T1 and launches/completes one model; wrapper records execution.log508037bytes; original seq26 remains failed","result":"pass","evidence":["evidence:ev-20261125T074735Z-bdc7dcf0","evidence:ev-20261125T074809Z-c869767e"]}
+,{"kind":"resolution","group":{"obligation":"setup","signature":"evidence-wrapper: path must remain inside checkout"},"outcome":"passed","via_seq":29}
+,{"kind":"attempt","seq":30,"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff","target":"77b0242 T1 phase1 native default","class":"assertion/contract","hypothesis":"reviewed complete locators plus unchanged proposal/artifact probes allow complete grounded T1 proof","change":"explicitly authorized one model observation on doc-only successor77b0242 of reviewed3c85548; capture invocation corrected without source/guard/matcher changes","change_target":"test","observed_effect":"model exit0/cost0 and harness1; exact receipt21 and Apply22 succeed, native Apply53/catalog/discovery and strict39 plus five non-artifact provenance probes succeed; all five git-show artifact observations absent; final57 RECOVERED but model_proposal_provedfalse/proof_completefalse; snapshots available/equal; forbidden_attempts empty; T5/T7 NOT RUN","result":"fail","evidence":["evidence:ev-20261125T074809Z-c869767e"]}
+,{"kind":"diagnosis","seq":31,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff"},"class":"assertion/contract","checked":{"phase":"post-terminal aggregate t1_proposal_proof: five git-show proposal artifact commands have zero matching tool attempts; commit37/ancestry47-48/review50/diff49/strict39 successful before final57; actual receipt21/Apply22/native53 and delivered catalog independently proved","scope":"exact77b0242 installed with credential-free disposable HOME/XDG/CODEX_HOME/DB/Location; only operational capture exclusion removed; source/guard/pins unchanged from independently reviewed3c85548; all commands published in recovery-evidence read11; no quotes/cwd denial of missing five reads","lifecycle":"ses_dee52cf22ffeF4k4USxgA4K3at pid3471029 terminal exit0 at07:51:04.112762Z, no timeout/provider error/malformed JSONL; 12step_finish cost0; harness1 T1 then stop; T5/T7 never launched; snapshots available/equal; final RECOVERED not complete provenance proof","consumers":"t1_proposal_proof mandatory same-session successful tool observations of five immutable artifacts; metadata/review hashes/diff/fixture preparation and outcome true cannot substitute; missing artifact mechanism genuinely differs from seq22 denied Apply and unobserved receipt, both now successful; denied compound read-only commands remain denied, no stateful attempt detected"},"runtime_proof":["evidence:ev-20261125T074809Z-c869767e"],"simplest_alternative":"stop retaining failed proof for independent offline review; never accept JSON RECOVERED, prepared facts or zero diff as replacements for missing tool observations","choice_rationale":"one actual authorized observation consumed after fresh guard/default-model eligibility; capture prelaunch was not inference; no automatic sixth model, source fix, permission expansion, quote normalization or archive/PR allowed","next_hypothesis":"independent review can assess why published five artifact commands were not observed and whether any contract-preserving correction is justified, without executing another model"}
+,{"kind":"blocker","seq":32,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T074809Z-c869767e"],"diagnosis":"seq:31","options":[],"impact":"T1 fifth model observation failed; T5/T7 NOT RUN; tasks3.4/4.3 pending; no archive/final gate/PR; independent offline proof review required","researchable":true}
+,{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; five immutable artifact observations absent despite recovered handoff"},"outcome":"blocked","via_seq":32}
 ]}
 ```
 
