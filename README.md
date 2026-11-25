@@ -8,11 +8,11 @@ Skills e ferramentas para desenvolvimento com IA orientado por issues. O GitHub 
 
 O fluxo começa no agente Web: você descreve a necessidade, as skills consultam o contexto e criam/refinam a issue no GitHub. Depois, o agente CLI recebe a issue ou milestone e conduz o planejamento, a implementação e a revisão.
 
-O ciclo passa por descoberta, prontidão, implementação, revisão e conclusão. OpenSpec é obrigatório; `openspec-workflow` rege exploração, propostas, validação da revisão exata, verificação da implementação e arquivamento.
+OpenSpec é o ciclo obrigatório: Explore → Propose → Apply → Verify → Archive. `openspec-workflow` integra requisitos GitHub, validação da revisão exata, posse, testes e entrega, sem gates audit/ready paralelos.
 
 ### Retomar após interrupção
 
-Em uma **nova sessão do OpenCode**, no checkout correspondente, peça **“continue de onde parou”** ou informe a URL da issue/milestone a retomar. A skill global `resume-workflow` reconcilia Git/GitHub, OpenSpec, evidências e a posse da worktree antes de delegar ao `milestone-orchestrator`. Quando o escopo ou a posse não forem verificáveis, preserva o trabalho e solicita somente a informação necessária, sem sobrescrever arquivos. Um teste/comando interrompido não é considerado aprovado sem evidência final. Alterações que nunca saíram de um disco perdido não podem ser restauradas automaticamente.
+Em uma **nova sessão nativa do OpenCode ou Codex**, no checkout correspondente, peça **“continue de onde parou”** ou informe a URL da issue/milestone a retomar. A skill global `resume-workflow` reconcilia Git/GitHub, OpenSpec, evidências e a posse da worktree antes de delegar ao `milestone-orchestrator`. Quando o escopo ou a posse não forem verificáveis, preserva o trabalho e solicita somente a informação necessária, sem sobrescrever arquivos. Trocar de agente reaproveita artefatos duráveis, não histórico de chat; é preciso comprovar parada do writer anterior e transferir a reserva. Um teste/comando interrompido não é considerado aprovado sem evidência final. Alterações que nunca saíram de um disco perdido não podem ser restauradas automaticamente.
 
 Após uma instalação global atualizada, `worktree-reservation verify --session <id>` verifica a posse a partir de qualquer subdiretório do checkout; informe `--path <checkout>` ao selecionar outra worktree e `--json` para automação. A sessão sempre vem do chamador. Antes da atualização, use o helper em `~/.local/share/my-ai-skills/active/scripts/worktree-reservation` com `--path` explícito.
 
@@ -22,15 +22,16 @@ Após uma instalação global atualizada, `worktree-reservation verify --session
 
 ## Instalar ou atualizar
 
-Linux/macOS: requer Git, Python 3.10+, `curl`, `gh`, `jq` e OpenCode V2 no `PATH`. Para usar o workflow, OpenSpec **2.x** é necessário, mas **não precisa estar instalado antes**: o instalador verifica o CLI existente sem substituí-lo, recusa 1.x com instrução para atualizá-lo pela origem, ou instala a distribuição standalone oficial para seu usuário se estiver ausente. Autentique o GitHub CLI separadamente com `gh auth login`.
+Linux/macOS: requer Git, Python 3.10+, `curl`, `gh`, `jq` e somente o agente selecionado no `PATH`: OpenCode V2 ou Codex CLI com `exec --json/--cd/--ephemeral/--sandbox`. Para usar o workflow, OpenSpec **2.x** é necessário, mas **não precisa estar instalado antes**: o instalador verifica o CLI existente sem substituí-lo, recusa 1.x com instrução para atualizá-lo pela origem, ou instala a distribuição standalone oficial para seu usuário se estiver ausente. Autentique GitHub e o agente separadamente. Preflight/version/help não comprovam autenticação, execução de modelo, subagentes ou revisão independente.
 
 Execute o instalador diretamente do GitHub:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/install.sh | sh -s -- --agent opencode
 ```
 
-O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `fe00db86867de7ba9821a0c4e8e54d75c6e7a465`, confere seu SHA-256 `37adf8514517d9bd2bfb616a989b9c0de34dcfab00ed70deac720eba0bef34c3` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`. Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use o [comando com entrada verificada](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global) para maior garantia.
+O script instala a versão mais recente da `main`. Ele baixa o **instalador** do commit imutável `7c4cfb4433c4f56b9af463759e8215174b5b9663`, confere seu SHA-256 `93cd9371b602a47c66b6bc3b20be448f6c124fc88b10a9f5d041f611dddc1a5f` e só então o usa para instalar a revisão atual, incluindo o comando global `worktree-reservation`.
+Esse commit precisa permanecer ancestral da `main`: integre esta PR por **merge commit**, nunca squash/rebase, para publicar o launcher e seu objeto pinado juntos. Se o `curl` falhar, ele avisa, mas o pipeline pode retornar sucesso sem instalar nada. **A verificação não cobre o próprio script obtido de `main`**: revise [seu código](scripts/install.sh) antes de executá-lo ou use a [entrada verificada](#entrada-verificada) abaixo para maior garantia.
 
 Para **atualizar para a versão mais recente da `main`**, execute (somente quando quiser atualizar):
 
@@ -38,9 +39,30 @@ Para **atualizar para a versão mais recente da `main`**, execute (somente quand
 curl -fsSL https://raw.githubusercontent.com/rocker-code/my-ai-skills/main/scripts/update.sh | sh
 ```
 
-**Os dois comandos instalam a revisão mais recente ao serem executados.** `update.sh` apenas deixa explícita a intenção de atualizar; ele confia na `main` atual e chama o mesmo instalador verificado. Nenhuma atualização roda em segundo plano. Não use `npx skills update` nem execute o instalador da instalação ativa para atualizar o pacote. [Detalhes, conflitos e migração](https://github.com/rocker-code/my-ai-skills/wiki/Instalacao-global).
+**Os dois comandos instalam a revisão mais recente ao serem executados.** `update.sh` apenas deixa explícita a intenção de atualizar; ele confia na `main` atual e chama o mesmo instalador verificado. Nenhuma atualização roda em segundo plano. Não use `npx skills update` nem execute o instalador da instalação ativa para atualizar o pacote. Os detalhes atuais de seleção/conflitos/migração estão abaixo e na [skill de atualização](skills/update-ai-workflow/SKILL.md); a wiki histórica não documenta suporte Codex.
+
+Na primeira instalação, escolha `--agent codex` em vez de `--agent opencode` para usar somente Codex; repita `--agent opencode --agent codex` para ambos. Não há autodetecção nem default implícito. Update sem flags preserva a seleção comprovada; seleção explícita posterior é **aditiva**, inclusive na mesma revisão. Não remove agentes por omissão; runtime mantido ausente bloqueia com diagnóstico.
+
+A inspeção de `config.toml` Codex usa **Tomli 2.5.0** incorporado (puro Python, MIT), igual em Python 3.10+ e no bootstrap standalone, sem pip, pacote ambiente ou download adicional. [Proveniência, licença completa e inspeção offline](scripts/vendor/TOMLI.md). Grafias TOML equivalentes de skills canônicas desabilitadas exigem reconciliação explícita; documento inválido, UTF-8/tipos incompatíveis ou limites de tamanho (1 MiB)/parser bloqueiam sem expor valores nem alterar config/auth ou publicar parcialmente. Isso não resolve toda a precedência/configuração efetiva do runtime. OpenCode-only não carrega o parser.
+
+Um snapshot canônico fica em `${XDG_DATA_HOME:-$HOME/.local/share}/my-ai-skills/versions/<SHA>`, com `active` compartilhado. Manifesto schema 2 registra integrações **disponíveis**, arquivos/modos/origem; `guidance.json` schema 2 vincula a revisão ativa aos agentes **instalados**, caminhos e hashes dos blocos gerenciados. Instalações OpenCode schema 1 são verificadas contra Git confiável antes da migração, sem regravar versões antigas. Links OpenCode ficam em `${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills`; links Codex em `$HOME/.agents/skills` (não relocados por CODEX_HOME), com orientação em `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. Ambos apontam para o mesmo `active/skills`. Estado parcial inconsistente após interrupção bloqueia a próxima publicação; links órfãos não são adotados por parecerem gerenciados.
+
+Config/auth/hooks permanecem intocados. CODEX_HOME/XDG alterados, symlinks ancestrais, origem incerta, skills homônimas/desabilitadas ou `AGENTS.override.md` sombreando orientação exigem reconciliação explícita. Colisão em um agente impede publicação nos dois; falha reverte somente efeitos comprovadamente próprios. Diagnóstico local com `--project` não autoriza edição; `--baseline-revision` e `--reconcile-path` autorizam somente paths idênticos ao baseline, com backup. Consulte a skill `update-ai-workflow` para os limites.
+
+Provas reais isoladas: `PYTHONDONTWRITEBYTECODE=1 python3 tests/smoke_global_opencode.py` e `PYTHONDONTWRITEBYTECODE=1 python3 tests/smoke_global_codex.py --controller-session <ID-nativo-do-chamador> --auth-cache <auth.json-explícito>`. Codex também aceita token suportado via ambiente/stdin. Para o cenário adicional de retomada entre agentes, acrescente `--cross-agent-opencode` (exige OpenCode explicitamente; o cenário Codex-only não o exige). Esse cenário usa sessões/skills/shell nativos OpenCode, não execução de modelo OpenCode. O cache é copiado com permissão restrita e removido ao finalizar; nenhuma configuração real é copiada. Sem credencial/capacidade/término, o smoke **bloqueia**, não passa por skip. Os relatórios privados distinguem descoberta/invocação, contextos novos, lifecycle/testes reais e backend GitHub fixture; não comprovam checks/review/merge hospedados.
 
 Caches Python (`__pycache__`, `.pyc`, `.pyo`) não bloqueiam a atualização. Arquivos e diretórios extras comuns são preservados na versão anterior, com aviso, ao trocar de revisão; não são migrados. Arquivos oficiais alterados ou ausentes e links simbólicos inesperados continuam bloqueando. A versão de destino mantém a validação estrita de entradas extras desconhecidas.
+
+### Entrada verificada
+
+Para não executar um launcher mutável, confira a origem do SHA/digest literal acima e use o comando abaixo após sua publicação. Ele instala a **revisão pinada**, não a `main` mais recente. Troque somente `--revision` por outro SHA completo previamente revisado para escolher outro pacote; escolha o agente ou ambos conforme explicado acima. Não derive o digest dos próprios bytes baixados.
+
+```bash
+( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT &&
+  curl -fsSL 'https://raw.githubusercontent.com/rocker-code/my-ai-skills/7c4cfb4433c4f56b9af463759e8215174b5b9663/scripts/install-global' -o "$tmp" &&
+  python3 -c 'import hashlib,sys;sys.exit(0 if hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()==sys.argv[2] else 1)' "$tmp" '93cd9371b602a47c66b6bc3b20be448f6c124fc88b10a9f5d041f611dddc1a5f' &&
+  python3 "$tmp" --revision 7c4cfb4433c4f56b9af463759e8215174b5b9663 --agent codex )
+```
 
 ## Configurar o projeto no agente Web
 
@@ -138,9 +160,19 @@ Aceite pedidos naturais como:
 Não exija que o usuário repita estas instruções.
 ```
 
+## Ciclo simplificado
+
+OpenSpec é o único ciclo: Explore → Propose → Apply → Verify → Archive. O pacote integra GitHub, testes/M2T e entrega, sem audit/ready separados. Uma issue é executada por vez, inclusive planejamento; subagentes atuam apenas na issue ativa. Revisão independente válida do HEAD final é reutilizada. Kaizen fica sob demanda e não bloqueia a próxima issue. Não há comentários operacionais automáticos. `simplify` é opcional para problema concreto de manutenção, preservando comportamento.
+
+Prioridades: código claro com arquitetura existente, verificação efetiva e melhorias relevantes ainda não rastreadas. Verify oficial é padrão quando suportado e não substitui testes/CI/reviews. Skill ausente não comprova incompatibilidade: inspecione `openspec config list`, preserve a união dos workflows atuais com `verify` no perfil `custom` (`openspec config set workflows '[...]'` e `openspec config set profile custom`) e confira efeitos globais e `openspec update --dry-run --json` antes do update autorizado. Preserve personalizações e reporte limitações reais sem verificador customizado. Este repositório inclui Verify gerado oficialmente.
+
+## Métricas legadas
+
+Os comandos `workflow-event` e `workflow-report` foram removidos. Não há coleta de tempos, analytics nem comentários operacionais automáticos. Comentários e arquivos arquivados antigos permanecem como histórico, sem servir de fonte ativa. Progresso e retomada usam Git/GitHub/OpenSpec, runtime suportado, posse do checkout e provas de testes existentes.
+
 ## Usar
 
-O instalador e o atualizador conferem ao final o pacote, uma skill e o OpenSpec. Abra uma nova sessão OpenCode. No primeiro uso em um projeto, o agente confere a integração OpenSpec 2.0 e pede autorização específica antes de inicializar ou atualizar; a instalação global não modifica projetos. Confira a descoberta e invocação das skills oficiais `openspec-explore`, `openspec-propose`, `openspec-apply-change` e `openspec-archive-change` antes de implementar; comandos `/opsx-*` legados não são exigidos. Preserve ferramentas já configuradas, arquivos personalizados e config/specs/changes; bloqueie conflitos sem forçar.
+O instalador e o atualizador conferem ao final o pacote, cada integração selecionada e o OpenSpec. Abra uma nova sessão do agente escolhido. No primeiro uso em um projeto, o agente confere a integração OpenSpec 2.x e pede autorização específica antes de inicializar ou atualizar; a instalação global não modifica projetos. Confira descoberta e invocação das skills oficiais `openspec-explore`, `openspec-propose`, `openspec-apply-change`, `openspec-verify-change` e `openspec-archive-change`; comandos `/opsx-*` legados não são exigidos. Habilite Verify pelo perfil oficial preservando workflows existentes; use `--scope project` nas fixtures quando suportado. Preserve ferramentas já configuradas, arquivos personalizados e config/specs/changes; bloqueie conflitos sem forçar. Codex usa skills nativas (`$nome-da-skill`) e execuções novas verificadas; não exige OpenCode nem simula sua API.
 
 Peça **“Cuide da issue: URL”**, **“Cuide da fila deste projeto”** ou **“Cuide deste milestone: URL”**; acrescente **“sem merge”** se quiser integrar manualmente. O fluxo planeja com OpenSpec, implementa, testa, prepara a PR e revisa; o merge padrão só ocorre após as verificações exigidas. O agente precisa de acesso ao GitHub e de sessões/worktrees isoladas para executar o fluxo completo.
 

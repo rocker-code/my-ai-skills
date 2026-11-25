@@ -1,6 +1,6 @@
 # Web agent issue authoring protocol
 
-This protocol is for **Web backlog supervision** in ChatGPT, Claude or another agent that accepts project instructions and can read the required sources. It complements—not replaces—`refine-issue`, `resolve-questions`, `issue-audit`, `openspec-workflow` or the CLI implementation lifecycle. GitHub is the source of truth. These Markdown skills are portable repository guidance, **not automatic native skill installation** in any provider. Keep the existing `chatgpt-web-*` names and protocol path for compatibility. The agent must be able to read these instructions and the target repository; creating/updating issues also requires an authorized GitHub connector or equivalent integration. Report unavailable capabilities and never claim an unperformed mutation.
+This protocol is for **Web backlog supervision** in ChatGPT, Claude or another agent that accepts project instructions and can read the required sources. It complements—not replaces—`refine-issue`, `resolve-questions`, `native OpenSpec Explore`, `openspec-workflow` or the CLI implementation lifecycle. GitHub is the source of truth. These Markdown skills are portable repository guidance, **not automatic native skill installation** in any provider. Keep the existing `chatgpt-web-*` names and protocol path for compatibility. The agent must be able to read these instructions and the target repository; creating/updating issues also requires an authorized GitHub connector or equivalent integration. Report unavailable capabilities and never claim an unperformed mutation.
 
 ## Principles
 
@@ -153,4 +153,4 @@ Issues may link to an external design but must also point to an accessible pinne
 
 **Refinement:** report exactly which body/comments changed, record verified links, and conclude `READY FOR OPSX EXPLORE` or `NEEDS DECISIONS` with concise blockers.
 
-Both workflows stop at GitHub backlog supervision. CLI agents subsequently perform independent issue-audit, proposal validation and implementation.
+Both workflows stop at GitHub backlog supervision. CLI agents subsequently perform independent native OpenSpec Explore, proposal validation and implementation.

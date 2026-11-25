@@ -17,7 +17,8 @@ from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTIONS = {"explore": "openspec-explore", "propose": "openspec-propose",
-           "apply": "openspec-apply-change", "archive": "openspec-archive-change"}
+           "apply": "openspec-apply-change", "verify": "openspec-verify-change",
+           "archive": "openspec-archive-change"}
 
 
 def main():
@@ -29,8 +30,13 @@ def main():
     base = Path(tempfile.mkdtemp(prefix="smoke-global-opencode-", dir="/tmp/opencode"))
     home = base / "home"
     home.mkdir()
+    tools = base / "tools"
+    tools.mkdir()
+    for name in ("git", "gh", "jq", "curl", "python3", "openspec", "opencode"):
+        (tools / name).symlink_to(shutil.which(name))
     env = {key: os.environ[key] for key in ("PATH", "LANG", "TERM") if key in os.environ}
-    env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
+    env.update(HOME=str(home), PATH=f"{home}/.local/bin:{tools}:/usr/bin:/bin",
+               CODEX_HOME=str(home / ".codex"), XDG_CONFIG_HOME=str(home / ".config"),
                XDG_DATA_HOME=str(home / ".local/share"), XDG_CACHE_HOME=str(home / ".cache"),
                XDG_STATE_HOME=str(home / ".local/state"), OPENSPEC_TELEMETRY="0",
                 PYTHONDONTWRITEBYTECODE="1",
@@ -48,6 +54,13 @@ def main():
     try:
         results["opencode"] = run([cli, "--version"]).strip()
         results["openspec"] = run([openspec, "--version"]).strip()
+        # Official, isolated enablement preserves any workflows already chosen.
+        profile = json.loads(run([openspec, "config", "list", "--json"]))
+        workflows = list(dict.fromkeys([*profile.get("workflows", ["explore", "propose", "apply", "archive"]),
+                                       "verify"]))
+        run([openspec, "config", "set", "workflows", json.dumps(workflows)])
+        run([openspec, "config", "set", "profile", "custom"])
+        scope = ["--scope", "project"] if "--scope" in run([openspec, "init", "--help"]) else []
         # Isolated smoke injects the local Git transport via the internal API;
         # the published entrypoint never accepts a source override.
         runner = ("import importlib.machinery,sys; "
@@ -81,7 +94,7 @@ def main():
                 legacy.parent.mkdir(parents=True)
                 legacy.write_text("# keep custom command\n")
             run([openspec, "init", "--tools",
-                 "claude,codex,opencode" if name == "project-two" else "opencode", str(repo)])
+                 "claude,codex,opencode" if name == "project-two" else "opencode", *scope, str(repo)])
             if name == "project-two":
                 assert spec.read_text() == "# personal contract\n"
                 assert config.read_text() == "schema: spec-driven\n# operator configuration\n"
@@ -91,7 +104,7 @@ def main():
         run(["git", "worktree", "add", "-qb", "smoke-worktree", str(worktree)], cwd=projects[0])
         # OpenSpec's generated integration was untracked in the source repo;
         # this independent disposable worktree needs its own authorized init.
-        run([openspec, "init", "--tools", "opencode", str(worktree)])
+        run([openspec, "init", "--tools", "opencode", *scope, str(worktree)])
         locations = (*projects, worktree)
         for location in locations:
             for action, skill in ACTIONS.items():

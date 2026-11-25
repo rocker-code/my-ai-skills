@@ -251,6 +251,22 @@ class ReservationTest(unittest.TestCase):
             self.assertTrue(set(("ok", "exit_code", "error", "path", "issue_url", "branch", "state", "owner",
                                  "head", "digest", "drift", "generated_paths", "unknown_untracked_paths", "last_verified_at")) <= set(json.loads(raw)))
 
+    def test_native_shaped_cross_agent_ids_do_not_infer_or_reuse_owner(self):
+        # Fixture identities test helper syntax/ownership only, not runtime proof.
+        self.owned()
+        codex = "01a205e7-1c89-7802-9bc8-aaf7c562db32"
+        opencode = "ses_nativeFixture77"
+        self.cli("verify", session=codex, code=3)
+        self.cli("handoff", "--from-session", "writer", "--to-session", codex, session=None)
+        self.cli("verify", session=codex)
+        self.cli("verify", session="writer", code=3)
+        self.cli("verify", session="01a205e7-1c89-7802-9bc8-aaf7c562db33", code=3)
+        self.cli("handoff", "--from-session", codex, "--to-session", opencode, session=None)
+        result = self.cli("verify", session=opencode)
+        self.assertEqual(result["owner"]["session"], opencode)
+        self.assertEqual(result["issue_url"], self.issue)
+        self.assertEqual(result["path"], str(self.path))
+
     def test_planned_reservation_then_activate_and_single_path_per_issue(self):
         target = self.root / "planned"
         self.cli("reserve", "--planned", "--repository", str(self.primary), "--issue", self.issue,
@@ -840,8 +856,7 @@ class ReservationTest(unittest.TestCase):
     def test_helpers_do_not_write_bytecode(self):
         copied = self.root / "helpers"
         shutil.copytree(ROOT / "scripts", copied, ignore=shutil.ignore_patterns("__pycache__"))
-        helpers = ("issue-context", "pr-context", "workflow-status", "workflow-event",
-                   "workflow-report", "worktree-reservation", "workflow-evidence",
+        helpers = ("issue-context", "pr-context", "workflow-status", "worktree-reservation", "workflow-evidence",
                    "preflight-check", "attempt-log")
         env = os.environ.copy()
         env.pop("PYTHONDONTWRITEBYTECODE", None)

@@ -2,7 +2,7 @@
 
 ## Automatic routing
 Apply this protocol inside the existing workflow; never require the owner to invoke a performance skill manually.
-- issue-audit: invoke ci-performance-audit in diagnosis mode when the issue targets CI/test speed, cost, fixtures, caching, sharding or test selection.
+- native OpenSpec Explore: invoke ci-performance-audit in diagnosis mode when the issue targets CI/test speed, cost, fixtures, caching, sharding or test selection.
 - implement-issue: use optimize-ci for performance issues after diagnosis. It supplies experiment requirements to the normal OpenSpec plan; it is not a second planner.
 - apply-issue: use optimize-ci for validated performance work. For ordinary feature work changing expensive fixtures, discovery or CI setup, apply its preservation checklist without adding unrelated optimizations.
 - prepare-pr and pr-audit: route relevant workflow/test-infrastructure changes to ci-performance-audit in review mode. An ordinary behavior test addition needs a lightweight cost/coverage check; deep benchmarking is warranted by material cost or selection/setup changes, not by every test file.
@@ -31,4 +31,4 @@ Record cache-hit and cold/miss behavior; include restore/upload/extraction, key 
 ## Review and completion
 Use the existing REVIEW_POLICY severity and merge gates. Weakened proof or broken required gates are correctness findings. A minor slowdown does not become an invented merge blocker.
 For optimization acceptance, report comparable before/after, retained obligations, adopted/rejected hypotheses, cost, stability and rollback. Missing evidence means unverified benefit, not success.
-After merge, compare available current runs and let kaizen record regression/follow-up. No permanent polling, scheduled automation, deployment, automatic issue creation or unrequested pipeline execution is implied.
+When an on-demand Kaizen review is requested, compare available project CI runs for regression/follow-up. No permanent polling, scheduled automation, deployment, automatic issue creation or unrequested pipeline execution is implied.

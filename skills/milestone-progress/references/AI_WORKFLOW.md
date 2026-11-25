@@ -1,108 +1,68 @@
 # AI Development Workflow
 
-## Source of truth
+## Sources and engineering principles
 
-For new capabilities, follow [Incremental Delivery and Evolution Backlog](INCREMENTAL_DELIVERY.md). Use the checkpoint-only `capture-evolutions` worker with a compact handoff; prefer a fresh child session and fall back to sequential checkpoint processing when unavailable, never inline with active coding. Deliver a complete safe first vertical slice, then persist accepted deferred improvements as linked GitHub issues in a **future evolution milestone** before marking their backlog handoff complete. Keep approved criteria and contract revision gates intact.
+GitHub owns backlog, approved decisions and delivery; OpenSpec is the behavioral contract; code is implementation reality; executed tests and CI are verification evidence. Reuse existing artifacts and repository conventions. The latest explicit approved decision supersedes conflicting older discussion.
 
-GitHub is the shared memory for people and agents. OpenSpec is the validated behavioral and architectural contract for this workflow. The repository is current implementation reality; tests are executable evidence.
+- **Write good code:** inspect callers and established architecture before adding layers. Prefer straightforward maintainable code, native APIs and reuse over speculative abstraction.
+- **Verify effectively:** use native OpenSpec Verify when supported, deterministic static checks, focused tests, required suites/CI and genuinely independent risk-proportionate review. Advisory Verify never substitutes for executed tests or required human reviews.
+- **Identify meaningful improvements:** register only independently valuable, actionable, untracked evolutions under [INCREMENTAL_DELIVERY.md](https://github.com/rocker-code/my-ai-skills/blob/main/protocol/INCREMENTAL_DELIVERY.md). Cosmetic, speculative or duplicate suggestions create no issue or milestone.
 
-The latest explicit approved decision supersedes older conflicting discussion. Do not silently infer a material product or architectural decision.
+Before adding any skill, wrapper, protocol, persistent record or stage, demonstrate a gap in native OpenSpec, agent capabilities, project tools and conventions. Do not create another framework or mandatory quality gate.
 
-## Proposal approval without owner checkpoints
+## Native issue lifecycle
 
-OpenSpec proposal approval is an agent-owned quality gate, not a request for owner authorization. The planning agent must analyze, review, revise, and approve a proposal when it is supported by the issue, recorded decisions, current code, repository rules, and established project patterns. Do not pause to ask the owner to approve a proposal just because it was created or reached the validation step.
+[openspec-workflow](https://github.com/rocker-code/my-ai-skills/blob/main/skills/openspec-workflow/SKILL.md) is the small integration adapter; native OpenSpec 2.0 skills own Explore → Propose → Apply → Verify → Archive. Discover actual installed capabilities; never invent commands or simulate a missing native skill.
 
-Before marking a proposal `PLAN_VALIDATED` / `READY FOR APPLY`, confirm that every acceptance criterion maps to proposed behavior and tests; scope and non-goals match the issue; contracts and architecture follow existing decisions and patterns; risks and trade-offs are recorded; the exact proposal revision passes official OpenSpec validation; and required independent review is complete. Record the review and validation evidence, then continue automatically.
+1. In Explore, inspect live issue/decisions, existing PR/change, code/tests, repository rules, dependencies and approved designs. Check existence, scope, authorization, contracts and test risks here; no separate audit/ready gate or mandatory second exploration. Resume matching artifacts. An existing PR enters review/fix, not duplicate planning.
+2. Propose only the agreed scope, using native OpenSpec. Validate and review the exact proposal revision; pin it with acceptance → implementation plan → proving test traceability. Use independent planning review for material boundary changes when supported. The agent approves evidence-backed proposals and continues without routine owner approval.
+3. Start Apply in a genuinely fresh implementation context after the planning writer stops and [WORKTREES.md](https://github.com/rocker-code/my-ai-skills/blob/main/protocol/WORKTREES.md) ownership is transferred. Verify pinned proposal, validation/review and actual dependency commits. Unknown capabilities block only the affected action, never create invented independence. Apply native instructions, [TEST_STRATEGY.md](https://github.com/rocker-code/my-ai-skills/blob/main/protocol/TEST_STRATEGY.md), project/M2T checks and approved contracts. Optional [simplify](https://github.com/rocker-code/my-ai-skills/blob/main/skills/simplify/SKILL.md) runs inside Apply only for a concrete maintainability problem or explicit request.
+4. Enable official `openspec-verify-change` when supported by the installed profile/runtime and invoke it by default after Apply. A missing generated file is not evidence of incompatibility; inspect official configuration and preserve existing choices during enablement. Report unsupported capability or actual enablement failure precisely. Resolve findings or document them according to severity; do not manufacture another audit. Strictly validate and archive on the feature branch with native OpenSpec, inspecting synchronized specs and archive.
+5. Prepare the issue-scoped PR with actual proof, archived contract and changelog. Commit all archive/distribution/preparation changes before the final required local suite on the exact clean HEAD; keep its proof ID outside the commit. Any later commit invalidates that final gate. `workflow-evidence` verifies local proofs/bundles where installed; metadata alone is not passing proof and hosted CI cannot replace a mandatory local gate.
+6. Obtain one genuinely independent [pr-audit](https://github.com/rocker-code/my-ai-skills/blob/main/skills/pr-audit/SKILL.md) on the final HEAD under [REVIEW_POLICY.md](https://github.com/rocker-code/my-ai-skills/blob/main/protocol/REVIEW_POLICY.md), with domain/security review as warranted. Reuse valid review of the same immutable HEAD and context. After corrections, independently review affected surfaces and rerun invalidated proofs; do not repeat a full audit without relevant changes. [github-resolution](https://github.com/rocker-code/my-ai-skills/blob/main/skills/github-resolution/SKILL.md) handles actionable feedback and merge eligibility, not another implementation lifecycle.
 
-Resolve routine questions from current code, native platform behavior, existing approved decisions, repository conventions, and tests. Ask the owner only when a material product or architecture choice remains genuinely unresolved, or when the proposal would add unrequested scope, break a public contract, change authorization or sensitive data handling, introduce an irreversible migration/destructive action, or create a material external cost or commitment. Explain the specific choice and impact. A missing fact that can be researched is not an owner decision. Block only the affected issue and continue independent work.
+Material changes to behavior, data, authorization, architecture or public contracts pause only affected work: update issue/OpenSpec, review and validate the revised exact proposal before continuing. Resolve researchable facts from code, official behavior and existing decisions. Escalate only unresolved material choices, unrequested scope, irreversible actions or material external cost/commitment. Never weaken an approved criterion to pass a gate.
 
-## States
+## Queue and merge
 
-| State | Predominant role | Exit condition |
-|---|---|---|
-| `DISCOVERY` | Web supervisor + owner + executor exploration | Problem, current implementation, dependencies and questions are understood. |
-| `READY` | Web supervisor / architecture | Definition of Ready passes and no blocking question remains. |
-| `IMPLEMENTING` | Codex/Claude Code + OpenSpec | Validated contract implemented and verified. |
-| `REVIEW` | Independent reviewer + executor fix loop | Requirements, decisions, spec, diff and tests agree. |
-| `DONE` | Owner | PR approved and merged; issue closed according to repository policy. |
+### Native execution boundaries
 
-## Required flow
+OpenCode and Codex consume the same skills and policies; neither requires the
+other CLI. Use only tools/sessions actually available in the selected runtime.
+For Codex, a new `codex exec --json --cd <checkout>` without `resume`, `fork` or
+an inherited transcript is a candidate fresh context: confirm its native
+thread/session ID, effective input and terminal completion. Distinct processes,
+help text and feature flags alone do not prove independence or subagent support.
+OpenCode uses its available native session tools and completion callbacks.
 
-Use the native skills generated by the installed OpenSpec 2.0 profile (`openspec-explore`, `openspec-propose`, `openspec-apply-change`, `openspec-archive-change`) and its official CLI (`openspec status`, `openspec instructions`, `openspec validate --strict`, `openspec archive`). Discover and invoke the actual skills in a fresh agent session; do not require legacy `/opsx-*` commands or fabricate replacements.
+Correlate every result with its native identity, issue, checkout and immutable
+input/output SHA. Reject another worker's callback; never reuse the owner's ID,
+invent an identity environment variable or derive identity from a PID. When a
+worker cannot access its native ID, the runtime must supply it with verifiable
+provenance before reservation verification. An independent reviewer uses a
+distinct verified execution, immutable input and read-only scope; `codex review`
+alone does not certify the complete project review contract. If delegation is
+unproven, use distinct native executions with verified completion; if insufficient,
+block only that action with a concrete next step in the same selected CLI.
 
-1. Run `issue-audit` against the live issue and current code; refine material gaps.
-2. Invoke `openspec-explore` against the issue, all comments, code, tests, docs and current OpenSpec. Do not implement.
-3. Investigate ambiguities against approved decisions, current code, native mechanisms, repository policy and tests. Resolve those supported by evidence and record the rationale. Record a `[QUESTION]` and stop only when a material product/architecture decision remains unresolved; block only affected work.
-4. Record approved answers as `[DECISION]`.
-5. Refresh GitHub and invoke `openspec-explore` again after decisions.
-6. For cross-repository producer-consumer work, run `contract-handoff` in design-review mode before releasing the consumer proposal. Trace each relevant requirement/wireframe scenario to public operations, fields, states/errors, and the producer's enforcement point. Record linked producer/consumer issues and a hard dependency. A missing or implicit producer capability blocks only that consumer proposal/implementation; continue eligible producer and unrelated work.
-7. Pass `issue-ready`.
-8. Invoke `openspec-propose` to create or update OpenSpec proposal/spec/design/tasks.
-9. Validate each proposal with the official OpenSpec command and the approval checklist above. Use an independent planning reviewer when available for material boundary changes; record the exact immutable proposal revision and review evidence. The agent approves the proposal internally when the checklist passes, reports the decision and evidence, and continues without asking for owner approval. Stop only for a genuinely unresolved material decision or failed validation.
-10. Use `openspec-workflow` as the canonical proposal and closeout procedure. Start a genuinely new child session per issue with `apply-issue`; verify the pinned validated revision, review evidence and durable handoff, then invoke `openspec-apply-change` with `openspec instructions apply --change <name> --json`. For dependent consumers, first rerun `contract-handoff` in final-freeze mode against merged producer code/schema and require `CONTRACT FROZEN`. For milestones, schedule these sessions dynamically by dependency and conflict risk. ai-memory is supplementary.
-11. After Apply, complete focused tests and supported OpenSpec implementation verification; strictly validate the active change and archive it on the feature branch after all gates pass. Inspect the archived artifacts and synchronized live specs so they enter the same issue PR. Then self-review and invoke `/prepare-pr` with requirement → code → test evidence. Where installed, `workflow-evidence` records focused proofs and hands off IDs or integrity-checked bundles; reviewers verify accessibility, code/environment identity and gate type rather than relying on a foreign `/tmp` path or metadata-only comment. Commit archive/sync and preparation edits before the final local required suite; record and verify that suite on the final clean HEAD, keeping its ID outside the commit. Any later commit invalidates that final gate. This invocation authorizes staging only issue-scoped files, committing, pushing the feature branch without force, and opening the PR; no second confirmation is needed. Preserve unrelated work. This does not authorize merge, release, deploy or force-push. If the owner explicitly says prepare-only, stop at `READY FOR PR`.
-12. Independently run `pr-audit`, with `architecture-audit` for boundary changes. Route valid findings to `github-resolution`, which invokes `address-pr-review` for corrections on the same PR branch.
-13. After corrections, refresh `pr-audit` on the current materially changed head; run an independent `post-pr-audit` as the final review and merge eligibility gate. A newer push invalidates affected audit, review and test evidence.
-14. By default use `merge_mode=auto-if-green` for the selected run: `post-pr-audit` may merge after all gates pass, or enable GitHub auto-merge while checks are pending only when repository rules enforce every applicable check and review. A direct "do not merge" or `merge_mode=manual` request overrides the default and ends at READY_TO_MERGE. Never bypass repository policy; verify the merged PR and issue closure, then run `kaizen` before hard dependents.
+Agent switching transfers durable Git/GitHub/OpenSpec/worktree evidence, never
+live chat history. Prove the old writer stopped, reconcile and transfer its
+reservation, reuse the existing change/PR, and rerun incomplete or invalidated
+tests. Unknown completion, credentials or capabilities remain unknown, not
+approval, delivery or a reason to silently switch agents.
 
-## Single-issue execution
+`milestone-orchestrator` selects a single issue, exact milestone or authorized repository queue. A single-issue request never authorizes prerequisites or siblings. Inventory dependencies and existing PRs read-only. **At most one active issue per selected queue**, including planning: finish or explicitly park it with reason, branch/revision and next action before starting another, even if independent. Subagents may work only within that active issue, with real runtime support, isolated resources and one writer per checkout. Cross-repository consumers require `contract-handoff` design review and frozen effective producer contract before integration; an unmerged hard prerequisite is not delivery.
 
-Invoke `milestone-orchestrator` with "Cuide da issue: <GitHub issue URL>" (or "Cuide desta issue") for `scope=single_issue`. Add "sem merge" to select `merge_mode=manual`; otherwise the existing auto-if-green mode applies only to that issue. Use the same required flow, exact-revision proposal gate, fresh implementation session, independent audits and performance hooks. Resume an existing verified plan or implementation PR rather than creating duplicates. Related issues/PRs are read-only dependency evidence: do not execute prerequisites or widen to the milestone/queue. Unmerged hard dependencies, ambiguous PR links, unresolved material decisions or missing capabilities block this issue with evidence and an exact next action. For a closed issue, verify delivery and report its state without reopening it or starting new work. Continue to confirmed merge/closure and kaizen, or READY_TO_MERGE in manual mode.
+Default `merge_mode=auto-if-green` applies only to the authorized scope; explicit manual/no-merge overrides it. Merge only after current HEAD, required checks, independent review, required human approvals, target/method and branch protection are verified. Pending/failed/missing/unknown required signals block merge. Native auto-merge is permitted only if GitHub enforces all applicable gates; otherwise wait and recheck. Use the expected HEAD to reject a concurrent push, then verify actual merge/closure and any required merge-commit checks. Never force-push, deploy, release or bypass protection as a side effect.
 
-## Milestone execution
+After verified delivery, perform eligible safe housekeeping under WORKTREES and select the next issue. Kaizen is on demand or periodic, never a merge, cleanup or dependency prerequisite.
 
-Invoke `milestone-orchestrator` once with "cuide da fila deste projeto" for the uniquely identified current repository, or "cuide deste milestone" with an identifiable milestone. Add "sem merges" to opt out of the default automatic merge for this run. The project queue inventories open issues and PRs; a milestone scopes work to its issues and linked PRs. It inventories all eligible issues, builds an evidence-backed dependency DAG and schedules eligible work automatically. It reviews proposals against each exact OpenSpec revision without a routine owner checkpoint; after validation, fresh child sessions run Apply, tests, verification, archive, prepare-pr and independent audits. Concurrency is calculated from hard dependencies, expected code conflicts, isolated worktrees and runtime/CI capacity; dependent work waits for merged prerequisites while independent work continues. Missing decisions block only the affected issue/dependents. The default merge mode is `auto-if-green` for the selected run; an explicit "do not merge" or `merge_mode=manual` overrides it. Neither mode bypasses branch protections, required reviews, or checks. The ledger comes from GitHub issues, decisions, artifacts, PRs and exact-head CI; ai-memory is supplementary. After verified merge, run kaizen before hard dependents. ghpending is optional triage, and GitHub Project is a product view.
+## Communication and recovery
 
-## Checkpoint reuse
+Do not post routine GitHub issue/PR comments for stage transitions, worker handoffs, progress, retries, internal approvals, audit summaries or completion; no hidden structured run comments or replacement event log. Requirements/approved decisions belong in existing issue body and OpenSpec; delivery proof belongs in commits, PR description, checks and actual reviews. Comments are reserved for material questions not adequately represented in the body, owner-action blockers and actionable PR review discussion. Preserve historical comments; update canonical content without erasing unrelated decisions.
 
-Agents resume rather than restart. The proposal validation gate and fresh-session gate cannot be waived by checkpoint reuse:
+Resume from verified Git/GitHub/OpenSpec, worktree ownership, native runtime callbacks/queries and accessible test/CI evidence. Do not infer success from dispatch, transcript, container uptime, missing PID or absent test termination/report; keep unknown/incomplete state explicit. Reconcile old writer liveness and ownership before takeover, retain partial work and existing PR/change, and rerun only incomplete/invalidated obligations. No workflow event comments or timing analytics are required. Use current states queued, planning, implementing, reviewing, blocked and delivered with evidence on demand; status queries are read-only.
 
-- reuse a matching validated OpenSpec change only when the pinned revision and review evidence still match;
-- treat existing `[DECISION]` comments as authoritative;
-- continue an existing implementation rather than recreate it;
-- when a PR exists, switch to review/fix flow;
-- always refresh comments newer than the previous execution.
+## Project-specific checks
 
-## Definition of Ready
-
-- objective and problem are explicit;
-- expected behavior, scope and non-goals are defined;
-- current implementation and existing native mechanisms were inspected;
-- business rules, authorization and state transitions are defined when relevant;
-- API/GraphQL/data contracts, errors and edge cases are defined when relevant; cross-repository scenarios map to producer operations, authoritative states/errors and enforcement points;
-- dependencies and cross-repository sequencing are known;
-- test expectations and acceptance criteria are observable;
-- approved decisions are recorded;
-- no blocking `[QUESTION]` remains.
-
-## Stop conditions
-
-Do not turn every ambiguity into an owner question. First investigate it using available project evidence and resolve it when that evidence supports one answer; record the rationale. Stop and record a `[QUESTION]` only when a material product/architecture choice still has multiple plausible outcomes, or a change would add scope, break a public contract, alter authorization/sensitive data handling, introduce an irreversible migration/destructive action, or create a material external cost/commitment. Do not invent a decision to bypass the READY gate. Block only the affected issue and continue unrelated eligible work.
-
-During implementation, if new evidence changes the validated contract, stop the affected work, update the issue/OpenSpec, rerun proposal review and validation, and resume in the required fresh implementation context. Seek the owner only for an unresolved material product/architecture decision.
-
-## Workflow timing and Kaizen metrics
-
-For a run managed by `milestone-orchestrator`, use the optional `workflow-event` and `workflow-report` helpers when installed and GitHub write access is available. Create one stable run ID, reuse it across issues/workers, and record a run comment for each issue in scope. Record timestamps at actual stage boundaries and explicitly mark blocking waits; do not derive timings from labels, status text or chat history. The orchestrator is the single writer for each issue/run record. If timing instrumentation fails, report metrics as unavailable and continue the workflow.
-
-The report separates issue/milestone calendar duration, registered stage work, declared waits, rework and CI/review evidence. Registered work is measured wall-clock time in marked stage windows minus declared waits; it is not model-internal thinking time. Parallel workers may make summed work exceed calendar duration. Use milestone medians and show P90 only with at least five samples. Missing model/token/cost data stays unavailable.
-
-After an issue or milestone completes, kaizen may use the report as additional evidence. Consider timings together with sample size, repeated work, CI failures and review findings. A single slow step is not sufficient to change the process. Never change gates automatically from timing metrics; if no recurring, evidence-backed improvement is justified, report `NO PROCESS CHANGE`.
-
-Before claiming an execution active or complete, including after interruption/compaction/resume, reconcile with a supported runtime callback/query and evidence. Prefer notifications to purposeless polling; agent prose and container uptime are insufficient. If termination or test report is absent, keep the result unknown/incomplete, not implicitly passed. For asynchronous workers, `workflow-event dispatch` records the start, `observe` records source, effective time and typed execution ID, and the orchestrator is the only writer per issue/run. Workers return observations to it; use `--evidence evidence:<id>` for #31 handoff, `--execution-kind test_run --execution-id <evidence_id>` for local tests and `ci_run` with the hosted CI run ID. A report or reference is a runtime fact, not `workflow-evidence verify`'s proof verdict. Keep issue/worker/stage records separate even across a shared conversation, broaden scope only when authorized, and continue the authorized workflow without a new user command per gate.
-
-## Proportionate test coverage
-
-Apply [TEST_STRATEGY.md](TEST_STRATEGY.md) automatically in planning, Apply and review. Extend the existing OpenSpec evidence matrix with scenario, acceptance criterion/concrete risk, proving layer and existing/new test. Choose representative coverage and deepen it for affected high-risk behavior; avoid exhaustive combinations and duplicated rule matrices between unit, integrated and GraphQL tests. Reuse fixtures; for repeated failures record the single `attempt-log` block in the existing handoff, diagnose before any third attempt and verify with `scripts/attempt-log` (final validity does not turn a blocker into approval). Preserve final required checks. Reviewers requesting extra tests must identify the concrete failure current evidence would miss. Stop expanding scenarios when the agreed criteria and identified risks are proven and applicable checks pass. No extra owner approval or workflow stage is required.
-
-## Automatic CI performance expertise
-
-Apply [CI_PERFORMANCE.md](CI_PERFORMANCE.md) in the existing stages. issue-audit diagnoses relevant issues; implement-issue and apply-issue use optimize-ci; prepare-pr self-reviews and pr-audit independently verifies relevant CI/test-infrastructure changes. post-pr-audit checks current evidence and kaizen diagnoses recurring slowdown. The orchestrator carries these hooks automatically and isolates comparable experiments. No new user command, lifecycle, routine approval or unconditional hosted benchmark is required.
-
-## Worktree ownership and closeout
-
-Apply [WORKTREES.md](WORKTREES.md) during planning, implementation, review corrections and recovery. Reuse one verified issue checkout across fresh sessions, serialize ownership transfers, and retain incomplete/manual-merge work. Cleanup requires verified delivery, durable evidence, no owner and no local data to preserve; never force removal.
-
-## Milestone progress queries
-
-Use `milestone-progress` for read-only milestone status/evolution requests. Return summary and per-issue tables from a complete live inventory, including uninstrumented issues. Distinguish GitHub closure from verified delivery, show current-head CI and blockers, and compare historical progress only against an identifiable evidence-backed baseline. Missing timing/history remains unavailable. A report request does not start execution or mutate GitHub/Git.
+Apply [TEST_STRATEGY.md](https://github.com/rocker-code/my-ai-skills/blob/main/protocol/TEST_STRATEGY.md), [WORKTREES.md](https://github.com/rocker-code/my-ai-skills/blob/main/protocol/WORKTREES.md), [REVIEW_POLICY.md](https://github.com/rocker-code/my-ai-skills/blob/main/protocol/REVIEW_POLICY.md), [VISUAL_ARTIFACTS.md](https://github.com/rocker-code/my-ai-skills/blob/main/protocol/VISUAL_ARTIFACTS.md) and [CI_PERFORMANCE.md](https://github.com/rocker-code/my-ai-skills/blob/main/protocol/CI_PERFORMANCE.md) only where relevant, reusing their existing safeguards rather than introducing new stages. CI performance work may measure project CI when explicitly in scope; workflow self-measurement and performance baselines are not delivery gates.

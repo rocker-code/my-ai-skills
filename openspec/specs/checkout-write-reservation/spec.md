@@ -21,7 +21,7 @@ O helper SHALL usar exclusivamente o registry `ai-workflow/worktrees.json` no Gi
 - **THEN** o helper recusa mutações, preserva o arquivo e orienta a reconstrução verificada
 
 ### Requirement: Reserva exclusiva de escrita
-O helper SHALL conceder posse ativa de um checkout a no máximo uma sessão. Uma reserva MUST registrar repositório, issue, branch, caminho, base, dono, lifecycle, baseline de código e horário. Sessão/run MUST seguir os IDs seguros de `workflow-event`. Outra sessão MUST receber conflito com o dono atual; a mesma issue MUST NOT ter duas entradas não removidas em caminhos distintos.
+O helper SHALL conceder posse ativa de um checkout a no máximo uma sessão. Uma reserva MUST registrar repositório, issue, branch, caminho, base, dono, lifecycle, baseline de código e horário. Sessão/run MUST seguir os padrão seguro próprio `SAFE_ID` (`^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$`). Outra sessão MUST receber conflito com o dono atual; a mesma issue MUST NOT ter duas entradas não removidas em caminhos distintos.
 
 #### Scenario: Dois writers disputam o mesmo checkout
 - **WHEN** duas sessões cooperantes executam a reserva do mesmo checkout ao mesmo tempo
@@ -50,6 +50,7 @@ O helper SHALL conceder posse ativa de um checkout a no máximo uma sessão. Uma
 #### Scenario: Identificadores incompatíveis ou issue duplicada
 - **WHEN** sessão/run não obedece ao padrão seguro ou outra entrada não removida já usa a mesma issue em outro caminho
 - **THEN** a primeira reserva falha por uso inválido, ou a segunda por conflito com indicação do caminho existente, sem conceder posse
+
 
 ### Requirement: API canônica versionada de estado de código
 O módulo `worktree_registry.py` SHALL expor `FINGERPRINT_VERSION`, `SAFE_ID`, `is_known_generated`, `code_state(checkout, *, exclude_paths=(), include_ignored=())` e `drift_report(baseline, current, *, checkout)`. O estado SHALL conter HEAD, digest `sha256:v1:<hex>` e entradas por caminho com XY, conteúdo e índice; gerados são separados. O digest MUST incluir blobs/modos/estágios do índice; mudanças incompatíveis MUST usar nova versão. O relatório MUST comparar entradas completas.

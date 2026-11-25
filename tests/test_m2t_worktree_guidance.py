@@ -48,7 +48,7 @@ class M2TWorktreeGuidanceTests(unittest.TestCase):
         for phrase in (
             "before** Git removes the checkout", "each** proved GraphQL selection",
             "exit 73", "retains the worktree", "Do not use global `gc`",
-            "shared vendor/Composer caches", "active owner", "delivery/kaizen",
+            "shared vendor/Composer caches", "active owner", "verified issue delivery",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, PROTOCOL + skill("milestone-orchestrator"))
