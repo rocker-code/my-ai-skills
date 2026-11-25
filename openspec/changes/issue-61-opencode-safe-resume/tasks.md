@@ -10,7 +10,7 @@ Os itens concluídos abaixo representam implementação histórica verificada no
 
 ## 2. Integração revisada no Apply novo
 
-- [ ] 2.1 Após revisão independente da proposta pinada e parada do Planning, conferir ID nativo próprio, transferência/verify da reserva, Git/dirty/ignored, issue #61 e políticas pinadas; obter `openspec instructions apply --change issue-61-opencode-safe-resume --json` e confirmar tarefas/refs sem novo change/branch/worktree.
+- [x] 2.1 Após revisão independente da proposta pinada e parada do Planning, conferir ID nativo próprio, transferência/verify da reserva, Git/dirty/ignored, issue #61 e políticas pinadas; obter `openspec instructions apply --change issue-61-opencode-safe-resume --json` e confirmar tarefas/refs sem novo change/branch/worktree.
 - [ ] 2.2 Integrar exatamente `12ca324faf2865faa62d16e55715d3ddd0adb53a` com `git merge --no-ff --no-commit`, revisar/resolver somente conflitos compatíveis e criar merge commit; comprovar ambas ancestralidades, preservação dos 38 commits e nove bytecodes, sem reset/rebase/stash/clean/aceite de drift.
 - [ ] 2.3 Reconciliar sobreposições com as políticas/semântica atuais, inclusive a cópia inicial do change em main, mantendo multiagente/TOML/referências/remoções de telemetria e sem audit/ready; comprovar diff, pins A_R1/B_R1 e bytes do instalador do alvo inalterados, rodando `test_instrumentation_distribution.py` e `test_install_launcher.py` por discovery antes de modelo (I1/D1).
 
