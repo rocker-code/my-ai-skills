@@ -29,6 +29,7 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               t1_native_inspection, ROOT,
                                               t1_handoff, catalog_discovery,
                                               delivered_skill_catalog, forbidden_attempts,
+                                              read_only_locators, disposable_shell_guard,
                                               STRICT_VALIDATE)
 
 
@@ -1151,6 +1152,101 @@ class ProofBoundaryTest(unittest.TestCase):
             wrong_events = copy.deepcopy(events)
             wrong_events[0]["part"]["state"]["output"] = output
             self.assertFalse(t5_sources(wrong_events, "ses-t5", fixture, github, reads))
+
+
+class ReadOnlyLocatorTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="resume locators ", dir="/tmp/opencode")
+        self.addCleanup(self.temp.cleanup)
+        self.base = Path(self.temp.name)
+        self.repo = self.base / "repo"
+        self.repo.mkdir()
+        self.checkout = self.base / "writer checkout"
+        self.checkout.mkdir()
+        self.runtime = self.base / "runtime"
+        self.runtime.mkdir()
+        self.reader = self.runtime / "read-receipt"
+        self.reader.write_text(RUNTIME_READER)
+        # Synthetic unit input; separate retained native proof exercises a
+        # receipt actually observed from a cooperative writer by Popen.wait().
+        self.receipt = {"execution_id": "writer-T1-61", "owner": "seed-T1",
+                        "run": "wf-disposable-t1", "checkout": str(self.checkout),
+                        "execution_kind": "cooperative_process", "terminal": True, "exit_code": 0}
+
+    def publish(self, receipts, *, case="T1", selected_issue=None):
+        permissions = read_only_permissions(
+            self.repo, [self.checkout], self.reader, receipts, self.repo,
+            prechoice=case == "T7" and selected_issue is None)
+        original = json.dumps(permissions)
+        result = read_only_locators(
+            self.repo, [self.checkout], self.reader, receipts, permissions,
+            case=case, selected_issue=selected_issue)
+        self.assertEqual(json.dumps(permissions), original)
+        return result, permissions
+
+    def test_published_commands_and_cwds_match_existing_literal_policy(self):
+        locator, permissions = self.publish({61: self.receipt})
+        guard = disposable_shell_guard(
+            self.base / "guard", self.repo, [self.checkout], permissions,
+            {"HOME": str(self.base), "PATH": "/usr/bin:/bin"})
+        commands = json.loads(Path(guard["policy"]).read_text())["commands"]
+        expected = shlex.join(["python3", str(self.reader), *[
+            self.receipt[k] for k in ("execution_id", "owner", "run", "checkout")]])
+        self.assertEqual(locator["runtime_receipt_command"], expected)
+        self.assertEqual(locator["runtime_receipt_identity"],
+                         {k: self.receipt[k] for k in ("execution_id", "owner", "run", "checkout")})
+        self.assertEqual(locator["runtime_receipt_cwd"], str(self.repo))
+        self.assertNotEqual(locator["runtime_receipt_cwd"], self.receipt["checkout"])
+        self.assertEqual(set(locator["runtime_receipt_allowed_cwds"]), set(commands))
+        for cwd in locator["runtime_receipt_allowed_cwds"]:
+            self.assertIn(expected, commands[cwd])
+        apply = locator["apply_instructions_locator"]
+        self.assertEqual(apply, {
+            "command": f"openspec instructions apply --change {CHANGE} --json",
+            "cwd": str(self.repo)})
+        self.assertIn(apply["command"], commands[apply["cwd"]])
+        self.assertNotIn(f'openspec instructions apply --change "{CHANGE}" --json',
+                         commands[apply["cwd"]])
+        self.assertNotIn("terminal", locator["runtime_receipt_identity"])
+        self.assertNotIn("exit_code", locator["runtime_receipt_identity"])
+
+    def test_t5_shared_locator_and_t7_only_after_explicit_choice(self):
+        locator, _ = self.publish({11: self.receipt}, case="T5")
+        self.assertIn("writer-T1-61", locator["runtime_receipt_command"])
+        self.assertNotIn("apply_instructions_locator", locator)
+        receipts = {issue: {**self.receipt, "execution_id": f"writer-T7-{issue}",
+                            "run": f"wf-disposable-{issue}"} for issue in (21, 22)}
+        ambiguous, _ = self.publish(receipts, case="T7")
+        self.assertNotIn("runtime_receipt_command", ambiguous)
+        self.assertNotIn("runtime_receipt_identity", ambiguous)
+        self.assertNotIn("apply_instructions_locator", ambiguous)
+        for selected in (21, 22):
+            chosen, permissions = self.publish(receipts, case="T7", selected_issue=selected)
+            self.assertEqual(chosen["runtime_receipt_identity"]["execution_id"],
+                             receipts[selected]["execution_id"])
+            self.assertIn(chosen["runtime_receipt_command"],
+                          [r["resource"] for r in permissions if r["action"] == "shell"])
+        with self.assertRaises(ValueError):
+            self.publish(receipts, case="T7", selected_issue=99)
+
+    def test_complete_published_reader_and_all_four_identity_arguments(self):
+        locator, _ = self.publish({61: self.receipt})
+        env = {**os.environ, "RESUME_RUNTIME_ROOT": str(self.runtime)}
+        (self.runtime / "receipts.json").write_text(json.dumps([self.receipt]))
+        result = subprocess.run(
+            ["/bin/sh", "-c", locator["runtime_receipt_command"]],
+            cwd=locator["runtime_receipt_cwd"], env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout), self.receipt)
+        args = ["python3", str(self.reader), *[
+            self.receipt[k] for k in ("execution_id", "owner", "run", "checkout")]]
+        for index in range(2, 6):
+            wrong = args[:]
+            wrong[index] = "/wrong" if index == 5 else "wrong-identity"
+            self.assertEqual(subprocess.run(wrong, env=env, capture_output=True).returncode, 3)
+        self.assertEqual(subprocess.run(args[:2], env=env, capture_output=True).returncode, 2)
+        (self.runtime / "receipts.json").write_text(json.dumps([{**self.receipt, "terminal": False}]))
+        self.assertEqual(subprocess.run(args, env=env, capture_output=True).returncode, 3)
 
 
 class TerminalReceiptTest(unittest.TestCase):

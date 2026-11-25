@@ -39,8 +39,9 @@ PROMPTS = {
         "somente leitura: não inicie Apply nem crie branch, worktree ou change. "
         "Confronte o commit da proposta, seus artefatos, validação estrita e "
         "revisão imutável nas fontes disponíveis, não apenas declarações de estado. "
-        "Os comandos somente leitura publicados pela fixture têm argv e diretório "
-        "restritos; use-os sem composição. Relate fontes verificadas e lacunas."
+        "Use os comandos completos e cwd publicados pela fixture verbatim: a "
+        "restrição compara bytes brutos, inclusive aspas/espaços, não só argv. "
+        "Não componha nem reformule comandos. Relate fontes verificadas e lacunas."
         " Distinga fingerprints de origem e da fixture transformada; o seed só "
         "comprova o estado controlado da fixture, não aprovação real da candidata. "
         "Na última resposta retorne SOMENTE um objeto JSON de handoff com: "
@@ -523,6 +524,46 @@ def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoic
         rules.append({"action": "read", "resource": ".agents/skills/openspec-*",
                       "effect": "deny"})
     return rules
+
+
+def read_only_locators(repo, worktrees, reader, receipts, permissions, *, case,
+                       selected_issue=None):
+    """Publish existing literal permissions, not a new source of authorization."""
+    allowed = {r["resource"] for r in permissions
+               if r["action"] == "shell" and r["effect"] == "allow"}
+    result = {"raw_command_contract": (
+        "Use the complete published command verbatim in its published cwd. "
+        "Authorization compares raw bytes, including quotes and spaces, not merely argv. "
+        "Do not add quotes, arguments, prefixes, redirection or composition.")}
+    if case == "T1":
+        command = f"openspec instructions apply --change {CHANGE} --json"
+        assert command in allowed
+        result["apply_instructions_locator"] = {"command": command, "cwd": str(repo)}
+    if case == "T7" and selected_issue is None:
+        result["runtime_receipt_note"] = (
+            "No candidate is selected. The chosen writer's complete locator is "
+            "published only after explicit issue/run choice.")
+        return result
+    if selected_issue is None:
+        assert len(receipts) == 1
+        selected_issue = next(iter(receipts))
+    if selected_issue not in receipts:
+        raise ValueError("receipt locator requires an explicitly identified fixture writer")
+    receipt = receipts[selected_issue]
+    identity = {key: receipt[key] for key in ("execution_id", "owner", "run", "checkout")}
+    # Same primitive, fields and ordering as read_only_permissions; preserve that
+    # function and the raw guard byte-for-byte, and check exact policy membership.
+    command = shlex.join(["python3", str(reader), identity["execution_id"],
+                          identity["owner"], identity["run"], identity["checkout"]])
+    assert command in allowed
+    result.update(runtime_receipt_command=command, runtime_receipt_cwd=str(repo),
+                  runtime_receipt_allowed_cwds=[str(p) for p in (repo, *worktrees)],
+                  runtime_receipt_identity=identity,
+                  runtime_receipt_identity_scope=(
+                      "Cooperative WRITER identity from the actual receipt, not the "
+                      "model/observer session. Command cwd is not receipt checkout. "
+                      "These locators do not prove terminal state; run the reader."))
+    return result
 
 
 def disposable_path(home, inherited_path, operator_home):
@@ -1354,7 +1395,11 @@ def main():
             assert checked_json([str(reservation), "verify", "--path", str(path),
                                  "--session", receipt["owner"], "--json"], cwd=repo,
                                 env=case_env)["ok"]
-        fixture["runtime_receipt_command"] = f"python3 {reader}"
+        locator_permissions = read_only_permissions(
+            repo, worktrees, reader, receipts, active, prechoice=case == "T7", provenance=provenance)
+        locators = read_only_locators(
+            repo, worktrees, reader, receipts, locator_permissions, case=case)
+        fixture.update(locators)
         fixture["writer_execution_ids"] = {str(issue): receipts[issue]["execution_id"]
                                            for issue, _ in issue_runs}
         # The evidence file is committed before model invocation, while runtime
@@ -1379,8 +1424,13 @@ def main():
         phases = []
         session = None
         prompts = [prompt]
+        phase_locators = [locators]
         if case == "T7":
-            selected = receipts[21]
+            chosen_locators = read_only_locators(
+                repo, worktrees, reader, receipts,
+                read_only_permissions(repo, worktrees, reader, receipts, active),
+                case=case, selected_issue=21)
+            phase_locators.append(chosen_locators)
             prompts.append(
                 "Escolho explicitamente a issue #21, run wf-disposable-a. Continue "
                 "NESTA MESMA sessão somente leitura. Antes da skill, faça chamadas "
@@ -1397,10 +1447,11 @@ def main():
                 "e `gh api --paginate repos/disposable/recovery/issues/22` "
                 "em chamadas separadas; `openspec context --json` e "
                 "`openspec list --json` em chamadas separadas. Confirme o writer "
-                "anterior com um único comando independente `python3 <caminho de "
-                "runtime_receipt_command> <execution_id> <owner> <run> <checkout>` usando "
-                f"{selected['execution_id']}, {selected['owner']}, {selected['run']}; "
-                "a variável de ambiente da fixture já está definida. Se qualquer "
+                "anterior executando o comando completo deste locator, verbatim, no "
+                "cwd publicado; os argumentos são do writer escolhido, não da sessão "
+                "do modelo/observer. A variável de ambiente da fixture já está definida. "
+                "Locator publicado somente após esta escolha explícita: "
+                + json.dumps(chosen_locators) + ". Se qualquer "
                 "probe falhar ou faltar, bloqueie; não substitua por resposta textual. "
                 "Depois da escolha descubra .agents/skills e invoque explicitamente "
                 "openspec-explore nativa pela ferramenta skill em modo somente leitura, "
@@ -1420,6 +1471,7 @@ def main():
                 "$schema": "https://opencode.ai/config.json", "permissions": permissions,
                 "plugins": [guard["plugin"]]})
             record = {"phase": phase, "prompt": message, "before": before,
+                      "published_read_only_locators": phase_locators[phase - 1],
                       "native": native_provenance, "runtime_receipts": receipts,
                       "shell_guard": guard,
                       "fixture_proposal_facts": provenance,
