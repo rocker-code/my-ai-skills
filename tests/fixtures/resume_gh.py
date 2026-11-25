@@ -44,8 +44,12 @@ def main():
     try:
         result = response(args, json.loads((root / "state.json").read_text()))
     except (ValueError, KeyError, TypeError):
+        with (root / "reads.jsonl").open("a") as log:
+            log.write(json.dumps({"args": args, "exit_code": 77, "result": None}) + "\n")
         print("GitHub fixture refused request", file=sys.stderr)
         return 77
+    with (root / "reads.jsonl").open("a") as log:
+        log.write(json.dumps({"args": args, "exit_code": 0, "result": result}) + "\n")
     print(json.dumps(result))
     return 0
 

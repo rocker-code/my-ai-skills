@@ -2,6 +2,7 @@
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
+import copy
 import os
 from pathlib import Path
 import runpy
@@ -12,12 +13,16 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from unittest.mock import Mock
 
 from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               disposable_path, t7_phase1_proof,
                                               t7_reinventory, t7_visible_question,
                                               native_calls, contract_source, CHANGE,
-                                              RUNTIME_READER, inventory, sha)
+                                              RUNTIME_READER, inventory, sha,
+                                              read_only_permissions, prepared_phase,
+                                              execute_model, ModelExecutionError,
+                                              model_preflight, t5_sources)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -170,6 +175,8 @@ class T7VisibleQuestionTest(unittest.TestCase):
                                        ".agents/skills/openspec-explore"}),
                 ("shell", {"command": "worktree-reservation reconcile --takeover"}),
                 ("shell", {"command": "workflow-event stage-start --stage apply"}),
+                ("shell", {"command": "git -C /tmp/opencode/fixture/T7-issue-21 switch other"}),
+                ("shell", {"command": "git -C '/tmp/fixture with spaces' checkout other"}),
                 ("write", {"path": "selection.txt", "content": "issue 21"}),
             ):
                 with self.subTest(status=status, tool=tool, inp=inp):
@@ -326,6 +333,43 @@ class T7ReinventoryTest(unittest.TestCase):
         self.events[-1]["sessionID"] = "ses-other"
         self.assertFalse(self.proof())
 
+    def test_earliest_native_content_or_other_skill_attempt_is_boundary(self):
+        original = copy.deepcopy(self.events)
+        for status in ("completed", "error", "cancelled"):
+            for tool, inp in (
+                ("read", {"path": str(self.repo / ".agents/skills/openspec-explore/SKILL.md")}),
+                ("skill", {"id": "openspec-apply-change"}),
+                ("grep", {"path": ".agents/skills", "pattern": "name"}),
+            ):
+                with self.subTest(status=status, tool=tool):
+                    self.events = copy.deepcopy(original)
+                    self.events.insert(0, {"type": "tool_use", "sessionID": self.session,
+                                          "part": {"tool": tool, "state": {
+                                              "status": status, "input": inp}}})
+                    # A later successful Explore cannot erase this earlier attempt.
+                    self.events.append({"type": "tool_use", "sessionID": self.session,
+                                        "part": {"tool": "skill", "state": {
+                                            "status": "completed",
+                                            "input": {"id": "openspec-explore"}}}})
+                    self.assertFalse(self.proof())
+        self.events = original
+        self.events.insert(0, {"type": "tool_use", "sessionID": self.session,
+                              "part": {"tool": "shell", "state": {
+                                  "status": "completed",
+                                  "input": {"command": "ls .agents/skills"}}}})
+        self.assertTrue(self.proof())
+
+    def test_phase2_failed_takeover_or_git_switch_is_forbidden(self):
+        for command in ("git -C /tmp/opencode/fixture/T7-issue-21 switch other",
+                        "worktree-reservation reconcile --takeover"):
+            with self.subTest(command=command):
+                event = {"type": "tool_use", "sessionID": self.session, "part": {
+                    "tool": "shell", "state": {"status": "error",
+                                              "input": {"command": command}}}}
+                self.events.append(event)
+                self.assertFalse(self.proof())
+                self.events.pop()
+
     def test_both_issue_sources_and_selected_reservation_are_required(self):
         source = next(e for e in self.events if
                       "issues/22" in e["part"]["state"]["input"]["command"])
@@ -430,6 +474,166 @@ class ReadOnlyGitHubTest(unittest.TestCase):
             path.write_text("{invalid")
             self.assertNotEqual(subprocess.run([*command, "issue", "view", "21"],
                                               env=env, capture_output=True).returncode, 0)
+
+
+class ProofBoundaryTest(unittest.TestCase):
+    def test_permissions_deny_search_and_unbounded_shell_or_home_reads(self):
+        repo = Path("/tmp/opencode/fixture/T1")
+        reader = Path("/tmp/opencode/fixture/T1-runtime/read-receipt")
+        active = Path("/tmp/opencode/fixture/home/active")
+        rules = read_only_permissions(repo, [], reader, {}, active)
+        self.assertEqual(rules[0], {"action": "*", "resource": "*", "effect": "deny"})
+        allowed = [r for r in rules if r["effect"] == "allow"]
+        self.assertFalse(any(r["action"] in ("grep", "glob") for r in allowed))
+        self.assertFalse(any(r["resource"] == "*" for r in allowed))
+        self.assertFalse(any(r["action"] == "shell" and "*" in r["resource"] for r in allowed))
+        self.assertFalse(any("/home/operator" in r["resource"] for r in allowed))
+        self.assertFalse(any(r["resource"] == str(active.parent) + "/*" for r in allowed))
+
+    def test_prepared_failure_records_survive_provider_malformed_and_timeout(self):
+        for failure in ("provider", "malformed", "timeout"):
+            for after_available in (True, False):
+                with self.subTest(failure=failure, after_available=after_available):
+                    with tempfile.TemporaryDirectory(dir="/tmp/opencode") as root:
+                        base = Path(root)
+                        results = {"scenarios": {}, "candidate": "exact-head"}
+                        record = {"before": {"state": "original"}}
+                        process = Mock(pid=999999, returncode=1)
+                        valid = json.dumps({"type": "error", "sessionID": "ses-failed",
+                                            "error": {"message": "HTTP400 Model unavailable"}})
+                        process.communicate.return_value = (valid, "provider error")
+                        if failure == "malformed":
+                            process.returncode = 0
+                            process.communicate.return_value = (valid + "\n{invalid", "")
+                        if failure == "timeout":
+                            process.returncode = -15
+                            process.communicate.side_effect = [
+                                subprocess.TimeoutExpired("fixture", 360), (valid, "timeout")]
+                        def launch():
+                            saved = json.loads((base / "results.json").read_text())
+                            prepared = saved["scenarios"]["T1"][0]
+                            self.assertEqual(prepared["status"], "prepared")
+                            self.assertEqual(prepared["before"], record["before"])
+                            self.assertIsNone(prepared["unchanged"])
+                            return execute_model("opencode", base, {}, base,
+                                                 "T1-phase1", "read-only", model="test/free")
+                        def after():
+                            if not after_available:
+                                raise RuntimeError("snapshot unavailable")
+                            return record["before"]
+                        with (patch("smoke_resume_candidate_opencode.subprocess.Popen",
+                                    return_value=process) as popen,
+                              patch("smoke_resume_candidate_opencode.os.killpg") as kill,
+                              patch("smoke_resume_candidate_opencode.git", return_value="exact-head")):
+                            with self.assertRaises(ModelExecutionError):
+                                prepared_phase(base, results, "T1", record, launch, after)
+                        saved = json.loads((base / "results.json").read_text())
+                        phase = saved["scenarios"]["T1"][0]
+                        self.assertEqual(saved["status"], "failed")
+                        self.assertEqual(phase["status"], "failed")
+                        self.assertFalse(phase["outcome"])
+                        self.assertEqual(phase["session_id"], "ses-failed")
+                        self.assertEqual(phase["after_status"],
+                                         "available" if after_available else "unavailable")
+                        self.assertEqual(phase["unchanged"], True if after_available else None)
+                        self.assertEqual(popen.call_count, 1)
+                        self.assertEqual(kill.call_count, int(failure == "timeout"))
+                        self.assertEqual(list(saved["scenarios"]), ["T1"])
+                        terminal = json.loads((base / "T1-phase1-terminal.json").read_text())
+                        self.assertEqual(terminal["session_ids"], ["ses-failed"])
+                        self.assertEqual(terminal["candidate"], "exact-head")
+                        self.assertEqual(bool(terminal["malformed_lines"]), failure == "malformed")
+
+    def test_native_model_metadata_selects_exact_default_or_explicit_free_override(self):
+        # Shape captured from OpenCode 2.3.2 /openapi.json Model.Info/Cost:
+        # costs are tier arrays and tools lives under capabilities, not top-level.
+        model = {"id": "free-a", "modelID": "upstream-a", "providerID": "test",
+                 "type": "chat", "enabled": True, "status": "active",
+                 "capabilities": {"tools": True, "input": ["text"], "output": ["text"]},
+                 "cost": [{"input": 0, "output": 0, "cache": {"read": 0, "write": 0}}],
+                 "settings": {"apiKey": "must-not-be-persisted"}}
+        repo = Path("/tmp/opencode/fixture")
+        def preflight(default, catalog, override=None):
+            record = {}
+            responses = [{"location": {"directory": str(repo)}, "data": default},
+                         {"location": {"directory": str(repo)}, "data": catalog}]
+            with patch("smoke_resume_candidate_opencode.checked_json",
+                       side_effect=responses) as calls:
+                result = model_preflight("opencode", repo, {"HOME": "/disposable"}, record,
+                                         override)
+            self.assertEqual(calls.call_count, 2)
+            self.assertNotIn("must-not-be-persisted", json.dumps(record))
+            self.assertFalse(record["inference_verified"])
+            return result, record
+        result, record = preflight(model, [model])
+        self.assertEqual(result, "test/free-a")
+        self.assertEqual(record["source"], "native:/api/model/default")
+        other = {**model, "id": "free-b"}
+        self.assertEqual(preflight(model, [model, other], "test/free-b")[0], "test/free-b")
+        self.assertEqual(preflight(other, [other])[0], "test/free-b")
+        for default, catalog, override in (
+            (None, [], None), (model, [], None), (model, [model], "test/missing"),
+            (model, [{**model, "enabled": False}], None),
+            (model, [{**model, "capabilities": {**model["capabilities"], "tools": False}}], None),
+            (model, [{**model, "capabilities": {"tools": True, "input": [], "output": []}}], None),
+            (model, [{**model, "cost": []}], None),
+            (model, [{**model, "cost": [{"input": 0, "output": 0}]}], None),
+            (model, [{**model, "cost": [{"input": 0, "output": 1,
+                                      "cache": {"read": 0, "write": 0}}]}], None),
+            (model, [{**model, "cost": [*model["cost"], {"input": 1, "output": 0,
+                                                       "cache": {"read": 0, "write": 0}}]}], None),
+        ):
+            with self.subTest(default=default, catalog=catalog, override=override):
+                with self.assertRaises(RuntimeError):
+                    preflight(default, catalog, override)
+        with (patch("smoke_resume_candidate_opencode.checked_json",
+                    side_effect=RuntimeError("metadata endpoint unavailable")) as api,
+              patch("smoke_resume_candidate_opencode.execute_model",
+                    side_effect=AssertionError("no inference"))):
+            with self.assertRaises(RuntimeError):
+                model_preflight("opencode", repo, {}, {})
+            self.assertEqual(api.call_count, 1)
+
+    def test_t5_requires_successful_pr_head_checks_manual_and_dependency_reads(self):
+        fixture = {"pr": 12, "pr_head": "a" * 40, "merge_mode": "manual"}
+        pr = {"number": 12, "state": "OPEN", "headRefOid": "a" * 40,
+              "body": "Merge manual. Consumer #13 blocked until merge.",
+              "statusCheckRollup": [{"headSha": "a" * 40, "status": "COMPLETED",
+                                     "conclusion": "SUCCESS"}]}
+        dependency = {"number": 13, "state": "OPEN",
+                      "body": "Blocked until PR #12 is merged; do not dispatch."}
+        github = {"pulls": {"12": pr}, "issues": {"13": dependency}}
+        reads = [{"args": ["pr", "view", "12"], "exit_code": 0, "result": pr},
+                 {"args": ["api", "repos/disposable/recovery/issues/13"],
+                  "exit_code": 0, "result": dependency}]
+        events = [{"type": "tool_use", "sessionID": "ses-t5", "part": {
+            "tool": "shell", "state": {"status": "completed",
+                "input": {"command": shlex.join(["gh", *read["args"]])},
+                "output": json.dumps(read["result"])}}} for read in reads]
+        self.assertTrue(t5_sources(events, "ses-t5", fixture, github, reads))
+        self.assertFalse(t5_sources(events[1:], "ses-t5", fixture, github, reads[1:]))
+        self.assertFalse(t5_sources(events[:1], "ses-t5", fixture, github, reads[:1]))
+        self.assertFalse(t5_sources(events, "ses-other", fixture, github, reads))
+        self.assertFalse(t5_sources([], "ses-t5", fixture, github, reads))
+        for field, value in (("headRefOid", "b" * 40), ("statusCheckRollup", []),
+                             ("statusCheckRollup", [{"headSha": "b" * 40,
+                                 "status": "COMPLETED", "conclusion": "SUCCESS"}]),
+                             ("body", "Merge auto"), ("state", "MERGED")):
+            wrong = {**pr, field: value}
+            self.assertFalse(t5_sources(events, "ses-t5", fixture,
+                                       {**github, "pulls": {"12": wrong}}, reads))
+        for status in ("error", "cancelled"):
+            wrong_events = copy.deepcopy(events)
+            wrong_events[0]["part"]["state"]["status"] = status
+            self.assertFalse(t5_sources(wrong_events, "ses-t5", fixture, github, reads))
+        for exit_code in (1, 77, None):
+            wrong_reads = [{**reads[0], "exit_code": exit_code}, reads[1]]
+            self.assertFalse(t5_sources(events, "ses-t5", fixture, github, wrong_reads))
+        for output in ("I read PR12 " + "a" * 40 + " manual 13",
+                       json.dumps(pr) + "\nExit code: 1", "{invalid"):
+            wrong_events = copy.deepcopy(events)
+            wrong_events[0]["part"]["state"]["output"] = output
+            self.assertFalse(t5_sources(wrong_events, "ses-t5", fixture, github, reads))
 
 
 class TerminalReceiptTest(unittest.TestCase):

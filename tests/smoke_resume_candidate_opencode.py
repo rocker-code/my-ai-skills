@@ -23,7 +23,6 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE = "issue-61-opencode-safe-resume"
-MODEL = os.environ.get("RESUME_SMOKE_MODEL", "opencode/glm-5.3-flash-free")
 APPROVED_PROPOSAL = "31cdb42b2d0e409e8820fa71d97177316c07f94a"
 PROMPTS = {
     "T1": (
@@ -204,26 +203,51 @@ def contract_source(root, revision):
     return {"revision": revision, "path": selected, "files": files}
 
 
-def read_only_permissions(repo, worktrees, reader, receipts, *, prechoice=False):
-    """Effective runtime deny-by-default policy; detectors do not sandbox shell."""
+def read_only_permissions(repo, worktrees, reader, receipts, active, *, prechoice=False):
+    """V2 ordered rules (last match wins), not a shell sandbox.
+
+    grep authorizes the regexp and glob the pattern, NOT the target directory.
+    Keep both denied; exact shell listings provide discovery instead. External
+    boundaries and content reads are independently constrained.
+    """
     rules = [{"action": "*", "resource": "*", "effect": "deny"}]
-    for action in ("read", "glob", "skill", "external_directory"):
-        rules.append({"action": action, "resource": "*", "effect": "allow"})
+    roots = [repo, *worktrees, reader.parent, active.resolve()]
+    for root in roots:
+        rules.append({"action": "external_directory", "resource": str(root) + "/*",
+                      "effect": "allow"})
+        rules.append({"action": "read", "resource": str(root) + "/*", "effect": "allow"})
+    # Internal reads use Location-relative paths; don't grant ../ or all HOME.
+    for path in ("recovery-evidence.json", ".agents/*", "openspec/*",
+                 ".git/ai-workflow/*"):
+        rules.append({"action": "read", "resource": path, "effect": "allow"})
+    for name in ("resume-workflow", "openspec-apply-change", "openspec-explore"):
+        rules.append({"action": "skill", "resource": name, "effect": "allow"})
     commands = ["git rev-parse --show-toplevel", "git rev-parse HEAD",
                 "git rev-parse --path-format=absolute --git-common-dir",
                 "git status --short", "git status --porcelain",
                 "git status --porcelain=v1 --untracked-files=all",
                 "git diff", "git diff --cached", "git log -5 --oneline",
                 "git show --stat HEAD", "git branch --list", "git worktree list --porcelain",
-                "git ls-files", "git ls-files --stage", "worktree-reservation list *",
-                "worktree-reservation status *", "openspec context *",
-                "openspec list *", "openspec status *", "openspec show *",
-                "openspec instructions *", "openspec validate *",
-                "gh api repos/disposable/recovery/issues/*",
-                "gh api --paginate repos/disposable/recovery/issues/*",
-                "gh issue view *", "gh issue list", "gh pr view *", "gh pr list",
-                "gh pr checks *", "ls .agents/skills*", "find .agents/skills *",
-                "ls", "pwd"]
+                 "git ls-files", "git ls-files --stage",
+                 shlex.join(["worktree-reservation", "list", "--repository", str(repo), "--json"]),
+                 "openspec context --json", "openspec list --json",
+                 f"openspec status --change {CHANGE} --json",
+                 f"openspec show {CHANGE} --json",
+                 f"openspec instructions apply --change {CHANGE} --json",
+                 f"openspec validate {CHANGE} --strict --no-interactive",
+                 "gh issue list", "gh pr list",
+                 "ls .agents/skills", "find .agents/skills -name SKILL.md", "pwd"]
+    for issue in receipts:
+        commands.extend([f"gh api repos/disposable/recovery/issues/{issue}",
+                         f"gh api --paginate repos/disposable/recovery/issues/{issue}",
+                         f"gh issue view {issue}"])
+    if 11 in receipts:
+        commands.extend(["gh api repos/disposable/recovery/issues/13",
+                         "gh api --paginate repos/disposable/recovery/issues/13",
+                         "gh issue view 13", "gh pr view 12", "gh pr checks 12",
+                         "gh pr view 12 --json number,headRefOid,state,statusCheckRollup,body"])
+    for path in sorted((repo / ".agents/skills").glob("openspec-*/SKILL.md")):
+        commands.append("ls " + shlex.quote(str(path.relative_to(repo))))
     for path in worktrees:
         for args in ("rev-parse --show-toplevel", "rev-parse HEAD", "status --short",
                      "status --porcelain=v1 --untracked-files=all", "diff", "diff --cached",
@@ -236,10 +260,12 @@ def read_only_permissions(repo, worktrees, reader, receipts, *, prechoice=False)
     if prechoice:
         rules.extend([
             {"action": "skill", "resource": "openspec-*", "effect": "deny"},
-            {"action": "read", "resource": ".agents/skills/openspec-*", "effect": "deny"},
-            {"action": "read", "resource": str(repo / ".agents/skills/openspec-*"),
-             "effect": "deny"},
         ])
+        for root in [repo, *worktrees]:
+            rules.append({"action": "read", "resource": str(root / ".agents/skills/openspec-*"),
+                          "effect": "deny"})
+        rules.append({"action": "read", "resource": ".agents/skills/openspec-*",
+                      "effect": "deny"})
     return rules
 
 
@@ -356,9 +382,8 @@ def t7_visible_question(response):
         text, re.IGNORECASE))
 
 
-def t7_phase1_proof(events, session, response, before, after, resume_invocation):
-    """A cancelled interactive form is not a user-visible disambiguation."""
-    visible_question = t7_visible_question(response)
+def native_attempts(events, session):
+    """Every content/invocation attempt is a boundary, including failed tools."""
     attempts = tool_events(events, session, completed_only=False)
     def native_skill_path(path):
         return isinstance(path, str) and bool(re.search(
@@ -391,18 +416,44 @@ def t7_phase1_proof(events, session, response, before, after, resume_invocation)
                    else native_skill_path(arg)) for arg in tokens[index + 1:]))
             for index, token in enumerate(tokens))
 
-    all_native_invocations = [
+    return [
         e for e in attempts
         if (e["tool"] == "skill" and
             str(e["input"].get("id", "")).startswith("openspec-")) or
              (e["tool"] == "read" and
               native_skill_path(e["input"].get("path"))) or
-             (e["tool"] == "grep" and
-              native_content_target(e["input"].get("path"))) or shell_native_read(e)]
+              (e["tool"] == "grep" and
+               native_content_target(e["input"].get("path"))) or shell_native_read(e)]
+
+
+def git_mutation(command):
+    """Recognize Git's global -C/options before its verb, even on denied calls."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return True
+    for index, token in enumerate(tokens):
+        if Path(token).name != "git":
+            continue
+        tail = tokens[index + 1:]
+        while tail and tail[0].startswith("-"):
+            option = tail.pop(0)
+            if option in ("-C", "-c", "--git-dir", "--work-tree"):
+                tail = tail[1:]
+        if tail and (tail[0] in ("add", "commit", "push", "checkout", "switch",
+                                "reset", "clean", "stash", "merge", "rebase") or
+                     tail[:2] == ["worktree", "add"]):
+            return True
+    return False
+
+
+def forbidden_attempts(events, session):
+    """Read-only recovery forbids attempts, not just successful mutations."""
+    attempts = tool_events(events, session, completed_only=False)
     # Snapshot equality proves no effects, not that a forbidden attempt was
     # never made. Only actual tool calls count: listing or globbing skill paths
     # is discovery, not reading their SKILL.md contents.
-    forbidden_attempts = [
+    return [
         e for e in attempts
         if (e["tool"] == "question" and
             events[e["index"]].get("part", {}).get("state", {}).get("status") ==
@@ -410,17 +461,27 @@ def t7_phase1_proof(events, session, response, before, after, resume_invocation)
         e["tool"] in ("write", "edit", "patch", "apply_patch", "subagent") or
         "reconcile" in json.dumps(e["input"]) or
         (e["tool"] == "shell" and isinstance(e["input"].get("command"), str) and
-         re.search(r"\b(?:worktree-reservation\s+(?:reserve|handoff|release|checkpoint)"
-                   r"|workflow-event\s+(?:stage-start|dispatch|observe)"
-                   r"|git\s+(?:add|commit|push|checkout|switch|worktree\s+add))\b",
-                   e["input"]["command"]))]
+          (git_mutation(e["input"]["command"]) or
+           re.search(r"\b(?:worktree-reservation\s+(?:reserve|handoff|release|checkpoint)"
+                    r"|workflow-event\s+(?:stage-start|dispatch|observe)"
+                    r")\b", e["input"]["command"])))]
+
+
+def t7_phase1_proof(events, session, response, before, after, resume_invocation):
+    """A cancelled interactive form is not a user-visible disambiguation."""
+    visible_question = t7_visible_question(response)
     return (visible_question and before == after and bool(resume_invocation)
-             and not all_native_invocations
-             and not forbidden_attempts)
+             and not native_attempts(events, session)
+             and not forbidden_attempts(events, session))
 
 
 def t7_reinventory(events, session, first_native, repo, worktrees, reader, receipts):
     """Require successful phase-2 observations of this fixture before native use."""
+    if forbidden_attempts(events, session):
+        return False
+    boundaries = native_attempts(events, session)
+    if boundaries:
+        first_native = min(first_native, min(e["index"] for e in boundaries))
     chosen = receipts[21]
     def parse_json_output(output):
         try:
@@ -498,8 +559,111 @@ def t7_reinventory(events, session, first_native, repo, worktrees, reader, recei
     return bool(roots_ok and openspec_ok and reservation_ok and receipt_ok and sources_ok)
 
 
-def execute_model(cli, repo, env, base, case, prompt, session=None):
-    command = [cli, "run", "--standalone", "--archived", "--model", MODEL,
+def t5_sources(events, session, fixture, github, reads):
+    """Successful fixture reads, not response substrings or attempted argv."""
+    def observed(argv, expected):
+        if not any(r.get("args") == argv and r.get("exit_code") == 0 and
+                   r.get("result") == expected for r in reads):
+            return False
+        for event in tool_events(events, session, tool="shell"):
+            command = event["input"].get("command", "")
+            try:
+                tokens = shlex.split(command)
+                output = json.loads(event["output"])
+            except (ValueError, TypeError):
+                continue
+            if tokens == ["gh", *argv] and output == expected:
+                return True
+        return False
+
+    pr = github["pulls"].get(str(fixture["pr"]), {})
+    checks = pr.get("statusCheckRollup", [])
+    bound = (pr.get("number") == fixture["pr"] and pr.get("state") == "OPEN" and
+             pr.get("headRefOid") == fixture["pr_head"] and checks and
+             all(c.get("headSha") == fixture["pr_head"] and
+                 c.get("status") == "COMPLETED" and c.get("conclusion") == "SUCCESS"
+                 for c in checks) and fixture["merge_mode"] == "manual" and
+             "manual" in pr.get("body", "").lower() and
+             "13" in pr.get("body", "") and "blocked" in pr.get("body", "").lower())
+    pr_read = any(observed(argv, pr) for argv in (
+        ["pr", "view", "12"],
+        ["pr", "view", "12", "--json", "number,headRefOid,state,statusCheckRollup,body"]))
+    dependency = github["issues"].get("13", {})
+    dependency_read = (
+        dependency.get("number") == 13 and dependency.get("state") == "OPEN" and
+        "PR #12" in dependency.get("body", "") and
+        "do not dispatch" in dependency.get("body", "") and
+        any(observed(argv, dependency) for argv in (
+            ["api", "repos/disposable/recovery/issues/13"],
+            ["api", "--paginate", "repos/disposable/recovery/issues/13"],
+            ["issue", "view", "13"])))
+    return bool(bound and pr_read and dependency_read)
+
+
+def redact(text, env):
+    for key, value in env.items():
+        if value and re.search(r"PASSWORD|TOKEN|SECRET|API_KEY", key, re.I):
+            text = text.replace(value, "[REDACTED]")
+    return re.sub(r'(?i)((?:authorization|api[_-]?key|password|token)'
+                  r'["\s:=]+)(?:Bearer\s+)?[^\s",}]+', r'\1[REDACTED]', text)
+
+
+def persist(base, results):
+    path = base / "results.json"
+    temporary = base / "results.json.new"
+    temporary.write_text(json.dumps(results, indent=2) + "\n")
+    temporary.replace(path)
+
+
+def model_preflight(cli, repo, env, record, override=None):
+    """Native metadata only, same isolated env/location; never generate or retry."""
+    record.update(source="RESUME_SMOKE_MODEL" if override else "native:/api/model/default",
+                  requested=override, status="metadata_unavailable", inference_verified=False)
+    def api(path):
+        data = checked_json([cli, "api", "--standalone", "get", path], cwd=repo, env=env)
+        if data.get("location", {}).get("directory") != str(repo):
+            raise RuntimeError("model metadata belongs to a different Location")
+        return data["data"]
+
+    def summary(model):
+        # Never retain provider settings, headers or credentials from the catalog.
+        return {key: model.get(key) for key in
+                ("id", "modelID", "providerID", "type", "enabled", "status",
+                 "capabilities", "cost")}
+
+    default = api("/api/model/default")
+    catalog = api("/api/model")
+    requested = override or (f"{default['providerID']}/{default['id']}" if default else None)
+    matches = [m for m in catalog if f"{m['providerID']}/{m['id']}" == requested]
+    record.update({"source": "RESUME_SMOKE_MODEL" if override else "native:/api/model/default",
+                   "requested": requested, "default": summary(default) if default else None,
+                   "catalog_matches": [summary(m) for m in matches],
+                   "inference_verified": False, "status": "rejected"})
+    if len(matches) != 1:
+        raise RuntimeError("selected model absent/ambiguous in native catalog")
+    model = matches[0]
+    caps, costs = model.get("capabilities", {}), model.get("cost", [])
+    if (model.get("enabled") is not True or model.get("status") == "deprecated" or
+            model.get("type") != "chat" or caps.get("tools") is not True or
+            "text" not in caps.get("input", []) or "text" not in caps.get("output", [])):
+        raise RuntimeError("selected model lacks enabled chat/tools/text capability")
+    if not costs or not all(
+        all(type(value) in (int, float) and value == 0 for value in
+            (cost.get("input"), cost.get("output"), cost.get("cache", {}).get("read"),
+             cost.get("cache", {}).get("write"))) for cost in costs):
+        raise RuntimeError("selected model pricing unknown or paid; no fallback")
+    record["status"] = "metadata_eligible"
+    return requested
+
+
+class ModelExecutionError(RuntimeError):
+    def __init__(self, metadata):
+        self.metadata = metadata
+        super().__init__(metadata["error"])
+
+
+def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
+    command = [cli, "run", "--standalone", "--archived", "--model", model,
                "--format", "json"]
     if session:
         command.extend(["--session", session])
@@ -517,24 +681,81 @@ def execute_model(cli, repo, env, base, case, prompt, session=None):
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             stdout, stderr = process.communicate(timeout=20)
-    (base / f"{case}-terminal.json").write_text(json.dumps({
+    terminal = {
         "pid": process.pid, "exit_code": process.returncode, "timed_out": timed_out,
         "candidate": git(ROOT, os.environ, "rev-parse", "HEAD"),
-        "finished_at": datetime.now(timezone.utc).isoformat()}))
+        "finished_at": datetime.now(timezone.utc).isoformat()}
+    (base / f"{case}-terminal.json").write_text(json.dumps(terminal))
+    stdout, stderr = redact(stdout, env), redact(stderr, env)
     transcript = base / f"{case}-events.jsonl"
     transcript.write_text(stdout + "\n")
     (base / f"{case}-stderr.log").write_text(stderr)
-    if timed_out:
-        raise RuntimeError(f"{case}: model timeout (not PASS); retained {base}")
-    events = [json.loads(line) for line in stdout.splitlines() if line.strip()]
+    events, malformed = [], []
+    for number, line in enumerate(stdout.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+            if (not isinstance(event, dict) or not isinstance(event.get("type"), str) or
+                    ("sessionID" in event and not isinstance(event["sessionID"], str)) or
+                    ("part" in event and not isinstance(event["part"], dict))):
+                raise ValueError("malformed event shape")
+            if event.get("type") == "tool_use" and (
+                    not isinstance(event.get("part", {}).get("state"), dict) or
+                    not isinstance(event["part"]["state"].get("input"), dict)):
+                raise ValueError("malformed tool state")
+            events.append(event)
+        except ValueError:
+            malformed.append(number)
     texts = [item["part"]["text"] for item in events
              if item.get("type") == "text" and isinstance(item.get("part", {}).get("text"), str)]
-    sessions = sorted({item["sessionID"] for item in events if "sessionID" in item})
-    assert process.returncode == 0 and texts and len(sessions) == 1, (
-        f"{case}: incomplete terminal/events; retained {base}")
-    if session:
-        assert sessions == [session], f"{case}: OpenCode changed session"
+    sessions = sorted({item["sessionID"] for item in events if item.get("sessionID")})
+    metadata = {"exit_code": process.returncode, "timed_out": timed_out,
+                "session_ids": sessions, "events": str(transcript),
+                "terminal": str(base / f"{case}-terminal.json"),
+                "stderr": str(base / f"{case}-stderr.log"), "malformed_lines": malformed,
+                "error_events": [e for e in events if e.get("type") == "error"]}
+    (base / f"{case}-terminal.json").write_text(json.dumps({**terminal, **metadata}))
+    if (timed_out or process.returncode != 0 or malformed or metadata["error_events"] or
+            not texts or len(sessions) != 1 or (session and sessions != [session])):
+        metadata["error"] = (f"{case}: terminal/events incomplete; exit={process.returncode}, "
+                             f"timeout={timed_out}, malformed={malformed} (not PASS)")
+        raise ModelExecutionError(metadata)
     return events, "\n".join(texts), sessions[0], str(transcript)
+
+
+def prepared_phase(base, results, case, record, launch, take_snapshot):
+    """Write preparation BEFORE launch and finalize failures without advancing."""
+    results["scenarios"].setdefault(case, []).append(record)
+    record.update(status="prepared", outcome=False, unchanged=None, after=None,
+                  after_status="unavailable", session_id=None)
+    persist(base, results)
+    try:
+        value = launch()
+    except Exception as error:
+        record.update(status="failed", error=redact(str(error), os.environ))
+        results.update(status="failed", finished_at=datetime.now(timezone.utc).isoformat())
+        if isinstance(error, ModelExecutionError):
+            record["execution"] = error.metadata
+            ids = error.metadata["session_ids"]
+            record["session_id"] = ids[0] if len(ids) == 1 else None
+        raise
+    finally:
+        try:
+            record["after"] = take_snapshot()
+            record["after_status"] = "available"
+            record["unchanged"] = record["before"] == record["after"]
+        except Exception as error:
+            record["after_error"] = redact(str(error), os.environ)
+            record["after_status"] = "unavailable"
+            record["unchanged"] = None
+        persist(base, results)
+    if record["after_status"] != "available":
+        record.update(status="failed", error="after snapshot unavailable (not PASS)")
+        results.update(status="failed", finished_at=datetime.now(timezone.utc).isoformat())
+        persist(base, results)
+        raise RuntimeError(record["error"])
+    return value
 
 
 def main():
@@ -580,7 +801,7 @@ def main():
     assert run([openspec, "--version"], cwd=ROOT, env=env).startswith("2.")
     results = {"started_at": datetime.now(timezone.utc).isoformat(),
                "candidate": revision, "approved_proposal": APPROVED_PROPOSAL,
-               "contract": selected_contract, "model": MODEL,
+               "contract": selected_contract, "model": None,
                "opencode": run([cli, "--version"], cwd=ROOT, env=env),
                "openspec": run([openspec, "--version"], cwd=ROOT, env=env),
                "scenarios": {}}
@@ -685,6 +906,7 @@ def main():
                  } if case == "T5" else {}
         (gh_root / "state.json").write_text(json.dumps({"issues": issues, "pulls": pulls}))
         (gh_root / "calls.jsonl").write_text("")
+        (gh_root / "reads.jsonl").write_text("")
         runtime_root = base / f"{case}-runtime"
         runtime_root.mkdir()
         reader = runtime_root / "read-receipt"
@@ -725,6 +947,7 @@ def main():
             "user.email=smoke@example.org", "commit", "-qm", "runtime reader locator")
         before = snapshot(repo, worktrees, gh_root, reservation, case_env, openspec)
         calls_before = (gh_root / "calls.jsonl").read_text().splitlines()
+        reads_before = (gh_root / "reads.jsonl").read_text().splitlines()
         if case == "T7":
             native = repo / ".agents/skills/openspec-explore/SKILL.md"
         native_provenance = {"path": str(native), "resolved": str(native.resolve()),
@@ -765,13 +988,31 @@ def main():
                 "Não invoque Apply, faça takeover, dispatch ou escrita.")
         for phase, message in enumerate(prompts, 1):
             permissions = read_only_permissions(repo, worktrees, reader, receipts,
+                                                active,
                                                 prechoice=case == "T7" and phase == 1)
             case_env["OPENCODE_CONFIG_CONTENT"] = json.dumps({
                 "$schema": "https://opencode.ai/config.json", "permissions": permissions})
-            events, response, session, transcript = execute_model(
-                cli, repo, case_env, base, f"{case}-phase{phase}", message, session)
-            after = snapshot(repo, worktrees, gh_root, reservation, case_env, openspec)
+            record = {"phase": phase, "prompt": message, "before": before,
+                      "native": native_provenance, "runtime_receipts": receipts,
+                      "permissions": permissions, "previous_session_id": session,
+                      "model_preflight": {}}
+
+            def launch():
+                model = model_preflight(cli, repo, case_env, record["model_preflight"],
+                                        os.environ.get("RESUME_SMOKE_MODEL"))
+                results["model"] = model
+                # Persist selected capabilities/source/pricing BEFORE inference.
+                persist(base, results)
+                return execute_model(cli, repo, case_env, base, f"{case}-phase{phase}",
+                                     message, session, model=model)
+
+            events, response, session, transcript = prepared_phase(
+                base, results, case, record, launch,
+                lambda: snapshot(repo, worktrees, gh_root, reservation, case_env, openspec))
+            after = record["after"]
             calls_after = (gh_root / "calls.jsonl").read_text().splitlines()
+            reads_after = (gh_root / "reads.jsonl").read_text().splitlines()
+            new_reads = [json.loads(line) for line in reads_after[len(reads_before):]]
             new_calls = [json.loads(line) for line in calls_after[len(calls_before):]]
             calls_safe = all(not any(a == "--method" or a.startswith("body=") or
                                      a in ("edit", "create", "merge", "close", "delete")
@@ -795,7 +1036,7 @@ def main():
                 expected = ("21", "wf-disposable-a")
             outcome = (t7_visible_question(response) if case == "T7" and phase == 1
                        else all(term.lower() in response.lower() for term in expected))
-            record = {"phase": phase, "prompt": message, "session_id": session,
+            record.update({"phase": phase, "prompt": message, "session_id": session,
                       "response": response, "events": transcript, "before": before,
                       "after": after, "unchanged": before == after,
                       "github_calls": new_calls, "github_read_only": calls_safe,
@@ -803,12 +1044,14 @@ def main():
                       "native_invocation": native_invocation,
                       "native_instructions": native_instructions,
                       "resume_invocation": resume_invocation, "runtime_receipts": receipts,
-                      "runtime_reads": receipt_reads, "outcome": outcome}
+                       "runtime_reads": receipt_reads, "outcome": outcome,
+                       "github_reads": new_reads, "status": "observed"})
             phases.append(record)
-            results["scenarios"][case] = phases
-            (base / "results.json").write_text(json.dumps(results, indent=2) + "\n")
+            persist(base, results)
             required = before == after and calls_safe and new_calls and outcome
             required &= any(args[:1] == ["api"] for args in new_calls)
+            if case == "T5":
+                required &= t5_sources(events, session, fixture, before["github"], new_reads)
             if case == "T7" and phase == 1:
                 # Any native invocation before explicit user choice fails closed.
                 required &= t7_phase1_proof(events, session, response, before, after,
@@ -837,9 +1080,14 @@ def main():
                 if phase == 1:
                     required &= bool(resume_invocation)
             if not required:
+                record.update(status="failed", proof_complete=False)
+                persist(base, results)
                 raise RuntimeError(f"{case} phase {phase}: recovery proof incomplete; "
-                                   f"see {base}/results.json")
+                                    f"see {base}/results.json")
+            record.update(status="proof_complete", proof_complete=True)
+            persist(base, results)
             before, calls_before = after, calls_after
+            reads_before = reads_after
         if case == "T7":
             assert phases[0]["session_id"] == phases[1]["session_id"]
     results["finished_at"] = datetime.now(timezone.utc).isoformat()

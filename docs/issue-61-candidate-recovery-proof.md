@@ -2,10 +2,106 @@
 
 ## Recuperação atual — 25/11/2026
 
-**Handoff canônico da execução residual; merge HELD.** A descrição abaixo de
+**Handoff canônico da execução residual; gates pendentes.** A descrição abaixo de
 16/11 é histórica, não aprovação da candidata atual nem do contrato posterior
 de T1/T7. Os recibos em `/tmp` daquela máquina não estão disponíveis aqui.
 Sem término/relatório acessível, o resultado permanece **UNKNOWN**.
+
+### Correção offline após revisão independente
+
+Fonte atual de autorização: o coordenador transmitiu nesta delegação a resposta
+direta do proprietário **“Sim, se aprovado”** para **AUTO-IF-GREEN**, escopo único
+#61, run `wf-20261116T064328Z-45cb0ecc`. É autorização posterior, não recuperação
+da autorização original desconhecida nem aprovação de gates. As referências
+HELD do planejamento pinado registram o conhecimento daquela data; não foram
+reescritas para fabricar histórico. Este writer
+`ses_def08c6bdffe43exnubv86SE83` continua **NO MERGE / NO PR / NO ARCHIVE**.
+
+Revisão fonte `ses_def0f16a9ffeAEin2bLMykHlkm` no HEAD de entrada
+`5de88ac47e24c95f92fa4c7dd930af9d60aa80b6`: quatro MUST FIX válidos,
+preservando o contrato `31cdb42`. Correções limitadas ao harness/testes/fixture
+e a este handoff; sem alteração de instalador, launchers, pins ou produção:
+
+- R1: `read`/`external_directory` somente nos roots exatos da fixture,
+  checkouts, runtime e release instalada descartável. `grep`/`glob` ficam
+  negados porque autorizam regex/pattern, não o diretório pesquisado;
+  descoberta por listagens shell exatas, sem wildcard de comando. Todo
+  restante continua deny-by-default, inclusive outros HOME/source/tools.
+- R2: preparação/snapshots/permissões/proveniência persistidos antes de
+  preflight/launch. Erros de provedor, JSONL inválido e timeout retêm terminal,
+  eventos redigidos e IDs; captura posterior é best-effort. Indisponibilidade
+  produz `after=null`, `after_status=unavailable`, `unchanged=null`, não igualdade
+  inferida; erro propaga sem próxima fase/cenário ou aprovação.
+- R3: `git -C ... switch` negado/falho também invalida a pausa. Fase 2 usa
+  a primeira tentativa de conteúdo/invocação de qualquer skill nativa,
+  independentemente do status, não apenas Explore bem-sucedida posterior;
+  mantém dois turnos no mesmo ID, escolha explícita, probes, snapshots e
+  proibição de takeover/dispatch inclusive tentado.
+- R4: T5 exige PR #12 lido com sucesso pelo shim e por tool event da mesma
+  sessão, head/checks correlacionados ao commit, manual e dependência #13
+  consultada. O shim read-only existente registra resultado/exit estruturados
+  em arquivo descartável; prosa, argv sem sucesso, head/checks stale ou
+  ausentes não aprovam.
+- Modelo: retirado default hardcoded obsoleto. `RESUME_SMOKE_MODEL` continua
+  override de uma execução; sem ele consulta `/api/model/default` e cruza
+  `/api/model` no mesmo HOME/XDG/DB/Location isolados. Exige chat habilitado,
+  tools e text input/output, preço conhecido zero em todos os tiers/cache.
+  Ausente/incompatível/pago/desconhecido bloqueia sem fallback ou geração.
+  Persiste seleção/fonte/capacidade/custo antes de lançar; não retém settings,
+  headers ou credenciais. `OPENCODE_MODEL` não foi importado nem pressuposto.
+
+Documentação oficial V2 consultada: `/docs/permissions`, `/docs/config`,
+`/docs/api`, `/docs/cli`; schema real `/openapi.json` do OpenCode 2.3.2,
+incluindo `Permission.Rule`, create session/request e
+`Model.Info/Capabilities/Cost`. Última regra whole-value `*`/`?` prevalece;
+read relativo interno/absoluto externo e external_directory são verificações
+distintas; o scanner shell é best-effort, não sandbox.
+
+Diagnóstico da **prova de regras**, separado do modelo HTTP 400: chamadas
+`api --standalone` curtas retornaram deny onde se esperava allow
+(`ev-20261125T043644Z-5fbb82da`, depois
+`ev-20261125T043850Z-9f818664`). Consulta nativa de config confirmou as regras,
+mas o snapshot de agent ainda mostrava somente base policy; os endpoints não
+comprovam transformações de agent concluídas. Um probe intermediário foi
+terminado pelo timeout externo de 1 s
+(`ev-20261125T043820Z-5948c6e7`), não PASS nem falha de inferência.
+Fase: avaliação API, nenhum prompt/tool/modelo; escopo: DB/HOME descartáveis;
+lifecycle: processos terminais, sem callback presumido; consumidor: script
+diagnóstico externo, não código de produção. Código oficial v2.3.2
+`packages/core/src/permission.ts` confirma merge de agent + session e
+`findLast`/`util/wildcard.ts`; ausência de agent usa deny. Alternativa mínima:
+não inferir config carregada de uma resposta inicial. Próxima prova usa a
+mesma lista explícita em `session.permissions` para verificar o avaliador
+nativo com precedência final, declarando o limite: não prova scanner, leituras
+reais nem settlement config→agent. Isso não resolve retroativamente falhas.
+
+Provas da correção (pre-smoke, não gates finais):
+`evidence:ev-20261125T044207Z-fa08f635`, **24/24** testes offline, incluindo
+HTTP 400/nonzero, JSONL malformado, timeout, snapshot ausente, negativos
+pré-escolha/primeiro native, PR ausente/falho/stale/wrong-head e catálogo
+ausente/incompatível/preço desconhecido/pago. A prova de avaliador nativo
+`evidence:ev-20261125T044212Z-487d246c` concluiu **64/64** avaliações da mesma
+lista em `session.permissions` (32 por fase), incluindo reads necessários,
+negação de HOME/source alheios, shell externo, grep/glob, execute/subagent e
+precedência pré-escolha. Confirma o avaliador, **não** scanner/execução de
+ferramentas ou carregamento final config→agent. Não foi importada credencial.
+
+Metadados prospectivos desta prova: OpenCode **2.3.2** retornou
+`opencode/big-pickle` de `/api/model/default`, também presente no catálogo,
+chat `active/enabled`, tools=true, text→text; tier input/output/cache read/write
+zero. Nenhum `RESUME_SMOKE_MODEL`, `OPENCODE_MODEL` ou modelo configurado pelo
+operador foi herdado. O endpoint é fonte de default nativo, **não evidência de
+preferência do usuário**; snapshots API podem anteceder settlement de plugins.
+Isso difere do `tidepool-alpha-free` relatado pelo coordenador e não o invalida
+nem justifica hardcode/fallback. Disponibilidade de inferência continua
+**NOT VERIFIED** para ambos; a seleção será reconferida no ambiente da próxima
+fase aprovada. O velho `glm-5.3-flash-free` permanece falha histórica.
+
+Nenhuma inferência nova nesta correção. Após provas offline, **revisão
+independente de isolamento/prova ANTES de qualquer modelo**. Tarefas 3.4/4.3
+continuam pendentes; archive e gate final pós-archive não executados. O
+attempt-log abaixo conserva o bloqueio HTTP 400 original, sem convertê-lo em
+PASS por metadados ou por sucesso determinístico.
 
 Apply novo `ses_def2616b1ffeSXukxzKlSu6sZ0`, proposta aprovada
 `31cdb42b2d0e409e8820fa71d97177316c07f94a`, revisão independente informada pelo
@@ -52,7 +148,7 @@ Lifecycle: guard argv sai antes de executar; o writer é observado vivo e
 esperado via `wait()`; cada modelo terá término explícito e timeout de grupo
 de processos, nunca PASS por desaparecimento. A suíte offline referenciada
 comprova guard, PATH/shim, negativos de receipt/native e archive, não quota
-nem invocação de modelo. O runtime real foi consultado isoladamente:
+nem invocação de modelo. No preflight anterior, o runtime foi consultado isoladamente:
 OpenCode 2.3.2 lista `opencode/glm-5.3-flash-free`; OpenSpec 2.1.1 está
 presente. A listagem sem credenciais reais **não garante capacidade**.
 
@@ -116,7 +212,7 @@ resolveram este root e os cinco artefatos. Strict do change: **1/1 PASS**.
 o bloqueio externo, exigir T1/T5/T7 completos e dois turnos do mesmo ID em T7,
 com snapshots por fase e revisão independente. Não marcar por prosa.
 
-**WARNING — limite de prova da falha:** `execute_model` terminou antes de
+**WARNING — limite histórico de prova da falha:** `execute_model` terminou antes de
 `results.json` ser preenchido (`tests/smoke_resume_candidate_opencode.py:771`).
 Existem terminal/eventos/DB/receipt, mas não snapshots pós-fase completos
 desse run. Não reconstruir um snapshot anterior por inferência. Antes da
