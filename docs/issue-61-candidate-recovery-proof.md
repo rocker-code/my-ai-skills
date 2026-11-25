@@ -2,6 +2,120 @@
 
 ## Recuperação atual — 25/11/2026
 
+### Décima observação autorizada — T5 sem invocação nativa, T7 NOT RUN
+
+Autorização nova explícita, após revisão independente da correção material
+T5/T7 por `ses_dee9d76e4ffeR10I59JewObvEC`, limitada a uma observação completa,
+sem closeout. HEAD limpo instalado/observado
+`703ffb979b21b94fbcd830f7cac3bdba0f725220`, proposta aprovada
+`e1408dafbb7c6b2251b206afe62a2785708d1e08`. Worker real
+`ses_dee5e0a18ffefE7FomnYJ9smc1`, stage `observe61-native-gates`, mesmo
+checkout/branch/issue/run. Reserva WAITING ownerless adquirida, verify/checkpoint
+confirmados sem drift; nove ignorados preservados. Check não final antes do
+launch valid=true/violations=[]/ready=null, sem resolver histórico bloqueado.
+Provas no HEAD exato reverificadas verified/passed/no_required_gate:
+`ev-20261125T120034Z-21120ae1` (316 testes),
+`ev-20261125T120034Z-e2c1e3f6` (60 focados),
+`ev-20261125T120034Z-726b5be4` (strict13/13),
+`ev-20261125T120034Z-fea06b0c` (change1/1),
+`ev-20261125T120034Z-43e45654` (diagnóstico/11 negativos).
+Não são suíte final nem aprovação nativa.
+
+**Uma chamada completa**, `python3 -B tests/smoke_resume_candidate_opencode.py`,
+PYTHONDONTWRITEBYTECODE=1/RESUME_SMOKE_OUTPUT único, sem --output-dir externo.
+Callback `sh_2129d92e9001DtET7Jx2E6Ruz1` **exit1**, evidência encerrada em
+`2026-11-25T12:13:48.060320Z`. Timeout externo1.800s/interno360s preservados;
+nenhum expirou. HOME/config/XDG/CODEX_HOME/DB privados novos, sem auth de operador.
+OpenCode2.3.2/OpenSpec2.1.1, guard fresh ativo em T1/T5 com fonte
+`b878847767fd9759d7362a6aa71707b4e13f97606258f39448c82b23f255e656`.
+Default nativo fresco `/api/model/default` cruzado com `/api/model` escolheu
+`opencode/big-pickle` separadamente nas duas fases, enabled/active/tools/text e
+input/output/cache read/write conhecidos zero. Sem override/fallback pago.
+
+**T1:** sessão `ses_ded625d95ffelT8lOw69u3ftnR`, PID942840, terminal0 em
+`2026-11-25T12:12:41.383361+00:00`, sem timeout/error events/JSONL malformado.
+57 eventos/12 step_finish/32 tools; custos dos steps reportados0.
+Nove fatos true, condição tipada before-write/prior-stopped-owner corroborada,
+serialization_compliance=passed/proof_complete=true, mas
+**pending_independent_review/scenario_pass=false/write_authorized=false**.
+Discovery real25 e catálogo entregue; Apply nativa33, CLI Apply19/strict30,
+receipt18, inventário22–23/26–29, proposta/ancestralidade/review/diff13–17 e
+GitHub44 antes do handoff55. Ordem bruta preservada, sem exigir repetição de CLI
+após skill em T1. Proposta fixture `d8888d23046877b5a53c5db2533c885b62dc541d`,
+review `b039cf7d31b6b074570779b0c8539eafe5b50750`, não aprovações reais.
+Writer `writer-T1-61/seed-T1/wf-disposable-t1`, PID941615, observado vivo e
+depois terminal0, checkout T1-issue-61. Oito snapshots iguais, pré-requisitos
+de artefatos verified=true antes/depois. Nenhuma tentativa stateful; read36 do
+diretório pai externo foi negado, assim como outros probes de boundary retidos.
+
+**T5:** sessão `ses_ded609cceffe7kZ16usqNCOvbN`, PID977383, terminal **0** em
+`2026-11-25T12:13:47.693228+00:00`, sem timeout/error events/JSONL malformado,
+stderr vazio. 57 eventos/10 step_finish/29 tools; custos dos steps reportados0.
+Custo final liquidado pelo provedor continua **UNKNOWN**, sem recibo separado.
+Manifesto lido3; seis comandos GitHub15–20 exit0/não truncados comprovam
+disposable/recovery milestone3/issue11/PR12, head
+`ba48e0e477a101478be09059509e466091c1e4a4`, checkSUCCESS/manual/dependente13
+bloqueado. t5_sources diagnóstico=true/outcome=true. Inventário24–28/receipt29
+efetivos, writer `writer-T5-11/seed-T5/wf-disposable-t5`, PID976344, terminal0.
+Sete snapshots iguais, forbidden_attempts=[], write_authorized=false; nenhum
+read fora de escopo/probe ao produtor. Read de raiz7 e ls11 negados, preservados.
+Resposta55 mantém PR existente/revisão pelo coordenador/modo manual e não
+despacha13. Isso não satisfaz automaticamente o gate nativo.
+
+**Falha efetiva:** RuntimeError2438, `T5 phase 1: recovery proof incomplete`;
+status=failed/proof_complete=false. O único tool `skill` de T5 foi
+resume-workflow2. O modelo **leu** Verify35 e o citou como aplicável40/55, mas
+não chamou skill nativa OpenSpec alguma, em nenhum status. Verify35 é arquivo
+canônico, SHA-256 `3b86fbb9734fdb6b942dd12d0afa4247457aa7f212bb48832eae133f5e66880a`,
+não invocação. Context41/list42/instructions43/status44/strict48 foram efetivos,
+exit0/não truncados, mas CLI e leitura não substituem tool nativo.
+
+Os candidatos vinculados de T5 eram Explore/Apply, ambos no catálogo realmente
+entregue junto de resume-workflow; Verify não estava nesse catálogo, embora seu
+arquivo estivesse legível. Nenhum dos candidatos foi invocado. Matcher retorna
+native=null/discovery=[]/invocation=[]/instructions=[]: esse último vazio decorre
+da ausência de fonte invocada selecionada, **não** da ausência de strict48.
+Execution_binding.native_source=null é verdadeiro e não será preenchido com a
+skill meramente lida. Diferentemente do nono trace (Explore realmente invocada),
+não é apenas Apply-only rejeitando uma invocação alternativa real. Acrescentar
+Verify ao matcher, reinterpretar read35 ou apagar hashes não criaria o evento
+ausente. Não se determina causa cognitiva exclusiva nem falha de provedor;
+revisão independente deve examinar seleção/descoberta/invocação sem waiver.
+**T7 NOT RUN**, nenhuma captura/turno/ID ou escolha T7 fabricados; sem décimo
+primeiro modelo ou continuação forçada.
+
+**Bindings resume-effective-inputs-v1 originais**, hashes recomputados válidos:
+T1 `a84e5a91e1d35213d2eba855c2853e55eba755cfd8dd112fcd36dc3048c87125`,
+T5 `f0f8787387b30b9b5a67c71474a810bafd587fa4b55582fb9babcb50b35b15ac`.
+Execution bindings/catálogos reais capturados, source T1 Apply/source T5 null.
+Digests before=after T1
+`7bd8d5e08d845c2b3b957732966e22fef81967513a8eaf93fd04dec3c7a16b17`,
+T5 `22f8c820dbe58d7bfb6a2ee344fcd00b269e44b90832e5f51dae629cc2371173`.
+Nenhum campo original foi reescrito para aprovar resultado ou reuso F1.
+
+**Prova** `evidence:ev-20261125T121046Z-f787388b`, verified/failed antes desta
+nota, verifier3/no_required_gate. Log checksum-bound **1.586.873 bytes**,
+SHA-256 `ec613943a4bde9577638e4f669eccd116bcc06bee17fa0c35478da0b6b51b841`,
+integridade conferida, perfil opencode=2.3.2/openspec=2.1.1/
+sandbox=observe61-703ffb9-ses_dee5e0a18ffe. Originais/bindings:
+`/tmp/opencode/issue61-observe-703ffb9-ses_dee5e0a18ffe/results.json`,
+SHA-256 `b43f9869bbb72920cbca0aa39aea7a8176c262a9192c4211adc58ab3e81c46f7`.
+T1 JSONL `50a2e78c7b767a00a6d9ead22febc3b86f483cd5b11201e61de6d461730caaa3`,
+terminal `baf7c4cadd3f80303d22b00d9ccceffada175fd276e1c68995a9ad930197140a`;
+T5 JSONL `27875e1421cfec24523ab4e4e8b3a9bcd2b7b60d8358f972d749cda2ecbf8703`,
+terminal `a98f41e3b93cc6e6a4742eeb4731967af5453ff4586ad1ff4c43827d37649bbd`.
+
+Parada por falha: somente retenção documental para devolver checkout limpo
+ownerless WAITING. Nenhuma fonte/prompt/guard/pin/resultado alterado, nenhuma
+autocorreção, retry, suíte final, archive/sync/PR/push/merge/tag/release.
+Clientes942840/977383 e writers941615/976344 ausentes em /proc após recibos
+terminais; nenhum kill/cancel/restart/limpeza/remoção de DB. Todas as nove
+observações falhas anteriores e suas aprovações externas limitadas aos inputs
+antigos continuam intactas. Seq50–52 retêm falha/diagnóstico/bloqueio atual sem
+resolver episódios anteriores ou reiniciar seu orçamento. Próxima ação:
+revisão independente das respostas/eventos T1/T5 e do gap de invocação nativa;
+nenhuma nova inferência autorizada.
+
 ### Correção offline do gate nativo T5/T7 — sem décima observação
 
 Entrada limpa `c17f361b015e3480f5d127e97f89f12283e43b99`, somente notas desde
@@ -2144,6 +2258,10 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"blocker","seq":48,"group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; T5 expected native Apply invocation/discovery absent"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T111624Z-0bd063a1"],"diagnosis":"seq:47","options":[],"impact":"ninth whole observation FAILED T5 post-terminal native gate, not timeout; T1 pending independent response/event review with serialization diagnostic failed, T7 NOT RUN; no final required gate/archive/PR; independent applicability/discovery and F1 review needed","researchable":true}
 ,{"kind":"resolution","group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; T5 expected native Apply invocation/discovery absent"},"outcome":"blocked","via_seq":48}
 ,{"kind":"diagnosis","seq":49,"group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; T5 expected native Apply invocation/discovery absent"},"class":"fixture/isolation","checked":{"phase":"post-terminal matcher overconstraint: Apply-only plus directory-only discovery omits actual canonical Explore42 and delivered catalog despite strict45; Apply file33 auxiliary, not invocation; actual response/source semantics independently approved as reported by coordinator","scope":"observed3b7f98b approvede1408daf design41/45 and official Explore15-17 permit applicable read-only inspection without Apply-only identity; T5 real PRhead5b0d4ba2c6f9046faaacab030801ca7f66cfe6ba/manual/dependent13 sources12-17, honest checkout-head difference/owner receipt/no stateful attempts; T7 explicitly Explore-only, same-session choice then reinventory before earliest native content","lifecycle":"ninth T1ses_ded94254bffeAw0vHsGHrhKaz2 and T5ses_ded914169ffeL50MoN6MM82Kow complete/idle succeeded without timeout; no settled provider final-cost receipt, completed steps0 only; original whole FAILED/pending fields/legacy-format failure retained; T7 never executed; no tenth model or fabricated current-turn capture","consumers":"existing bounded matcher reused for T5 alternatives and T7 Explore-only; genuine catalog, strict context/cwd/session/step before handoff; private DB recaptured with unchanged baseline plus actual current-turn messages; future candidate map/actual-source binding replaces factory placeholder, never edits original record; T1 ownership/facts and T5 PR/all-status safety unchanged"},"runtime_proof":["evidence:ev-20261125T111624Z-0bd063a1","evidence:ev-20261125T112620Z-bbe58aa9","evidence:ev-20261125T114918Z-b19c0966","evidence:ev-20261125T114918Z-0b1cb4df"],"simplest_alternative":"retain BLOCKED without another observation; never weaken invocation to file/prose, switch T5 to Explore-only, broaden T7 to Apply, widen guard or grant ownership from catalog/receipt","choice_rationale":"fresh independent review ses_dee9d76e4ffeR10I59JewObvEC and explicit offline delegation identify implementation overconstraint inside e1408daf, not material acceptance change needing owner replan; reuse source/body/hash matcher and delivered catalog with applicable strict, distinguish metadata from content and initial baseline from actual current-turn delivery","next_hypothesis":"after affected independent review and separate authorization only, complete actual T1/T5/T7 may prove changed native oracle/binder inputs; old3b subscenario approvals are not automatic reuse, metadata/replay or final F1 PASS"}
+,{"kind":"attempt","seq":50,"obligation":"T5","signature":"assertion: recovery proof incomplete; no native OpenSpec invocation, Verify file read only","target":"703ffb9 complete native T1/T5/T7 harness after reviewed T5/T7 native matcher correction","class":"assertion/contract","hypothesis":"independently approved bounded Explore-or-Apply T5 inspection and current-turn T7 catalog capture allow one newly authorized complete native observation without source or prompt changes","change":"one authorized observation-only run at exactclean703ffb9 with new isolated HOME/config/privateDB, fresh native guard/default/catalog and prepared bindings; no source edits during observation","change_target":"test","observed_effect":"T1 nine facts/typed condition proved, serializationpassed but pending_independent_review/scenario_passfalse; T5 terminal0/no timeout, actual sources/manual/dependency/receipt/strict proved, read Verify35 without any native OpenSpec skill-tool invocation; matcher selected source null and aggregate failed; T7 NOT RUN; harness1","result":"fail","evidence":["evidence:ev-20261125T121046Z-f787388b"]}
+,{"kind":"diagnosis","seq":51,"group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; no native OpenSpec invocation, Verify file read only"},"class":"assertion/contract","checked":{"phase":"T5 post-terminal required conjunction2366-2370 not satisfied, RuntimeError2438 after statusfailed/proof_completefalse persisted; only T5 skill tool is resume-workflow2; canonical Verify file read35 and prose40/55 are not native invocation; context41/list42/instructions43/status44/strict48 succeed but cannot substitute tool event; native/source/discovery/invocation/instructions null/[] reflect no selected invoked source, not missing strict","scope":"exact703ffb9 approvede1408daf, prepared T5 candidates canonical Explore/Apply and actual delivered catalog contains both plus resume-workflow; Verify body exists/readable but no Verify native tool attempt either; fresh isolated HOME/config/XDG/CODEX_HOME/privateDB, raw guard unchanged; manifest3 and six fixture GH15-20 prove disposable/recovery milestone3 issue11 PR12/headba48e0e477a101478be09059509e466091c1e4a4/checkSUCCESS/manual/dependent13; t5_sources diagnostictrue, no producer probes/out_of_scope reads, boundary rootread7/ls11 denied","lifecycle":"T1ses_ded625d95ffelT8lOw69u3ftnR pid942840 terminal0 at12:12:41.383361Z,12completedsteps/32tools; T5ses_ded609cceffe7kZ16usqNCOvbN pid977383 terminal0 at12:13:47.693228Z,10completedsteps/29tools; no timeout/provider error/malformed JSONL, stderr empty; completed stepcost0, separate settled provider finalcost UNKNOWN; harness1 callback actual, T7 never launched; clients and writer941615/976344 absent after correlated terminal receipts, no kill/restart/cancel/DB cleanup","consumers":"T5 source facts/outcome true, inventory24-28/receipt29 and seven snapshots equal, forbidden_attempts[]/write_authorizedfalse, response55 keeps existing PR review/manual/dependency; native invocation remains missing regardless of alternate skill applicability; T1 all nine facts/typed prior-stopped-owner true, eight snapshots/prereqs equal, serializationpassed but pendingreview/scenario_passfalse; original effective/execution bindings and delivered catalogs both captured unchanged with T5 native_source null"},"runtime_proof":["evidence:ev-20261125T121046Z-f787388b"],"simplest_alternative":"stop retaining current real missing-invocation failure for independent response/event review; never widen matcher to Verify and count a file read, relabel CLI as native, change prompt/guard, fill null source, force T7 or launch eleventh model","choice_rationale":"new reviewed source/new authorization consumed exactly one complete harness; ninth failure was an actual Explore invocation rejected by Apply-only matching, while tenth has no native OpenSpec skill tool invocation at all; retain seq46-49 and all earlier blocked episodes without budget reset, replay resolution or automatic fix; no cognitive/provider/root-cause exclusivity established","next_hypothesis":"independent offline review can inspect the relation between delivered Explore/Apply catalog, readable Verify file selection and missing native tool use, alongside current T1 semantics and future F1 impact, without another model"}
+,{"kind":"blocker","seq":52,"group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; no native OpenSpec invocation, Verify file read only"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T121046Z-f787388b"],"diagnosis":"seq:51","options":[],"impact":"tenth whole observation FAILED post-terminal T5 native invocation gate; current T1 pending independent response/event review despite technical facts/serializationpassed; T7 NOT RUN, no same-session two-turn proof; no final required suite/archive/PR; independent native integration/response review needed","researchable":true}
+,{"kind":"resolution","group":{"obligation":"T5","signature":"assertion: recovery proof incomplete; no native OpenSpec invocation, Verify file read only"},"outcome":"blocked","via_seq":52}
 ]}
 ```
 
