@@ -44,7 +44,9 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               private_environment, private_inventory,
                                               prepare_private_pause, privatize_new_files,
                                               SupervisedSubscription, public_evidence,
-                                              evidence_files, persist, chatgpt_method)
+                                              evidence_files, persist, chatgpt_method,
+                                              private_binding, private_bytes, native_event_projection,
+                                              OwnedMetadataRuntime, native_metadata)
 
 
 class PrivatePreparationTest(unittest.TestCase):
@@ -69,8 +71,11 @@ class PrivatePreparationTest(unittest.TestCase):
         self.connection = {"type": "credential", "id": "PRIVATE-CONNECTION-SENTINEL",
                            "label": "PERSONAL-SENTINEL", "method": "oauth"}
         privatize_new_files(self.base)
+        runtime = self.enterContext(patch("smoke_resume_candidate_opencode.OwnedMetadataRuntime"))
+        runtime.return_value.__enter__.return_value.receipt.return_value = {
+            "synthetic": True, "plugin_ready": True, "exit_code": 0}
 
-    def api(self, cli, repo, env, path):
+    def api(self, cli, repo, env, path, **kwargs):
         return {"/api/integration/openai": copy.deepcopy(self.integration),
                 "/api/provider/openai": self.provider,
                 "/api/model": [self.model]}[path]
@@ -94,7 +99,7 @@ class PrivatePreparationTest(unittest.TestCase):
     def complete(self, controller, *, callback=None, exit_code=0):
         process = Mock(pid=123, returncode=exit_code)
         process.wait.return_value = process.poll.return_value = exit_code
-        def api(cli, repo, env, path):
+        def api(cli, repo, env, path, **kwargs):
             if path == "/api/integration/openai":
                 return {**self.integration, "connections": [] if process.wait.call_count == 0
                         else [self.connection]}
@@ -277,6 +282,221 @@ class PrivatePreparationTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 persist(self.base, payload)
             self.assertEqual((self.base / "results.json").read_bytes(), original)
+
+    def test_config_receipt_and_parent_links_to_auth_never_reach_a_read_or_hash(self):
+        config = self.base / "home/.config/opencode"
+        config.mkdir(parents=True)
+        auth = self.base / "opencode.db"
+        auth.write_text("NEVER-READ-OR-HASH-SENTINEL")
+        privatize_new_files(self.base)
+        for name in ("AGENTS.md", "opencode.json", "opencode.jsonc"):
+            link = config / name
+            link.symlink_to(auth)
+            with (patch("smoke_resume_candidate_opencode.sha") as digest,
+                  patch("smoke_resume_candidate_opencode.private_bytes") as read,
+                  self.assertRaises(RuntimeError)):
+                private_binding(self.base, str(self.cli), self.revision)
+            digest.assert_not_called()
+            read.assert_not_called()
+            with self.assertRaises(RuntimeError):
+                private_bytes(self.base, link)
+            link.unlink()
+        receipt = self.base / "private-preparation.json"
+        receipt.symlink_to(auth)
+        with (patch("smoke_resume_candidate_opencode.sha") as digest,
+              self.assertRaises(RuntimeError)):
+            self.pause(expected="a" * 64)
+        digest.assert_not_called()
+        receipt.unlink()
+        hardlink = config / "AGENTS.md"
+        os.link(auth, hardlink)
+        with (patch("smoke_resume_candidate_opencode.os.fdopen") as read,
+              self.assertRaises(RuntimeError)):
+            private_binding(self.base, str(self.cli), self.revision)
+        read.assert_not_called()
+        hardlink.unlink()
+        with self.assertRaises(RuntimeError):
+            private_bytes(self.base, self.base / "home/../opencode.db")
+        parent = self.base / "home/.codex"
+        parent.symlink_to(config, target_is_directory=True)
+        with self.assertRaises(RuntimeError):
+            private_bytes(self.base, parent / "AGENTS.md")
+
+    def test_verified_managed_instruction_links_positive_and_retarget_rejected(self):
+        package = self.base / "home/.local/share/my-ai-skills"
+        version = package / "versions" / self.revision
+        instruction = version / "skills/example/SKILL.md"
+        instruction.parent.mkdir(parents=True)
+        instruction.write_text("canonical instruction")
+        (version / "manifest.json").write_text(json.dumps({"revision": self.revision}))
+        links = self.base / "home/.config/opencode/skills"
+        links.mkdir(parents=True)
+        (package / "active").symlink_to("versions/" + self.revision)
+        (links / "example").symlink_to(package / "active/skills/example")
+        privatize_new_files(self.base)
+        binding = private_binding(self.base, str(self.cli), self.revision)
+        self.assertIn("home/.config/opencode/skills/example", binding["config"])
+        instruction.unlink()
+        instruction.symlink_to(self.base / "opencode.db")
+        with self.assertRaises(RuntimeError):
+            private_binding(self.base, str(self.cli), self.revision)
+
+    def test_native_diagnostics_and_unknown_nested_fields_never_retain_encoded_identity(self):
+        sentinel = "SYNTHETIC-IDENTITY-SENTINEL"
+        message = json.dumps({"account_id": sentinel})
+        base_event = {"type": "error", "timestamp": 1, "sessionID": "ses-synthetic",
+                      "error": {"type": "unknown", "message": message}}
+        unknown = {"type": "text", "timestamp": 1, "sessionID": "ses-synthetic",
+                   "part": {"text": "safe", "time": {"start": 1, "unknown": message}}}
+        for number, event in enumerate((base_event, unknown)):
+            destination = self.base / str(number)
+            destination.mkdir()
+            process = Mock(pid=123, returncode=1)
+            process.communicate.return_value = (json.dumps(event), message)
+            with (patch("smoke_resume_candidate_opencode.subprocess.Popen", return_value=process),
+                  patch("smoke_resume_candidate_opencode.git", return_value=self.revision),
+                  self.assertRaises(RuntimeError)):
+                execute_model("synthetic-cli", self.base, {}, destination,
+                              "T1-phase1", "synthetic", model="synthetic/model")
+            for artifact in destination.iterdir():
+                self.assertNotIn(sentinel, artifact.read_text())
+                self.assertNotIn("account_id", artifact.read_text())
+            if number == 0:
+                self.assertEqual(json.loads((destination / "T1-phase1-stderr.log").read_text()),
+                                 {"code": "native-stderr-present"})
+                self.assertEqual({p.name for p in evidence_files(destination)},
+                                 {"T1-phase1-events.jsonl", "T1-phase1-terminal.json",
+                                  "T1-phase1-stderr.log"})
+        with self.assertRaises(RuntimeError):
+            public_evidence({"encoded": message})
+        import smoke_resume_candidate_opencode as harness
+        with (patch("smoke_resume_candidate_opencode.subprocess.run",
+                    return_value=Mock(returncode=1, stderr=message, stdout=message)),
+              self.assertRaises(RuntimeError) as caught):
+            harness.run(["synthetic-command"], cwd=self.base, env={})
+        self.assertNotIn(sentinel, str(caught.exception))
+        self.assertEqual(str(caught.exception), "fixture command exited 1; raw diagnostics omitted")
+
+    def test_supported_tool_projection_preserves_native_body_input_and_execution_facts(self):
+        body = "<skill_content>canonical body bytes</skill_content>"
+        event = {"type": "tool_use", "timestamp": 3, "sessionID": "ses-synthetic",
+                 "part": {"id": "call", "messageID": "assistant", "tool": "skill",
+                          "state": {"status": "completed", "input": {"id": "openspec-explore"},
+                                    "output": body, "metadata": {
+                                        "metadata": {"exit": 0, "truncated": False},
+                                        "providerCall": {"executed": True, "state": {"opaque": "excluded"}},
+                                        "providerResult": {"executed": True}}}}}
+        projected = native_event_projection(event)
+        self.assertEqual(projected["part"]["state"]["output"], body)
+        self.assertEqual(projected["part"]["state"]["input"], event["part"]["state"]["input"])
+        self.assertEqual(projected["part"]["state"]["metadata"]["metadata"],
+                         {"exit": 0, "truncated": False})
+        self.assertEqual(projected["part"]["state"]["metadata"]["providerCall"], {"executed": True})
+        for field in ("metadata", "input"):
+            bad = copy.deepcopy(event)
+            bad["part"]["state"][field]["unknown"] = {"identity": "SYNTHETIC-IDENTITY-SENTINEL"}
+            with self.assertRaises(RuntimeError):
+                native_event_projection(bad)
+
+    def owned_process(self, startup=b'{"url":"http://127.0.0.1:12345"}\n'):
+        read, write = os.pipe()
+        os.write(write, startup)
+        os.close(write)
+        output = os.fdopen(read, "rb")
+        self.addCleanup(output.close)
+        process = Mock(pid=123, returncode=None, stdin=Mock(), stdout=output)
+        process.poll.side_effect = lambda: process.returncode
+        def wait(**kwargs):
+            process.returncode = 0
+            return 0
+        process.wait.side_effect = wait
+        return process
+
+    def test_owned_runtime_waits_for_actual_plugin_condition_once_and_observes_terminal(self):
+        process = self.owned_process()
+        responses = [{"version": "2.4.2", "pid": 123}, [], [{"state": "started"}],
+                     self.integration, self.provider]
+        with (patch("smoke_resume_candidate_opencode.subprocess.Popen", return_value=process) as spawn,
+              patch.object(OwnedMetadataRuntime, "request", side_effect=responses)):
+            with OwnedMetadataRuntime(str(self.cli), ROOT, self.env) as runtime:
+                self.assertTrue(runtime.ready)
+                self.assertEqual(runtime.polls, 2)
+                self.assertEqual(native_metadata(str(self.cli), ROOT, self.env,
+                                                "/api/integration/openai", runtime=runtime),
+                                 self.integration)
+                self.assertEqual(native_metadata(str(self.cli), ROOT, self.env,
+                                                "/api/provider/openai", runtime=runtime), self.provider)
+                with self.assertRaises(RuntimeError):
+                    native_metadata(str(self.cli), ROOT / "other", self.env,
+                                    "/api/integration/openai", runtime=runtime)
+                with self.assertRaises(RuntimeError):
+                    native_metadata(str(self.cli), ROOT, {**self.env, "OPENAI_API_KEY": "SENTINEL"},
+                                    "/api/integration/openai", runtime=runtime)
+            self.assertEqual(runtime.receipt()["exit_code"], 0)
+            self.assertEqual(runtime.receipt()["shutdown"], "owned-stdio-eof")
+            process.stdin.close.assert_called_once()
+            process.wait.assert_called_once()
+            self.assertEqual(spawn.call_count, 1)
+            self.assertEqual(spawn.call_args.kwargs["stderr"], subprocess.DEVNULL)
+            with self.assertRaises(RuntimeError):
+                runtime.__enter__()
+            self.assertNotIn(self.env["OPENCODE_PASSWORD"], json.dumps(runtime.receipt()))
+            original = self.cli.read_text()
+            self.cli.write_text("changed synthetic runtime")
+            with self.assertRaises(RuntimeError):
+                runtime.receipt()
+            self.cli.write_text(original)
+
+    def test_owned_runtime_startup_truncation_identity_and_readiness_fail_closed(self):
+        for failure in ("truncated", "identity", "pid", "startup-timeout", "startup-exit", "readiness"):
+            process = self.owned_process(b'{"url":"PRIVATE-SENTINEL"' if failure == "truncated"
+                                         else b'{"url":"http://127.0.0.1:12345"}\n')
+            clock = {"now": 0, "calls": 0}
+            def now():
+                clock["calls"] += 1
+                return 16 if failure == "startup-timeout" and clock["calls"] > 1 else clock["now"]
+            if failure == "startup-exit":
+                process.returncode = 1
+            def response(path, **kwargs):
+                if path == "/api/info":
+                    return {"version": "unknown" if failure == "identity" else "2.4.2",
+                            "pid": 999 if failure == "pid" else 123}
+                clock["now"] = 6
+                return []
+            with (patch("smoke_resume_candidate_opencode.subprocess.Popen", return_value=process),
+                  patch("smoke_resume_candidate_opencode.time.monotonic", side_effect=now),
+                  patch.object(OwnedMetadataRuntime, "request", side_effect=response),
+                  self.assertRaises(RuntimeError) as caught):
+                with OwnedMetadataRuntime(str(self.cli), ROOT, self.env):
+                    self.fail("unsupported preparation must not advance")
+            self.assertNotIn("PRIVATE-SENTINEL", str(caught.exception))
+            process.stdin.close.assert_called_once()
+            self.assertEqual(process.returncode, 0)
+
+    def test_owned_http_error_location_schema_and_uncertain_cleanup_keep_safe_codes(self):
+        import urllib.error
+        from io import BytesIO
+        process = self.owned_process()
+        runtime = OwnedMetadataRuntime(str(self.cli), ROOT, self.env)
+        runtime.process, runtime.url = process, "http://127.0.0.1:12345"
+        error = urllib.error.HTTPError(runtime.url, 404, "PRIVATE-SENTINEL", None,
+                                      BytesIO(b'{"account_id":"PRIVATE-SENTINEL"}'))
+        with (patch("smoke_resume_candidate_opencode.urllib.request.build_opener") as opener,
+              self.assertRaises(RuntimeError) as caught):
+            opener.return_value.open.side_effect = error
+            runtime.request("/api/integration/openai")
+        self.assertEqual(str(caught.exception), "native metadata HTTP 404; payload omitted")
+        with (patch("smoke_resume_candidate_opencode.urllib.request.build_opener") as opener,
+              self.assertRaises(RuntimeError)):
+            response = opener.return_value.open.return_value.__enter__.return_value
+            response.read.return_value = b'{"location":{"directory":"/wrong"},"data":[]}'
+            runtime.request("/api/plugin")
+        process.wait.side_effect = [subprocess.TimeoutExpired("owned-server", 15), 0]
+        with self.assertRaises(RuntimeError):
+            runtime.close()
+        process.terminate.assert_called_once()
+        with self.assertRaises(RuntimeError):
+            runtime.receipt()
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -699,6 +919,8 @@ class NativeInvocationTest(unittest.TestCase):
             def check(events):
                 return native_calls(events, session, native, sha(native))
             discovered, invocation, _ = check([listing, invoked])
+            self.assertEqual(check([native_event_projection(e) for e in (listing, invoked)]),
+                             check([listing, invoked]))
             self.assertEqual(discovered[0]["event_index"], 0)
             self.assertEqual(invocation[0]["event_index"], 1)
             self.assertTrue(check([listing])[0])  # T7 prechoice listing is allowed.
@@ -792,6 +1014,8 @@ class T1NativeInspectionTest(unittest.TestCase):
         self.assertEqual(len(self.sources), 2)
         for source in self.sources:
             matched, discovery, invocation, _ = self.proof(self.events(source))
+            self.assertEqual(self.proof([native_event_projection(e) for e in self.events(source)]),
+                             self.proof(self.events(source)))
             self.assertEqual(matched, source)
             self.assertEqual(discovery[0]["event_index"], 0)
             self.assertEqual(invocation[0]["event_index"], 1)

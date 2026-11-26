@@ -3228,3 +3228,98 @@ Sem inferência, autenticação, conta inspecionada, auth SQL, cópia/hash de DB
 14º smoke, archive/sync, PR/push/merge ou claim de suíte final de entrega.
 Nenhuma evolução independente identificada; esta falha é obrigação atual,
 não backlog opcional. **NOT READY FOR PR.**
+
+## Correção offline dos três MUST FIX — revisão de 7369b4c
+
+Continuação expressamente autorizada pelo pai, mesmo worker
+`ses_de5e69035ffewOE814R8zpywic`, run
+`wf-20261116T064328Z-45cb0ecc`, Apply 3.10/3.11 somente, proposta
+`bde179386f8b2283d8045cd03a61acd2a506efb2`. Revisão independente
+`ses_de5d1a7b7ffe3fbFasvE2s5Tpf`: CHANGES REQUIRED com três MUST FIX,
+aceitos pelo pai; a aprovação anterior de 3.11 não cobria esses defeitos.
+3.11 foi reaberta durante a correção, sem modificar os 17 checks históricos.
+AGENTS.md novo da raiz primária foi lido; não foi copiado nem incluído no
+checkout/commit da issue. Tracking e atualizações de progresso nativos ativos.
+
+1. **Alvos antes de ler/hashear:** inventário não admite symlinks genéricos,
+mesmo internos. Somente ponteiros gerenciados com texto/alvo exatos são
+permitidos. Configuração e recibos são abertos com dirfds ancorados desde
+`/`, O_NOFOLLOW em cada componente, arquivo regular privado/mesmo usuário,
+sem hardlink, limite de tamanho e fstat antes/depois. A configuração não
+resolve um alias para então hashear seu destino. Skills gerenciadas têm
+ponteiro active/revisão/manifesto conferidos e alvo canônico construído
+explicitamente, com reconferência dos links. Negativos instrumentados
+AGENTS/config/recibo→DB/auth, parent-link, hardlink e traversal nunca chegam
+à leitura/hash do material sintético proibido; fonte gerenciada válida passa.
+Não há cópia, serialize, backup, hash ou SELECT de armazenamento auth real.
+O limite cooperativo contra interferência hostil do mesmo usuário permanece.
+
+2. **Projeção antes de persistir:** o envelope externo não basta.
+Captura valida schemas aninhados de evento/part/tool/input/time/metadata e
+preços/capacidades publicados. Campos inesperados bloqueiam sem eco.
+Mensagens de erro nativas e stderr não são exportados: ficam somente códigos
+diagnósticos confiáveis. Estado opaco do provedor/rawInput redundante não
+é publicado. Input, status (inclusive failed/cancelled), output de tools,
+corpo exato de skill, IDs de sessão/message, tempo, exit/truncated e flags
+executed necessários à prova continuam disponíveis. Os JSONLs novos são
+explicitamente `supported-native-proof-fields-v1`, não streams raw;
+nenhum JSONL histórico é reescrito. Positivos reutilizam os detectores
+canônicos e mantêm discovery/dispatch/body/hash/path/sessão iguais.
+Negativos end-to-end usam error.message com JSON de identidade codificado,
+stderr equivalente e campos aninhados inesperados; todos os artefatos
+retidos são inspecionados, sem sentinela/identidade/echo. Falhas do runner
+genérico também não carregam stderr para exceções/relatórios. A allowlist
+de arquivos continua excluindo HOME, DB/WAL/SHM e login.
+
+3. **Readiness na mesma instância:** o diagnóstico read-only do revisor
+`ses_de5d15c92ffe4CZucBopWN7oVX` e a tag oficial
+`fc31a485317970bcf6be7b431a9830aaef875731` explicam o 404 anterior.
+`cli/services/plugin-startup.ts` espera catálogo plugin não vazio com limite
+5s; `auth/shared.ts` usa essa espera, `api.ts` raw não usa, e cada
+`--standalone` anterior descartava sua instância fria. Correção compatível
+com o contrato, explicitamente aceita pelo pai: um único `serve --stdio`
+privado, loopback/porta efêmera, senha nova só em memória/env privado,
+Location explícita e espera limitada pela condição nativa `/api/plugin`,
+sem sleep cego, troca de provedor ou poll de disponibilidade de modelo.
+`/api/info` precisa corresponder ao PID realmente iniciado e à versão
+pinada. Consultas posteriores usam essa mesma instância/Location; HTTP
+failures ficam códigos seguros, nunca corpo/stderr. EOF em stdin encerra
+somente o processo possuído; wait/exit reais são exigidos antes do recibo.
+Startup truncado/não-zero/timeout, PID/versão/Location/env divergentes,
+replay e cleanup não confirmado bloqueiam. Nenhum serviço compartilhado,
+pkill, POST auth, login ou inferência foi usado.
+
+**Descoberta real preliminar, não stub:** `ev-20261126T234146Z-db662bc9`
+executou em HOME/XDG/CODEX_HOME/DB fresh privados, perfil
+`/tmp/opencode/issue61-owned-discovery-p872d6b3`. OpenCode2.4.2,
+digest instalado pinado inalterado. Após **6** consultas limitadas à condição
+plugin, o GET nativo entregou `id=chatgpt-token-sharing`, `type=oauth`,
+`label=Sign in with ChatGPT`, conexões **0**. PID observado **925977**,
+versão e Location conferidos; término **exit0** após EOF nativo,
+alias de execução `64dab2f33b7a61760378307212d63080`.
+Resultado **metadata_only**, inference_verified=false,
+login_requested=false. Isso substitui somente o bloqueio técnico de
+descoberta fria do handoff anterior; não comprova rota autenticada, conta,
+entitlement, quota ou smoke. O 404 histórico continua falha, não retro-PASS.
+
+**Provas incrementais:** 11/11 segurança inicial
+`ev-20261126T233635Z-636200fb`; 14/14 incluindo ciclo de vida
+`ev-20261126T234108Z-d18e7993`; grupo afetado 80/80
+`ev-20261126T234550Z-38c67ad0`; suíte preliminar completa **336/336**
+`ev-20261126T234605Z-54d0739e` (67,265s); última amostra de segurança
+14/14 com hardlink/traversal `ev-20261126T234811Z-4727aeb7`.
+Essas provas precedem o commit corretivo; não são gate final. Conferir
+novamente grupo afetado, suíte completa/strict e preparo metadata-only no
+HEAD limpo de saída, entregando IDs fora do commit.
+
+**Estado de handoff:** 3.11 corrigida offline, sujeita à nova revisão afetada;
+3.10 permanece parcial até preparo/continuidade aprovados, 3.4/4.3 pendentes.
+O pai fará revisão independente antes de qualquer interação manual.
+Autenticação/rota/entitlement/quota continuam pendentes; autorização separada
+do pai e prova real completa T1/T5/T7 continuam obrigatórias depois disso.
+Não houve auth/conta real consultada, inferência, alteração de runtime/global,
+archive, PR, push ou merge. Não usar diretório de perfil como evidence bundle.
+Todos os 13 runs inteiros FAILED e o attempt-log anterior foram preservados
+byte a byte. Nove ignorados comparados com baseline do início deste worker
+corretivo e iguais. Reserva permanece individual, com checkpoint/verify.
+Nenhuma evolução fora do escopo; **NOT READY FOR PR**.

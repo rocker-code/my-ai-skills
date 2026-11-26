@@ -7,6 +7,7 @@ It never uses real GitHub resources or the operator's OpenCode configuration.
 Only an exact clean candidate HEAD is eligible; retained results are audited evidence.
 """
 import argparse
+import base64
 import copy
 import fcntl
 from contextlib import closing
@@ -17,6 +18,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import selectors
 import shlex
 import shutil
 import signal
@@ -27,6 +29,9 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE = "issue-61-opencode-safe-resume"
@@ -200,7 +205,7 @@ def run(args, *, cwd, env, timeout=90):
     result = subprocess.run(args, cwd=cwd, env=env, capture_output=True,
                             text=True, timeout=timeout)
     if result.returncode:
-        raise RuntimeError(f"{args[:4]} exited {result.returncode}: {result.stderr[:500]}")
+        raise RuntimeError(f"fixture command exited {result.returncode}; raw diagnostics omitted")
     return result.stdout.strip()
 
 
@@ -1909,8 +1914,10 @@ def redact(text, env):
                   r'["\s:=]+)(?:Bearer\s+)?[^\s",}]+', r'\1[REDACTED]', text)
 
 
-def public_evidence(value):
+def public_evidence(value, _depth=0):
     """Reject structured secrets/identities BEFORE persistence, not regex-only."""
+    if _depth > 32:
+        raise RuntimeError("evidence nesting unsupported")
     forbidden = {"accountid", "clientid", "devicecode", "authorizationcode",
                  "accesstoken", "refreshtoken", "idtoken", "apikey", "password",
                  "authorization", "credential", "credentials", "authjson"}
@@ -1920,15 +1927,162 @@ def public_evidence(value):
         for key, child in value.items():
             if re.sub(r"[^a-z0-9]", "", key.lower()) in forbidden:
                 raise RuntimeError("private structured field cannot enter evidence")
-            public_evidence(child)
+            public_evidence(child, _depth + 1)
     elif isinstance(value, (list, tuple)):
         for child in value:
-            public_evidence(child)
+            public_evidence(child, _depth + 1)
     elif isinstance(value, str) and re.search(
             r"(?i)(Bearer\s+[A-Za-z0-9._-]+|https?://[^\s]*(?:oauth|authorize|callback)"
             r"[^\s]*[?&#](?:code|token|state)=)", value):
         raise RuntimeError("private authentication material cannot enter evidence")
+    elif isinstance(value, str):
+        # Encoded JSON is still structured input, not an escape hatch through a
+        # string field. This does NOT normalize or repair the model's response.
+        candidate = value.strip()
+        if candidate.startswith(("\"", "{", "[")):
+            try:
+                decoded = json.loads(candidate)
+            except ValueError:
+                pass
+            else:
+                public_evidence(decoded, _depth + 1)
     return value
+
+
+def native_event_projection(event):
+    """Supported V2 event schemas only; opaque provider/error diagnostics omitted.
+
+    Tool input/output and skill body remain exact for downstream native proof.
+    Error messages, stderr and provider-native opaque state are NOT proof inputs
+    and never enter retained artifacts. Unknown nested fields fail closed.
+    """
+    def shape(value, allowed, required=()):
+        if (not isinstance(value, dict) or not set(required) <= value.keys() or
+                not value.keys() <= set(allowed)):
+            raise RuntimeError("unsupported native evidence schema")
+        return value
+    def numeric(value):
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise RuntimeError("unsupported native numeric evidence")
+    if len(json.dumps(event)) > 1_000_000:
+        raise RuntimeError("native evidence exceeds bound")
+    shape(event, ("type", "sessionID", "timestamp", "part", "error"), ("type", "sessionID"))
+    if not isinstance(event["sessionID"], str):
+        raise RuntimeError("unsupported native session identity")
+    if "timestamp" in event:
+        numeric(event["timestamp"])
+    result = copy.deepcopy(event)
+    kind = event["type"]
+    if kind == "error":
+        shape(event, ("type", "sessionID", "timestamp", "error"), ("error",))
+        error = shape(event.get("error"), ("type", "message"), ("message",))
+        if (not isinstance(error["message"], str) or
+                "type" in error and not isinstance(error["type"], str)):
+            raise RuntimeError("unsupported native error schema")
+        result["error"] = {"code": "native-runtime-error"}
+        result.pop("part", None)
+        return result
+    part = event.get("part")
+    common = ("id", "partID", "sessionID", "messageID", "type")
+    if not isinstance(part, dict) or any(
+            key in part and not isinstance(part[key], str) for key in common):
+        raise RuntimeError("unsupported native part identity")
+    if kind in ("text", "reasoning"):
+        shape(part, (*common, "text", "time", "metadata"), ("text",))
+        if not isinstance(part["text"], str):
+            raise RuntimeError("unsupported native text evidence")
+        result["part"].pop("metadata", None)  # provider-native opaque state
+    elif kind in ("step_start", "step_finish"):
+        shape(part, (*common, "reason", "snapshot", "cost", "tokens"))
+        if any(key in part and part[key] is not None and not isinstance(part[key], str)
+               for key in ("reason", "snapshot")):
+            raise RuntimeError("unsupported native step evidence")
+        if "cost" in part:
+            numeric(part["cost"])
+        if "tokens" in part:
+            tokens = shape(part["tokens"], ("input", "output", "reasoning", "cache", "total"))
+            for key, value in tokens.items():
+                if key == "cache":
+                    for number in shape(value, ("read", "write")).values():
+                        numeric(number)
+                else:
+                    numeric(value)
+    elif kind == "tool_use":
+        shape(part, (*common, "tool", "state"), ("tool", "state"))
+        state = shape(part["state"], ("status", "input", "output", "title", "metadata",
+                                     "time", "error"), ("status", "input"))
+        if state["status"] not in ("pending", "running", "completed", "error", "failed", "cancelled"):
+            raise RuntimeError("unsupported native tool status")
+        inputs = {"shell": ("command", "workdir", "timeout", "description"),
+                  "skill": ("id", "name"),
+                  "read": ("path", "offset", "limit"),
+                  "glob": ("pattern", "path", "hidden", "limit"),
+                  "grep": ("pattern", "path", "include", "literal", "caseSensitive", "limit"),
+                  "question": ("questions",)}
+        if part["tool"] not in inputs:
+            raise RuntimeError("unsupported native tool evidence; proof blocked")
+        shape(state["input"], inputs[part["tool"]])
+        if part["tool"] != "question":
+            for key, value in state["input"].items():
+                if key in ("timeout", "offset", "limit"):
+                    numeric(value)
+                elif key in ("hidden", "literal", "caseSensitive"):
+                    if type(value) is not bool:
+                        raise RuntimeError("unsupported native input flag")
+                elif not isinstance(value, str):
+                    raise RuntimeError("unsupported native input scalar")
+        if part["tool"] == "question":
+            questions = state["input"].get("questions", [])
+            if not isinstance(questions, list) or len(questions) > 16:
+                raise RuntimeError("unsupported native question evidence")
+            for question in questions:
+                shape(question, ("question", "header", "options", "multiple", "custom"))
+                if (not isinstance(question.get("options", []), list) or
+                        len(question.get("options", [])) > 32 or any(
+                            key in question and type(question[key]) is not bool
+                            for key in ("multiple", "custom"))):
+                    raise RuntimeError("unsupported native question structure")
+                for option in question.get("options", []):
+                    shape(option, ("label", "description"))
+                    if any(not isinstance(v, str) for v in option.values()):
+                        raise RuntimeError("unsupported native question option")
+                if any(key in question and not isinstance(question[key], str)
+                       for key in ("question", "header")):
+                    raise RuntimeError("unsupported native question text")
+        if "error" in state:
+            if not isinstance(state["error"], str):
+                raise RuntimeError("unsupported native tool error schema")
+            result["part"]["state"]["error"] = "native-tool-error"
+        metadata = shape(state.get("metadata", {}), ("metadata", "providerCall", "providerResult",
+                                                    "rawInput"))
+        projected = {}
+        if "metadata" in metadata:
+            inner = shape(metadata["metadata"], ("exit", "truncated", "output", "title",
+                                                 "description"))
+            projected["metadata"] = {k: inner[k] for k in ("exit", "truncated") if k in inner}
+            if ("exit" in inner and type(inner["exit"]) is not int or
+                    "truncated" in inner and type(inner["truncated"]) is not bool):
+                raise RuntimeError("unsupported native tool execution metadata")
+        for key in ("providerCall", "providerResult"):
+            if key in metadata:
+                native = shape(metadata[key], ("executed", "state"), ("executed",))
+                if type(native["executed"]) is not bool:
+                    raise RuntimeError("unsupported native provider execution flag")
+                projected[key] = {"executed": native["executed"]}
+        result["part"]["state"]["metadata"] = projected
+        for key in ("output", "title"):
+            if key in state and not isinstance(state[key], str):
+                raise RuntimeError("unsupported native tool text evidence")
+    else:
+        raise RuntimeError("unsupported native event type")
+    if "time" in part:
+        for number in shape(part["time"], ("start", "end")).values():
+            numeric(number)
+    if kind == "tool_use" and "time" in part["state"]:
+        for number in shape(part["state"]["time"], ("start", "end")).values():
+            numeric(number)
+    public_evidence(result)
+    return result
 
 
 def evidence_files(base):
@@ -1949,9 +2103,18 @@ def evidence_files(base):
         elif path.suffix == ".jsonl":
             for line in text.splitlines():
                 if line.strip():
-                    public_evidence(json.loads(line))
+                    value = json.loads(line)
+                    if value.get("type") == "error":
+                        if (not set(value) <= {"type", "sessionID", "timestamp", "error"} or
+                                value.get("error") != {"code": "native-runtime-error"}):
+                            raise RuntimeError("unprojected native error artifact")
+                        public_evidence(value)
+                    elif native_event_projection(value) != value:
+                        raise RuntimeError("unprojected native evidence artifact")
         else:
-            public_evidence(text)
+            if json.loads(text) not in ({"code": "native-stderr-present"},
+                                       {"code": "native-stderr-empty"}):
+                raise RuntimeError("unprojected native stderr artifact")
         files.append(path)
     return files
 
@@ -2013,8 +2176,19 @@ def private_inventory(base):
         if mode.st_uid != os.getuid():
             raise RuntimeError("private profile ownership mismatch")
         if item.is_symlink():
-            if not item.resolve().is_relative_to(base):
-                raise RuntimeError("private profile external symlink")
+            relative = item.relative_to(base).as_posix()
+            package = base / "home/.local/share/my-ai-skills"
+            target = os.readlink(item)
+            allowed = (relative == "home/.local/share/my-ai-skills/active" and
+                       bool(re.fullmatch(r"versions/[a-f0-9]{40}", target)))
+            name = item.name
+            if re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
+                allowed |= (relative == f"home/.config/opencode/skills/{name}" and
+                            target == str(package / "active/skills" / name))
+                allowed |= (relative == f"home/.local/bin/{name}" and
+                            target == str(package / "bin" / name))
+            if not allowed:
+                raise RuntimeError("private profile unverified symlink")
         elif not (stat.S_ISDIR(mode.st_mode) or stat.S_ISREG(mode.st_mode)):
             raise RuntimeError("private profile special file")
         elif stat.S_IMODE(mode.st_mode) & 0o077:
@@ -2026,6 +2200,51 @@ def privatize_new_files(directory):
     for item in (directory, *directory.rglob("*")):
         if not item.is_symlink():
             item.chmod(0o700 if item.is_dir() or os.access(item, os.X_OK) else 0o600)
+
+
+def private_bytes(base, path):
+    """Open each component relative to held dirfds; never follow links.
+
+    Only use on named configuration/receipts or a separately verified managed
+    instruction target, never auth storage. A path replacement after open cannot
+    redirect this read. Same-user interference outside the observation is not
+    cryptographically excluded.
+    """
+    try:
+        parts = path.relative_to(base).parts
+    except ValueError:
+        raise RuntimeError("unsafe private file scope") from None
+    if not parts or any(part in (".", "..") for part in parts):
+        raise RuntimeError("unsafe private file traversal")
+    descriptors = []
+    try:
+        fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(fd)
+        for part in (*base.parts[1:], *parts[:-1]):
+            fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            descriptors.append(fd)
+            if os.fstat(fd).st_uid not in (0, os.getuid()):
+                raise RuntimeError("unsafe private parent ownership")
+        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+        descriptors.append(fd)
+        before = os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or
+                before.st_nlink != 1 or before.st_mode & 0o077 or before.st_size > 2_000_000):
+            raise RuntimeError("unsafe private regular file")
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            data = stream.read(2_000_001)
+        after = os.fstat(fd)
+        fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_nlink", "st_size",
+                  "st_mtime_ns", "st_ctime_ns")
+        if (any(getattr(before, k) != getattr(after, k) for k in fields) or
+                len(data) != before.st_size):
+            raise RuntimeError("private file changed during bounded read")
+        return data
+    except (OSError, ValueError):
+        raise RuntimeError("unsafe private file target") from None
+    finally:
+        for fd in reversed(descriptors):
+            os.close(fd)
 
 
 def private_binding(base, cli, revision):
@@ -2045,26 +2264,186 @@ def private_binding(base, cli, revision):
                                     base / "home/.local/share/my-ai-skills"))
                     if directory.name == ".codex" or not allowed:
                         raise RuntimeError("unexpected private configuration artifact")
-                    config[str(item.relative_to(base))] = sha(item)
+                    config[str(item.relative_to(base))] = hashlib.sha256(
+                        private_bytes(base, item)).hexdigest()
+    package = base / "home/.local/share/my-ai-skills"
+    active = package / "active"
+    if active.is_symlink():
+        target = "versions/" + revision
+        if os.readlink(active) != target:
+            raise RuntimeError("managed snapshot pointer mismatch")
+        version = package / target
+        manifest = json.loads(private_bytes(base, version / "manifest.json"))
+        if manifest.get("revision") != revision:
+            raise RuntimeError("managed snapshot revision mismatch")
+        links = base / "home/.config/opencode/skills"
+        for link in links.iterdir():
+            name = link.name
+            if (not link.is_symlink() or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or
+                    os.readlink(link) != str(active / "skills" / name)):
+                raise RuntimeError("unverified managed instruction link")
+            # Construct the permitted source, never resolve the link's target.
+            canonical = version / "skills" / name / "SKILL.md"
+            config[str(link.relative_to(base))] = hashlib.sha256(
+                private_bytes(base, canonical)).hexdigest()
+            if os.readlink(active) != target or os.readlink(link) != str(active / "skills" / name):
+                raise RuntimeError("managed instruction link changed during read")
     return {"candidate": revision, "approved_proposal": APPROVED_PROPOSAL,
             "runtime_sha256": RUNTIME_SHA256, "runtime_source": RUNTIME_SOURCE,
             "profile": str(base), "config": config}
 
 
-def native_metadata(cli, repo, env, path):
-    if path not in ("/api/integration/openai", "/api/provider/openai", "/api/model"):
-        raise RuntimeError("metadata endpoint not allowlisted")
-    try:
-        response = checked_json(
-            [cli, "api", "--standalone", "--log-level", "none", "get", path], cwd=repo, env=env)
-    except Exception as error:
-        # Neither provider metadata nor native stderr is an auth diagnostic log.
-        status = re.search(r"\bHTTP (\d{3})\b", str(error))
-        detail = "HTTP " + status[1] if status else "unavailable"
-        raise RuntimeError(f"native metadata {detail}; no raw payload retained") from None
-    if response.get("location", {}).get("directory") != str(repo):
-        raise RuntimeError("metadata Location mismatch")
-    return response["data"]
+class OwnedMetadataRuntime:
+    """One private stdio server/Location, supported bounded plugin activation.
+
+    v2.4.2 server-process.ts owns lifetime through stdin EOF. api.ts performs no
+    plugin wait; plugin-startup.ts polls GET plugin until nonempty for <=5s.
+    No shared service, auth attempt, provider request or inference is performed.
+    """
+    def __init__(self, cli, repo, env):
+        self.cli, self.repo, self.env = cli, repo, dict(env)
+        self.process = None
+        self.url = None
+        self.ready = False
+        self.closed = False
+        self.polls = 0
+        self.alias = secrets.token_hex(16)
+
+    def __enter__(self):
+        if self.process is not None or self.closed:
+            raise RuntimeError("owned metadata runtime cannot be replayed")
+        if sha(Path(self.cli)) != RUNTIME_SHA256:
+            raise RuntimeError("unsupported metadata runtime provenance")
+        try:
+            self.process = subprocess.Popen(
+                [self.cli, "serve", "--stdio", "--hostname", "127.0.0.1",
+                 "--port", "0", "--log-level", "none"],
+                cwd=self.repo, env=self.env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, start_new_session=True)
+            data = b""
+            deadline = time.monotonic() + 15
+            with selectors.DefaultSelector() as watcher:
+                watcher.register(self.process.stdout, selectors.EVENT_READ)
+                while b"\n" not in data:
+                    if self.process.poll() is not None:
+                        raise RuntimeError("owned metadata runtime startup exited")
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise RuntimeError("owned metadata runtime startup timeout")
+                    if not watcher.select(min(remaining, 0.1)):
+                        continue
+                    block = os.read(self.process.stdout.fileno(), 4097 - len(data))
+                    if not block or len(data) + len(block) > 4096:
+                        raise RuntimeError("owned metadata runtime startup truncated/oversized")
+                    data += block
+            endpoint = json.loads(data.split(b"\n", 1)[0])
+            url = urllib.parse.urlsplit(endpoint.get("url", ""))
+            if (set(endpoint) != {"url"} or url.scheme != "http" or
+                    url.hostname != "127.0.0.1" or not url.port or
+                    url.username or url.password or url.path not in ("", "/") or
+                    url.query or url.fragment):
+                raise RuntimeError("owned metadata runtime endpoint unsupported")
+            self.url = endpoint["url"].rstrip("/")
+            info = self.request("/api/info")
+            if info.get("version") != RUNTIME_VERSION or info.get("pid") != self.process.pid:
+                raise RuntimeError("owned metadata runtime identity mismatch")
+            # Actual native condition, not a fixed sleep or model-availability retry.
+            deadline = time.monotonic() + 5
+            while True:
+                plugins = self.request("/api/plugin", timeout=max(0.01, deadline - time.monotonic()))
+                self.polls += 1
+                if not isinstance(plugins, list):
+                    raise RuntimeError("owned metadata plugin schema unsupported")
+                if plugins:
+                    self.ready = True
+                    return self
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError("owned metadata plugin readiness timeout")
+                time.sleep(min(0.025, remaining))
+        except RuntimeError:
+            self.close()
+            raise
+        except Exception:
+            self.close()
+            raise RuntimeError("owned metadata startup/readiness failed; payload omitted") from None
+
+    def request(self, path, *, timeout=5):
+        if (self.closed or not self.process or self.process.poll() is not None or not self.url or
+                path not in ("/api/info", "/api/plugin", "/api/integration/openai",
+                             "/api/provider/openai", "/api/model")):
+            raise RuntimeError("owned metadata request unavailable/not allowlisted")
+        query = urllib.parse.urlencode({"location[directory]": str(self.repo)})
+        credential = base64.b64encode(("opencode:" + self.env["OPENCODE_PASSWORD"]).encode()).decode()
+        request = urllib.request.Request(self.url + path + "?" + query,
+                                         headers={"Authorization": "Basic " + credential})
+        try:
+            # Never inherit the controller's proxy settings or credentials.
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(request, timeout=timeout) as response:
+                raw = response.read(1_000_001)
+                if len(raw) > 1_000_000:
+                    raise RuntimeError("owned metadata response exceeds bound")
+                value = json.loads(raw)
+        except urllib.error.HTTPError as error:
+            code = error.code
+            error.close()
+            raise RuntimeError(f"native metadata HTTP {code}; payload omitted") from None
+        except Exception:
+            raise RuntimeError("native metadata transport/schema failure; payload omitted") from None
+        if path == "/api/info":
+            return value
+        if (not isinstance(value, dict) or set(value) != {"location", "data"} or
+                value.get("location") != {"directory": str(self.repo)}):
+            raise RuntimeError("metadata Location/schema mismatch")
+        return value["data"]
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        if self.process is None:
+            return
+        if self.process.stdin:
+            self.process.stdin.close()  # supported graceful stdio lifetime
+        forced = False
+        try:
+            self.process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            forced = True
+            self.process.terminate()  # ONLY this Popen-owned process
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+        finally:
+            if self.process.stdout:
+                self.process.stdout.close()
+        if forced or self.process.returncode != 0:
+            raise RuntimeError("owned metadata shutdown not graceful; preparation blocked")
+
+    def __exit__(self, *_):
+        self.close()
+
+    def receipt(self):
+        if (not self.ready or not self.closed or self.process.returncode != 0 or
+                sha(Path(self.cli)) != RUNTIME_SHA256):
+            raise RuntimeError("owned metadata terminal receipt unavailable")
+        return {"execution_alias": self.alias, "pid": self.process.pid,
+                "runtime_sha256": RUNTIME_SHA256, "version": RUNTIME_VERSION,
+                "location": str(self.repo), "plugin_ready": True,
+                "readiness_polls": self.polls, "exit_code": self.process.returncode,
+                "shutdown": "owned-stdio-eof", "inference_verified": False}
+
+
+def native_metadata(cli, repo, env, path, *, runtime=None):
+    if runtime is None:
+        with OwnedMetadataRuntime(cli, repo, env) as owned:
+            return owned.request(path)
+    if (runtime.cli != cli or runtime.repo != repo or runtime.env != env or not runtime.ready):
+        raise RuntimeError("metadata runtime/profile/Location binding mismatch")
+    return runtime.request(path)
 
 
 def chatgpt_method(integration):
@@ -2085,28 +2464,28 @@ def prepare_private_pause(base, cli, revision, env, *, expected=None):
     binding = private_binding(base, cli, revision)
     receipt_path = base / "private-preparation.json"
     if expected:
-        if not receipt_path.is_file() or sha(receipt_path) != expected:
+        raw_receipt = private_bytes(base, receipt_path)
+        if hashlib.sha256(raw_receipt).hexdigest() != expected:
             raise RuntimeError("private preparation receipt missing/tampered")
-        receipt = json.loads(receipt_path.read_text())
+        receipt = json.loads(raw_receipt)
         if receipt["binding"] != binding or receipt["state"] != "metadata_only":
             raise RuntimeError("private preparation HEAD/runtime/config/profile mismatch")
     else:
         if receipt_path.exists():
             raise RuntimeError("private preparation already exists")
         receipt = {"binding": binding, "nonce": secrets.token_hex(24), "state": "metadata_only"}
-    integration = native_metadata(cli, ROOT, env, "/api/integration/openai")
-    method = chatgpt_method(integration)
-    if integration["connections"]:
-        # This offline command never inspects an actual account, nor promotes
-        # arbitrary JSON or an already-authenticated profile to a trusted receipt.
-        raise RuntimeError("offline pause requires zero connections; supervised controller required")
+    with OwnedMetadataRuntime(cli, ROOT, env) as runtime:
+        integration = native_metadata(cli, ROOT, env, "/api/integration/openai", runtime=runtime)
+        method = chatgpt_method(integration)
+        if integration["connections"]:
+            raise RuntimeError("offline pause requires zero connections; supervised controller required")
+        provider = native_metadata(cli, ROOT, env, "/api/provider/openai", runtime=runtime)
+        catalog = native_metadata(cli, ROOT, env, "/api/model", runtime=runtime)
     if expected and receipt["method"] != method:
         raise RuntimeError("private preparation method mismatch")
     receipt["method"] = method
     # Check the supported non-secret Provider/Model schema without selecting
     # a model or inspecting any actual account. Missing/changed API blocks here.
-    provider = native_metadata(cli, ROOT, env, "/api/provider/openai")
-    catalog = native_metadata(cli, ROOT, env, "/api/model")
     if (provider.get("id") != "openai" or provider.get("integrationID") != "openai" or
             provider.get("activation") not in ("auto", "enabled", "disabled") or
             not isinstance(catalog, list) or any(
@@ -2115,13 +2494,17 @@ def prepare_private_pause(base, cli, revision, env, *, expected=None):
                 for m in catalog)):
         raise RuntimeError("native provider/catalog schema unsupported; stop before login")
     if not expected:
-        receipt_path.write_text(json.dumps(receipt, sort_keys=True))
-        receipt_path.chmod(0o600)
+        receipt["metadata_runtime"] = runtime.receipt()
+        with os.fdopen(os.open(receipt_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                               os.O_NOFOLLOW, 0o600), "w") as stream:
+            stream.write(json.dumps(receipt, sort_keys=True))
     return {"state": "metadata_only", "inference_verified": False,
             "profile_alias": hashlib.sha256(receipt["nonce"].encode()).hexdigest(),
             "candidate": revision, "approved_proposal": APPROVED_PROPOSAL,
             "runtime_sha256": RUNTIME_SHA256, "runtime_source": RUNTIME_SOURCE,
-            "receipt_sha256": sha(receipt_path), "method": method,
+            "metadata_runtime": runtime.receipt(),
+            "receipt_sha256": hashlib.sha256(private_bytes(base, receipt_path)).hexdigest(),
+            "method": method,
             "auth_availability": "pending_manual", "route_proof": "pending",
             "economic_eligibility": "pending", "native_proof": "NOT_RUN",
             "login_requested": False}
@@ -2139,9 +2522,32 @@ def model_preflight(cli, repo, env, record, override=None, *, subscription=None)
 
     def summary(model):
         # Never retain provider settings, headers or credentials from the catalog.
-        return {key: model.get(key) for key in
-                ("id", "modelID", "providerID", "type", "enabled", "status",
-                 "capabilities", "cost")}
+        value = {key: model.get(key) for key in
+                 ("id", "modelID", "providerID", "type", "enabled", "status")}
+        caps = model.get("capabilities", {})
+        value["capabilities"] = {k: caps.get(k) for k in ("tools", "input", "output")}
+        if (type(value["capabilities"]["tools"]) is not bool or any(
+                not isinstance(caps.get(k), list) or
+                any(not isinstance(item, str) for item in caps[k]) for k in ("input", "output"))):
+            raise RuntimeError("unsupported model capability schema")
+        prices = []
+        for cost in model.get("cost", []):
+            cache = cost.get("cache", {})
+            numbers = (cost.get("input"), cost.get("output"), cache.get("read"), cache.get("write"))
+            if any(number is not None and (
+                    type(number) not in (int, float) or not math.isfinite(number)) for number in numbers):
+                raise RuntimeError("unsupported model price schema")
+            price = {"input": numbers[0], "output": numbers[1],
+                     "cache": {"read": numbers[2], "write": numbers[3]}}
+            if "tier" in cost:
+                tier = cost["tier"]
+                if (not isinstance(tier, dict) or set(tier) != {"type", "size"} or
+                        tier["type"] != "context" or type(tier["size"]) is not int):
+                    raise RuntimeError("unsupported model price tier")
+                price["tier"] = dict(tier)
+            prices.append(price)
+        value["cost"] = prices
+        return value
 
     default = api("/api/model/default")
     catalog = api("/api/model")
@@ -2267,15 +2673,16 @@ class SupervisedSubscription:
                 not self.connection or self.quota_authorized is not True or
                 self.entitlement_confirmed is not True):
             raise RuntimeError("subscription method/completion/consent proof pending")
-        integration = native_metadata(cli, repo, env, "/api/integration/openai")
+        with OwnedMetadataRuntime(cli, repo, env) as runtime:
+            integration = native_metadata(cli, repo, env, "/api/integration/openai", runtime=runtime)
+            provider = native_metadata(cli, repo, env, "/api/provider/openai", runtime=runtime)
+            catalog = native_metadata(cli, repo, env, "/api/model", runtime=runtime)
         connections = integration.get("connections", [])
         if (chatgpt_method(integration) != self.method or len(connections) != 1 or
                 connections[0].get("id") != self.connection or
                 connections[0].get("method") != "oauth" or
                 connections[0].get("type") != "credential" or connections[0].get("status")):
             raise RuntimeError("subscription connection/method mismatch")
-        provider = native_metadata(cli, repo, env, "/api/provider/openai")
-        catalog = native_metadata(cli, repo, env, "/api/model")
         if (provider.get("id") != "openai" or provider.get("integrationID") != "openai" or
                 provider.get("activation") not in ("auto", "enabled") or
                 model.get("providerID") != "openai" or
@@ -2321,12 +2728,14 @@ def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
             stdout, stderr = process.communicate(timeout=20)
     terminal = {
         "pid": process.pid, "exit_code": process.returncode, "timed_out": timed_out,
+        "event_projection": "supported-native-proof-fields-v1",
+        "stderr_policy": "diagnostic-code-only",
         "candidate": git(ROOT, os.environ, "rev-parse", "HEAD"),
         "finished_at": datetime.now(timezone.utc).isoformat()}
     (base / f"{case}-terminal.json").write_text(json.dumps(terminal))
     stdout, stderr = redact(stdout, env), redact(stderr, env)
     transcript = base / f"{case}-events.jsonl"
-    events, malformed, public_lines = [], [], []
+    events, malformed = [], []
     for number, line in enumerate(stdout.splitlines(), 1):
         if not line.strip():
             continue
@@ -2340,8 +2749,7 @@ def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
                     not isinstance(event.get("part", {}).get("state"), dict) or
                     not isinstance(event["part"]["state"].get("input"), dict)):
                 raise ValueError("malformed tool state")
-            events.append(event)
-            public_lines.append(line)
+            events.append(native_event_projection(event))
         except ValueError:
             malformed.append(number)
     # Only parsed native events, with a positive outer schema; malformed/raw
@@ -2350,9 +2758,10 @@ def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
         if not set(event) <= {"type", "sessionID", "timestamp", "part", "error"}:
             raise RuntimeError("unexpected native event fields; publication blocked")
         public_evidence(event)
-    public_evidence(stderr)
-    transcript.write_text("".join(line + "\n" for line in public_lines))
-    (base / f"{case}-stderr.log").write_text(stderr)
+    transcript.write_text("".join(json.dumps(event) + "\n" for event in events))
+    # Never publish untrusted stderr, even if it looks like innocent text.
+    (base / f"{case}-stderr.log").write_text(json.dumps({
+        "code": "native-stderr-present" if stderr else "native-stderr-empty"}))
     texts = [item["part"]["text"] for item in events
              if item.get("type") == "text" and isinstance(item.get("part", {}).get("text"), str)]
     sessions = sorted({item["sessionID"] for item in events if item.get("sessionID")})
@@ -2432,9 +2841,10 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
             raise RuntimeError("resume requires independently retained preparation checksum")
         private_inventory(base)
         receipt = base / "private-preparation.json"
-        if not receipt.is_file() or sha(receipt) != receipt_sha256:
+        raw_receipt = private_bytes(base, receipt)
+        if hashlib.sha256(raw_receipt).hexdigest() != receipt_sha256:
             raise RuntimeError("resume preparation missing/tampered")
-        if json.loads(receipt.read_text())["binding"] != private_binding(base, cli, revision):
+        if json.loads(raw_receipt)["binding"] != private_binding(base, cli, revision):
             raise RuntimeError("resume profile/runtime/HEAD/config mismatch")
     elif output:
         base.mkdir(mode=0o700, exist_ok=False)
