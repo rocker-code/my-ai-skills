@@ -3128,3 +3128,103 @@ também decorrem do digest divergente no candidato; ainda requerem comparação
 de base se alguém pretender classificá-las formalmente. Falha pré-existente
 **não** aprova o gate. Archive/sync, PR e validação final permanecem pendentes;
 não alterar checks ou infraestrutura de outra issue para aprovar #61.
+
+## Handoff Apply offline — 26/11/2026: suporte bloqueado antes de login
+
+Worker nativo `ses_de5e69035ffewOE814R8zpywic`, run
+`wf-20261116T064328Z-45cb0ecc`, tarefa Apply limitada a 3.10/3.11,
+issue #61/branch e checkout existentes. Entrada/proposta aprovada exata
+`bde179386f8b2283d8045cd03a61acd2a506efb2`, revisão independente informada
+do pai `ses_de5f1cb7affeU03kmjpOtA6i4m`. Conferidos corpo vigente da issue
+e decisão superseding, contrato completo, skill Apply gerada localmente,
+context/list/status/instructions Apply oficiais e recibo strict pinado
+`ev-20261126T230027Z-6d279b51` (exit0, 1/1; não gate de entrega).
+Política canônica do checkout prevalece sobre adaptações globais antigas:
+nenhuma telemetria, audit/ready, atualização global, fetch ou integração.
+Reserva normal desde WAITING ownerless, identidade própria; checkpoint/verify
+sem drift. Nove bytecodes preexistentes preservados, sem limpeza.
+
+**Implementação offline:** o harness existente ganhou env allowlisted e
+preparação/retomada metadata-only do mesmo perfil privado, validação de
+ownership/symlink/permissões/runtime/config/HEAD, checksum de continuidade
+e exclusão cooperativa. `--prepare-private` e `--resume-private` nunca
+autenticam nem inferem. O controlador em memória exige terminal nativo
+direto da pessoa, método realmente descoberto/compatível com handler pinado,
+processo observado e callback correlacionado, zero→única conexão OAuth,
+consentimento/entitlement e reconferência provider/catalog. Não aceita JSON
+como prova de auth. Sem controlador autêntico vivo após transferência,
+mantém bloqueio; checksum não recria autoria ou autenticação. Nenhum login
+foi executado. Confiança é operacional/cooperativa, não isolamento contra
+processo hostil do mesmo usuário.
+
+O ramo sem credenciais mantém os tiers conhecidos todos zero e rejeita
+cost=[]. A exceção subscription-quota exige o controlador/recibo real e
+autorização/entitlement: cost=[] continua display unknown, não zero/grátis.
+Preço API nonzero, método/conexão/provider/perfil/env divergentes e
+consentimento/callback ausentes são rejeitados sem fallback. Testes dessa
+cadeia usam processos/metadados **sintéticos**, não comprovam auth real.
+
+**3.11 offline implementada:** binário instalado confirmou SHA-256
+`523b1502d1d556998b0904235cef65eb1d8cf8362b4e2faa7ae7a170c9a44cd4`,
+OpenCode2.4.2/OpenSpec2.1.1. Fonte oficial imutável
+`fc31a485317970bcf6be7b431a9830aaef875731`: session/sql.ts,
+instruction-state.ts, model-request.ts:106–125, skill/instructions.ts e
+cli/run/noninteractive.ts confirmam tabelas/baseline/catálogo/eventos.
+A captura passou a BEGIN read-only com authorizer por tabela/coluna,
+projeção limitada de instruções/sessão/tempo e hash somente dessa projeção.
+Removidos backup/serialize/hash do DB inteiro; nenhum SELECT de auth.
+Testes impedem backup/serialize, mostram que mutação de auth não muda a
+projeção, excluem sentinelas de mensagem/identidade e rejeitam versão antiga.
+Persistência verifica campos estruturados antes de gravar; `evidence_files`
+lista somente results e eventos/terminal/stderr das fases, nunca DB/WAL/SHM,
+HOME, preparação privada ou login. O empacotador futuro deve usar essa
+allowlist, não um diretório recursivo. Nenhum bundle autenticado foi criado.
+
+**Preservação:** sete funções protegidas (permissões, T7, parser/oráculo T1,
+native_calls/inspection), PROMPTS e RUNTIME_READER comparados por AST com
+o pin de entrada e iguais. Raw guard permanece
+`b878847767fd9759d7362a6aa71707b4e13f97606258f39448c82b23f255e656`;
+instalador permanece
+`93cd9371b602a47c66b6bc3b20be448f6c124fc88b10a9f5d041f611dddc1a5f`.
+Nenhum instalador, pin, skill, guard ou histórico de execução foi alterado.
+Graph indisponível (`missing_graph`); relações/consumidores conferidos
+diretamente em main/model_preflight/delivered_skill_catalog e testes.
+Context7 não indexa2.4.2; documentação corrente só orientou pesquisa,
+confirmada na tag oficial e OpenAPI V2. Sem lockfile de aplicação,
+Magento, M2T ou vendor aplicáveis; fixtures/recursos temporários próprios,
+discovery por tests/ e bytecode desativado.
+
+**Provas de preparação, não entrega:** amostra T1NativeInspection exit0
+`ev-20261126T230638Z-e576bc08`; amostra nova PrivatePreparation 6/6 exit0
+`ev-20261126T231256Z-d033a7bf`; depois grupo afetado **73/73** exit0
+`ev-20261126T231831Z-c1099583`; suíte preliminar completa **329/329**
+exit0 `ev-20261126T231913Z-4a68499f` (67,592s). Esta última precede
+este append/commit e não é gate exact-HEAD final. Provas do HEAD de saída
+devem ser reexecutadas/verificadas e entregues fora do commit.
+
+**Bloqueio técnico factual de 3.10:** o probe fresh/private metadata-only
+`ev-20261126T231354Z-ff6275f7` saiu1 antes de criar recibo de preparação:
+`GET /api/integration/openai` indisponível. Diagnóstico separado, ainda
+sem login/modelo, executou a mesma consulta em outro perfil novo: exit1,
+stderr somente **HTTP404 Not Found**, objeto de erro com chaves
+`_tag/integrationID/message`; nenhum payload de conexão foi publicado.
+O help/API e fonte api.ts confirmam syntax/--standalone/--log-level none;
+não se conclui daí a causa do registro ausente. Não houve terceira consulta
+equivalente, ativação de plugin/provedor, método adivinhado ou troca de rota.
+O perfil diagnóstico é
+`/tmp/opencode/issue61-metadata-diagnosis-q_3k97zx`, preservado; não é
+perfil pronto, não contém recibo de preparação aprovada, não pode ser
+promovido por JSON. A causa da ausência de integração continua UNKNOWN.
+
+**Próximo:** pai solicita revisão independente destas superfícies e resolve
+o suporte público fresh que retornou404, antes de pedir qualquer login.
+3.10 permanece pendente; 3.11 marcada somente pela implementação/provas
+offline acima; os 17 checks históricos ficam iguais, 3.4/4.3 pendentes.
+Auth availability technical_blocked, route pending, economic eligibility
+blocked, native proof NOT RUN neste perfil. Os 13 whole runs FAILED,
+latest `ev-20261125T144642Z-ea89df23`, seus bytes e attempt-log anteriores
+permanecem intactos; não resolver T1 fenced JSON/dispatch por esta alteração.
+Sem inferência, autenticação, conta inspecionada, auth SQL, cópia/hash de DB,
+14º smoke, archive/sync, PR/push/merge ou claim de suíte final de entrega.
+Nenhuma evolução independente identificada; esta falha é obrigação atual,
+não backlog opcional. **NOT READY FOR PR.**

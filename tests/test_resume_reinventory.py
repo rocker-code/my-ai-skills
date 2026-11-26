@@ -40,7 +40,243 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               input_files, input_digest, effective_input_binding,
                                               effective_input_diff, APPROVED_PROPOSAL, PROMPTS,
                                               VERIFY_SHA256, VERIFY_GENERATOR_VERSION,
-                                              t1_handoff_value, t1_serialization_diagnostics)
+                                              t1_handoff_value, t1_serialization_diagnostics,
+                                              private_environment, private_inventory,
+                                              prepare_private_pause, privatize_new_files,
+                                              SupervisedSubscription, public_evidence,
+                                              evidence_files, persist, chatgpt_method)
+
+
+class PrivatePreparationTest(unittest.TestCase):
+    """A1/A2/A3: synthetic metadata/processes only, never login or inference."""
+    def setUp(self):
+        self.base = Path(self.enterContext(tempfile.TemporaryDirectory(dir="/tmp/opencode")))
+        self.cli = self.base / "runtime"
+        self.cli.write_text("synthetic runtime")
+        self.enterContext(patch("smoke_resume_candidate_opencode.RUNTIME_SHA256", sha(self.cli)))
+        self.revision = "a" * 40
+        (self.base / "home").mkdir()
+        self.env = private_environment(self.base, str(self.cli), {
+            "HOME": "/operator", "PATH": "/usr/bin:/bin:/operator/bin",
+            "OPENAI_API_KEY": "SECRET", "OPENCODE_CONFIG_CONTENT": "SECRET",
+            "OPENCODE_SERVER": "http://operator", "CODEX_HOME": "/operator/codex"})
+        self.method = {"id": "chatgpt-token-sharing", "type": "oauth", "label": "Sign in with ChatGPT"}
+        self.integration = {"id": "openai", "methods": [self.method], "connections": []}
+        self.provider = {"id": "openai", "integrationID": "openai", "activation": "auto"}
+        self.model = {"id": "catalog-only", "providerID": "openai", "type": "chat",
+                      "enabled": True, "status": "active", "cost": [],
+                      "capabilities": {"tools": True, "input": ["text"], "output": ["text"]}}
+        self.connection = {"type": "credential", "id": "PRIVATE-CONNECTION-SENTINEL",
+                           "label": "PERSONAL-SENTINEL", "method": "oauth"}
+        privatize_new_files(self.base)
+
+    def api(self, cli, repo, env, path):
+        return {"/api/integration/openai": copy.deepcopy(self.integration),
+                "/api/provider/openai": self.provider,
+                "/api/model": [self.model]}[path]
+
+    def pause(self, **kwargs):
+        with patch("smoke_resume_candidate_opencode.native_metadata", side_effect=self.api):
+            return prepare_private_pause(self.base, str(self.cli), self.revision, self.env, **kwargs)
+
+    def controller(self):
+        prepared = self.pause()
+        with patch("smoke_resume_candidate_opencode.native_metadata", side_effect=self.api):
+            controller = SupervisedSubscription(
+                self.base, str(self.cli), self.env, self.revision, prepared["receipt_sha256"])
+        self.addCleanup(controller.close)
+        return controller
+
+    def continuity(self):
+        return patch("smoke_resume_candidate_opencode.git",
+                     side_effect=lambda root, env, *args: self.revision if args[0] == "rev-parse" else "")
+
+    def complete(self, controller, *, callback=None, exit_code=0):
+        process = Mock(pid=123, returncode=exit_code)
+        process.wait.return_value = process.poll.return_value = exit_code
+        def api(cli, repo, env, path):
+            if path == "/api/integration/openai":
+                return {**self.integration, "connections": [] if process.wait.call_count == 0
+                        else [self.connection]}
+            return self.api(cli, repo, env, path)
+        callback = callback or (lambda p, alias: {"worker_id": "synthetic-worker",
+                    "execution_id": "synthetic-callback", "pid": p.pid,
+                    "exit_code": p.returncode, "profile_alias": alias})
+        with (self.continuity(), patch("smoke_resume_candidate_opencode.os.isatty", return_value=True),
+              patch("smoke_resume_candidate_opencode.native_metadata", side_effect=api),
+              patch("smoke_resume_candidate_opencode.subprocess.Popen", return_value=process) as spawn):
+            controller.manual_login(self.env, quota_authorized=True,
+                                    entitlement_confirmed=True, on_terminal=callback)
+        command = spawn.call_args.args[0]
+        self.assertEqual(command[-2:], ["--method", self.method["id"]])
+        self.assertNotIn("stdout", spawn.call_args.kwargs)
+        self.assertNotIn("stderr", spawn.call_args.kwargs)
+        self.assertNotIn("stdin", spawn.call_args.kwargs)
+        return process
+
+    def test_metadata_pause_same_profile_resume_no_inference_and_filtered_environment(self):
+        with patch("smoke_resume_candidate_opencode.execute_model",
+                   side_effect=AssertionError("no inference")):
+            prepared = self.pause()
+            self.assertEqual(prepared, self.pause(expected=prepared["receipt_sha256"]))
+        self.assertFalse(prepared["inference_verified"])
+        self.assertFalse(prepared["login_requested"])
+        self.assertEqual(prepared["route_proof"], "pending")
+        self.assertEqual(prepared["native_proof"], "NOT_RUN")
+        self.assertNotIn("SECRET", json.dumps(self.env))
+        self.assertNotIn("/operator", self.env["PATH"])
+        self.assertTrue(all(Path(self.env[k]).is_relative_to(self.base) for k in
+                            ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+                             "XDG_STATE_HOME", "CODEX_HOME", "OPENCODE_DB")))
+        for bad in ("missing", "0" * 64):
+            with self.assertRaises(RuntimeError):
+                self.pause(expected=bad)
+        receipt = self.base / "private-preparation.json"
+        receipt.write_text(receipt.read_text() + " ")
+        with self.assertRaises(RuntimeError):
+            self.pause(expected=prepared["receipt_sha256"])
+
+    def test_profile_permission_symlink_runtime_config_and_head_mismatch_block(self):
+        prepared = self.pause()
+        self.cli.chmod(0o644)
+        with self.assertRaises(RuntimeError):
+            self.pause(expected=prepared["receipt_sha256"])
+        self.cli.chmod(0o600)
+        link = self.base / "outside"
+        link.symlink_to("/etc/passwd")
+        with self.assertRaises(RuntimeError):
+            private_inventory(self.base)
+        link.unlink()
+        codex = self.base / "home/.codex"
+        codex.mkdir(mode=0o700)
+        auth = codex / "auth.json"
+        auth.write_text("NEVER-HASH-AUTH-SENTINEL")
+        auth.chmod(0o600)
+        def nonsecret_hash(path):
+            self.assertNotEqual(path, auth)
+            return sha(path)
+        with patch("smoke_resume_candidate_opencode.sha", side_effect=nonsecret_hash):
+            with self.assertRaises(RuntimeError):
+                self.pause(expected=prepared["receipt_sha256"])
+        auth.unlink()
+        self.cli.write_text("changed")
+        with self.assertRaises(RuntimeError):
+            self.pause(expected=prepared["receipt_sha256"])
+
+    def test_unsupported_schema_method_connections_and_json_proof_block_before_login(self):
+        for integration in ({}, {**self.integration, "connections": [self.connection]},
+                            {**self.integration, "methods": []},
+                            {**self.integration, "methods": [self.method, self.method]},
+                            {**self.integration, "methods": [{**self.method, "id": "generic-oauth"}]}):
+            with self.subTest(integration=integration):
+                with (patch("smoke_resume_candidate_opencode.native_metadata", return_value=integration),
+                      patch("smoke_resume_candidate_opencode.subprocess.Popen",
+                            side_effect=AssertionError("no login")), self.assertRaises(RuntimeError)):
+                    prepare_private_pause(self.base, str(self.cli), self.revision, self.env)
+        with self.assertRaises(RuntimeError):
+            chatgpt_method({**self.integration, "methods": [{**self.method, "type": "key"}]})
+        with (patch("smoke_resume_candidate_opencode.native_metadata",
+                    side_effect=[self.integration, {}, [self.model]]), self.assertRaises(RuntimeError)):
+            prepare_private_pause(self.base, str(self.cli), self.revision, self.env)
+
+    def test_supervisor_exclusivity_nonterminal_missing_authorization_and_callback(self):
+        controller = self.controller()
+        with self.assertRaises(BlockingIOError):
+            SupervisedSubscription(self.base, str(self.cli), self.env,
+                                   self.revision, controller.preparation["receipt_sha256"])
+        with (patch("smoke_resume_candidate_opencode.os.isatty", return_value=False),
+              patch("smoke_resume_candidate_opencode.subprocess.Popen",
+                    side_effect=AssertionError("no login")), self.assertRaises(RuntimeError)):
+            controller.manual_login(self.env, quota_authorized=True,
+                                    entitlement_confirmed=True, on_terminal=lambda *_: {})
+        for quota, entitlement, callback in ((False, True, lambda *_: {}),
+                                              (True, False, lambda *_: {}), (True, True, None)):
+            with (patch("smoke_resume_candidate_opencode.os.isatty", return_value=True),
+                  patch("smoke_resume_candidate_opencode.subprocess.Popen",
+                        side_effect=AssertionError("no login")), self.assertRaises(RuntimeError)):
+                controller.manual_login(self.env, quota_authorized=quota,
+                                        entitlement_confirmed=entitlement, on_terminal=callback)
+        with self.assertRaises(RuntimeError):
+            self.complete(controller, callback=lambda *_: {})
+        self.assertIsNone(controller.connection)
+
+    def test_cancelled_supervised_process_cannot_prove_authentication(self):
+        controller = self.controller()
+        with self.assertRaises(RuntimeError):
+            self.complete(controller, exit_code=1)
+        with self.assertRaises(RuntimeError):
+            controller.public_receipt()
+        self.assertIsNone(controller.connection)
+
+    def test_real_observer_chain_unit_fixture_accepts_unknown_subscription_price_not_free(self):
+        controller = self.controller()
+        self.complete(controller)
+        self.integration["connections"] = [self.connection]
+        record = {}
+        with (self.continuity(),
+              patch("smoke_resume_candidate_opencode.native_metadata", side_effect=self.api),
+              patch("smoke_resume_candidate_opencode.checked_json", side_effect=[
+                  {"location": {"directory": str(ROOT)}, "data": self.model},
+                  {"location": {"directory": str(ROOT)}, "data": [self.model]}])):
+            self.assertEqual(model_preflight(str(self.cli), ROOT, self.env, record,
+                                            subscription=controller), "openai/catalog-only")
+        self.assertEqual(record["economic_branch"], "subscription-quota")
+        self.assertEqual(record["price_display"], "unknown")
+        self.assertFalse(record["inference_verified"])
+        self.assertNotIn("SENTINEL", json.dumps(record))
+        public_evidence(record)
+        paid = {**self.model, "cost": [{"input": 1, "output": 0,
+                                      "cache": {"read": 0, "write": 0}}]}
+        self.model = paid
+        with (self.continuity(),
+              patch("smoke_resume_candidate_opencode.native_metadata", side_effect=self.api),
+              patch("smoke_resume_candidate_opencode.checked_json", side_effect=[
+                  {"location": {"directory": str(ROOT)}, "data": paid},
+                  {"location": {"directory": str(ROOT)}, "data": [paid]}]),
+              self.assertRaises(RuntimeError)):
+            model_preflight(str(self.cli), ROOT, self.env, {}, subscription=controller)
+        self.model = {**paid, "cost": []}
+        for change in ("quota", "entitlement", "method", "connection", "api", "multiple",
+                       "partial", "provider", "environment", "head"):
+            with self.subTest(change=change):
+                old = copy.deepcopy(self.integration), copy.deepcopy(self.provider)
+                controller.quota_authorized = change != "quota"
+                controller.entitlement_confirmed = change != "entitlement"
+                if change == "method":
+                    self.integration["methods"] = [{**self.method, "id": "other"}]
+                if change == "connection":
+                    self.integration["connections"] = [{**self.connection, "id": "other"}]
+                if change == "api":
+                    self.integration["connections"] = [{**self.connection, "method": "key"}]
+                if change == "multiple":
+                    self.integration["connections"] = [self.connection, self.connection]
+                if change == "partial":
+                    self.integration["connections"] = [{**self.connection, "status": {"status": "needs_auth"}}]
+                if change == "provider":
+                    self.provider["integrationID"] = "other"
+                env = {**self.env, "OPENAI_API_KEY": "SENTINEL"} if change == "environment" else self.env
+                with (patch("smoke_resume_candidate_opencode.git",
+                            side_effect=lambda root, env, *args: (
+                                "changed" if change == "head" else self.revision)
+                            if args[0] == "rev-parse" else ""),
+                      patch("smoke_resume_candidate_opencode.native_metadata", side_effect=self.api),
+                      self.assertRaises(RuntimeError)):
+                    controller.recheck(str(self.cli), ROOT, env, self.model)
+                self.integration, self.provider = old
+
+    def test_structural_evidence_and_filename_allowlist_never_package_auth_storage(self):
+        for name in ("opencode.db", "opencode.db-wal", "opencode.db-shm", "login.log", "auth.json"):
+            (self.base / name).write_text("SECRET-SENTINEL")
+        persist(self.base, {"status": "metadata_only", "native_proof": "NOT_RUN"})
+        self.assertEqual([p.name for p in evidence_files(self.base)], ["results.json"])
+        original = (self.base / "results.json").read_bytes()
+        for payload in ({"nested": {"account_id": "PERSONAL-SENTINEL"}},
+                        {"events": [{"clientId": "PERSONAL-SENTINEL"}]},
+                        {"type": "credential", "id": "PRIVATE-SENTINEL", "method": "oauth"},
+                        {"unexpected": {"refresh_token": "SECRET-SENTINEL"}}):
+            with self.assertRaises(RuntimeError):
+                persist(self.base, payload)
+            self.assertEqual((self.base / "results.json").read_bytes(), original)
 
 
 class SmokeArgvSafetyTest(unittest.TestCase):
@@ -622,9 +858,10 @@ class T1NativeInspectionTest(unittest.TestCase):
         entries = [{"id": native.parent.name, "name": native.parent.name,
                     "description": re.search(r"^description: (.+)$", native.read_text(), re.M)[1]}]
         return {"origin": "native_disposable_db_snapshot", "session_id": self.session,
-                "directory": str(self.repo), "version": "2.3.2", "session_created": 1,
+                "directory": str(self.repo), "version": "2.4.2", "session_created": 1,
                 "database": str(self.repo.parent / "opencode.db"),
-                "database_sha256": "a" * 64, "snapshot_sha256": "b" * 64,
+                "snapshot_scope": "allowlisted-instruction-session-projection",
+                "snapshot_sha256": "b" * 64,
                 "instruction_key": "core/skill-guidance", "catalog": entries,
                 "blob_hash": hashlib.sha256(json.dumps(
                     entries, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(),
@@ -1002,8 +1239,10 @@ class T1NativeInspectionTest(unittest.TestCase):
                 CREATE TABLE instruction_state(session_id,epoch_start,through_seq,initial_values,current_values);
                 CREATE TABLE instruction_blob(hash,value);
                 CREATE TABLE session_message(id,seq,time_created,data,session_id,type);
+                CREATE TABLE credential(secret);
             """)
-            db.execute("INSERT INTO session_v2 VALUES(?,?,?,?)", (self.session, str(repo), "2.3.2", 1))
+            db.execute("INSERT INTO credential VALUES(?)", ("AUTH-SENTINEL",))
+            db.execute("INSERT INTO session_v2 VALUES(?,?,?,?)", (self.session, str(repo), "2.4.2", 1))
             state = json.dumps({"core/skill-guidance": digest})
             db.execute("INSERT INTO instruction_state VALUES(?,?,?,?,?)", (self.session, 4, 4, state, state))
             db.execute("INSERT INTO instruction_blob VALUES(?,?)", (digest, json.dumps(entries)))
@@ -1011,9 +1250,35 @@ class T1NativeInspectionTest(unittest.TestCase):
                 ("user", 5, 2, "user", {}),
                 ("assistant", 6, 3, "assistant", {"firstToken": 5, "completed": 6})):
                 db.execute("INSERT INTO session_message VALUES(?,?,?,?,?,?)",
-                           (ident, seq, created, json.dumps({"time": times}), self.session, role))
+                           (ident, seq, created, json.dumps({
+                               "time": {**times, "accountID": "IDENTITY-SENTINEL"},
+                               "unrelated": "MESSAGE-SENTINEL"}), self.session, role))
         previous = self.catalog_events(self.sources[0])[:1]
-        prior = delivered_skill_catalog(database, repo, self.session, turn_events=previous)
+        connect = sqlite3.connect
+        queries = []
+        class RestrictedConnection:
+            def __init__(self, *args, **kwargs):
+                self.db = connect(*args, **kwargs)
+            def execute(self, query, *args):
+                queries.append(query)
+                return self.db.execute(query, *args)
+            def set_authorizer(self, authorizer):
+                self.db.set_authorizer(authorizer)
+            def close(self):
+                self.db.close()
+            def backup(self, *args):
+                raise AssertionError("whole DB backup forbidden")
+            def serialize(self, *args):
+                raise AssertionError("whole DB serialization forbidden")
+        with patch("smoke_resume_candidate_opencode.sqlite3.connect", RestrictedConnection):
+            prior = delivered_skill_catalog(database, repo, self.session, turn_events=previous)
+        self.assertNotIn("SENTINEL", json.dumps(prior))
+        self.assertNotIn("database_sha256", prior)
+        self.assertEqual(queries[0], "BEGIN")
+        self.assertFalse(any("credential" in q.lower() or "select *" in q.lower() for q in queries))
+        with closing(connect(database)) as db, db:
+            db.execute("UPDATE credential SET secret=?", ("CHANGED-AUTH-SENTINEL",))
+        self.assertEqual(prior, delivered_skill_catalog(database, repo, self.session, turn_events=previous))
         with closing(sqlite3.connect(database)) as db, db:
             for ident, seq, created, role, times in (
                 ("choice-user", 10, 7, "user", {}),
@@ -1032,6 +1297,10 @@ class T1NativeInspectionTest(unittest.TestCase):
         wrong[0]["part"]["messageID"] = "missing-assistant"
         with self.assertRaises(RuntimeError):
             delivered_skill_catalog(database, repo, self.session, turn_events=wrong)
+        with closing(connect(database)) as db, db:
+            db.execute("UPDATE session_v2 SET version='2.3.2'")
+        with self.assertRaises(RuntimeError):
+            delivered_skill_catalog(database, repo, self.session, turn_events=events)
 
 
 class T1ProposalProofTest(unittest.TestCase):

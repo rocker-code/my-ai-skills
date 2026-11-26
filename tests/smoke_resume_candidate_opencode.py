@@ -8,6 +8,7 @@ Only an exact clean candidate HEAD is eligible; retained results are audited evi
 """
 import argparse
 import copy
+import fcntl
 from contextlib import closing
 import hashlib
 import json
@@ -29,7 +30,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE = "issue-61-opencode-safe-resume"
-APPROVED_PROPOSAL = "a0b4796fb1a2646125c6e62bfa6ca450d2118e7e"
+APPROVED_PROPOSAL = "bde179386f8b2283d8045cd03a61acd2a506efb2"
+RUNTIME_VERSION = "2.4.2"
+RUNTIME_SHA256 = "523b1502d1d556998b0904235cef65eb1d8cf8362b4e2faa7ae7a170c9a44cd4"
+RUNTIME_SOURCE = "fc31a485317970bcf6be7b431a9830aaef875731"
 VERIFY_SHA256 = "3b86fbb9734fdb6b942dd12d0afa4247457aa7f212bb48832eae133f5e66880a"
 VERIFY_GENERATOR_VERSION = "2.1.1"
 T1_HANDOFF_FIELDS = frozenset((
@@ -830,21 +834,46 @@ def delivered_skill_catalog(database, repo, session, *, turn_events=None):
     Initial state alone can be merely prepared. Require its baseline to precede
     the first user and a completed native assistant. InstructionState.initial and
     SessionModelRequest.baseTranscript render that baseline for the model request
-    in V2.3.2. This is delivery evidence, not evidence of skill-body invocation.
+    in the audited V2.4.2 source. This is delivery, not skill-body invocation.
     """
     database = Path(database)
     if (database != repo.parent / "opencode.db" or not database.is_file() or
             database.resolve() != database):
         raise RuntimeError("catalog capture requires this disposable fixture database")
-    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as source, \
-            closing(sqlite3.connect(":memory:")) as db:
-        source.backup(db)  # Consistent read-only snapshot, including native WAL.
+    # No backup, serialize, whole-file hash, credential queries or broad SELECT.
+    # BEGIN pins a consistent WAL-aware read transaction. The authorizer makes
+    # the column allowlist enforceable even if a later query is accidentally added.
+    columns = {
+        "session_v2": {"id", "directory", "version", "time_created"},
+        "instruction_state": {"session_id", "epoch_start", "through_seq",
+                              "initial_values", "current_values"},
+        "instruction_blob": {"hash", "value"},
+        "session_message": {"id", "seq", "time_created", "data", "session_id", "type"},
+    }
+    def authorize(action, table, column, *_):
+        if action == sqlite3.SQLITE_READ:
+            return (sqlite3.SQLITE_OK if column in columns.get(table, set())
+                    else sqlite3.SQLITE_DENY)
+        if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_TRANSACTION):
+            return sqlite3.SQLITE_OK
+        if action == sqlite3.SQLITE_FUNCTION and column == "json_extract":
+            return sqlite3.SQLITE_OK
+        return sqlite3.SQLITE_DENY
+    def times(raw):
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            raise RuntimeError("unsupported native message time schema")
+        return {k: value[k] for k in ("firstToken", "completed") if k in value
+                and type(value[k]) in (int, float)}
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as db:
+        db.set_authorizer(authorize)
+        db.execute("BEGIN")
         identity = db.execute(
             "SELECT id,directory,version,time_created FROM session_v2 WHERE id=?", (session,)).fetchone()
         state = db.execute(
             "SELECT epoch_start,through_seq,initial_values,current_values FROM instruction_state "
             "WHERE session_id=?", (session,)).fetchone()
-        if not identity or identity[1:3] != (str(repo), "2.3.2") or not state:
+        if not identity or identity[1:3] != (str(repo), RUNTIME_VERSION) or not state:
             raise RuntimeError("catalog session/root/version/baseline unavailable")
         key = "core/skill-guidance"
         initial, current = json.loads(state[2]), json.loads(state[3])
@@ -862,7 +891,7 @@ def delivered_skill_catalog(database, repo, session, *, turn_events=None):
             if not row:
                 raise RuntimeError("prepared baseline is not delivered assistant evidence")
             messages[role] = {"id": row[0], "seq": row[1], "created": row[2],
-                              "time": json.loads(row[3])}
+                              "time": times(row[3])}
         turn = {}
         if turn_events is not None:
             first = next((e for e in turn_events if e.get("sessionID") == session), {})
@@ -879,16 +908,17 @@ def delivered_skill_catalog(database, repo, session, *, turn_events=None):
             if not assistant or not user:
                 raise RuntimeError("current native turn messages unavailable in fixture DB")
             turn["turn_messages"] = {
-                role: {"id": row[0], "seq": row[1], "created": row[2], "time": json.loads(row[3])}
+                role: {"id": row[0], "seq": row[1], "created": row[2], "time": times(row[3])}
                 for role, row in (("user", user), ("assistant", assistant))}
-        return {"origin": "native_disposable_db_snapshot", "session_id": identity[0],
+        projection = {"origin": "native_disposable_db_snapshot", "session_id": identity[0],
                 "directory": identity[1], "version": identity[2], "session_created": identity[3],
-                "database": str(database), "database_sha256": sha(database),
-                "snapshot_sha256": hashlib.sha256(db.serialize()).hexdigest(),
+                "database": str(database), "snapshot_scope": "allowlisted-instruction-session-projection",
                 "instruction_key": key, "blob_hash": digest, "catalog": json.loads(blob[0]),
                 "epoch_start": state[0], "through_seq": state[1],
                 "messages": messages,
                 "semantics": "initial-baseline-before-completed-native-assistant", **turn}
+        projection["snapshot_sha256"] = input_digest(projection)
+        return projection
 
 
 def catalog_discovery(catalog, events, session, repo, native, *, prior_catalog=None, prior_events=None):
@@ -936,13 +966,13 @@ def catalog_discovery(catalog, events, session, repo, native, *, prior_catalog=N
         if (catalog["origin"] != "native_disposable_db_snapshot" or
                 catalog["semantics"] != "initial-baseline-before-completed-native-assistant" or
                 catalog["session_id"] != session or catalog["directory"] != str(repo) or
-                catalog["version"] != "2.3.2" or catalog["instruction_key"] != "core/skill-guidance" or
+                catalog["version"] != RUNTIME_VERSION or catalog["instruction_key"] != "core/skill-guidance" or
                 catalog["database"] != str(repo.parent / "opencode.db") or
                 catalog["blob_hash"] != digest or not isinstance(entries, list) or
                 len(entries) > 16 or entries.count(selected) != 1 or
                 any(set(e) != {"id", "name", "description"} for e in entries) or
-                not all(re.fullmatch(r"[a-f0-9]{64}", catalog[k]) for k in
-                        ("database_sha256", "snapshot_sha256")) or
+                catalog["snapshot_scope"] != "allowlisted-instruction-session-projection" or
+                not re.fullmatch(r"[a-f0-9]{64}", catalog["snapshot_sha256"]) or
                 not (catalog["epoch_start"] == catalog["through_seq"] < user["seq"] < assistant["seq"]) or
                 not (catalog["session_created"] <= user["created"] <= assistant["created"] <=
                      first["timestamp"] <= assistant["time"]["firstToken"] <=
@@ -1879,14 +1909,225 @@ def redact(text, env):
                   r'["\s:=]+)(?:Bearer\s+)?[^\s",}]+', r'\1[REDACTED]', text)
 
 
+def public_evidence(value):
+    """Reject structured secrets/identities BEFORE persistence, not regex-only."""
+    forbidden = {"accountid", "clientid", "devicecode", "authorizationcode",
+                 "accesstoken", "refreshtoken", "idtoken", "apikey", "password",
+                 "authorization", "credential", "credentials", "authjson"}
+    if isinstance(value, dict):
+        if value.get("type") == "credential" and "id" in value:
+            raise RuntimeError("private connection mapping cannot enter evidence")
+        for key, child in value.items():
+            if re.sub(r"[^a-z0-9]", "", key.lower()) in forbidden:
+                raise RuntimeError("private structured field cannot enter evidence")
+            public_evidence(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            public_evidence(child)
+    elif isinstance(value, str) and re.search(
+            r"(?i)(Bearer\s+[A-Za-z0-9._-]+|https?://[^\s]*(?:oauth|authorize|callback)"
+            r"[^\s]*[?&#](?:code|token|state)=)", value):
+        raise RuntimeError("private authentication material cannot enter evidence")
+    return value
+
+
+def evidence_files(base):
+    """Positive filename allowlist; never recursively package an auth profile."""
+    names = ["results.json"]
+    names += [f"{case}-phase{phase}-{suffix}" for case in ("T1", "T5", "T7")
+              for phase in (1, 2) for suffix in ("events.jsonl", "terminal.json", "stderr.log")]
+    files = []
+    for name in names:
+        path = base / name
+        if not path.exists():
+            continue
+        if path.is_symlink() or not path.is_file() or path.resolve().parent != base.resolve():
+            raise RuntimeError("unsafe evidence artifact")
+        text = path.read_text()
+        if path.suffix == ".json":
+            public_evidence(json.loads(text))
+        elif path.suffix == ".jsonl":
+            for line in text.splitlines():
+                if line.strip():
+                    public_evidence(json.loads(line))
+        else:
+            public_evidence(text)
+        files.append(path)
+    return files
+
+
 def persist(base, results):
+    public_evidence(results)
     path = base / "results.json"
     temporary = base / "results.json.new"
     temporary.write_text(json.dumps(results, indent=2) + "\n")
     temporary.replace(path)
 
 
-def model_preflight(cli, repo, env, record, override=None):
+def private_environment(base, cli, inherited):
+    """Explicit new profile; no ambient config, credentials, headers or endpoint."""
+    home, bin_dir = base / "home", base / "bin"
+    env = {key: inherited[key] for key in ("LANG", "TERM") if key in inherited}
+    entries = disposable_path(home, inherited.get("PATH", os.defpath),
+                              inherited["HOME"]).split(os.pathsep)
+    env["PATH"] = os.pathsep.join([entries[0], str(bin_dir), *entries[1:]])
+    env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
+               XDG_DATA_HOME=str(home / ".local/share"),
+               XDG_CACHE_HOME=str(home / ".cache"),
+               XDG_STATE_HOME=str(home / ".local/state"), CODEX_HOME=str(home / ".codex"),
+               OPENCODE_DB=str(base / "opencode.db"),
+               OPENCODE_PASSWORD=secrets.token_hex(24),
+               OPENSPEC_TELEMETRY="0", PYTHONDONTWRITEBYTECODE="1")
+    return env
+
+
+def validate_private_environment(base, env):
+    expected = {"HOME": base / "home", "XDG_CONFIG_HOME": base / "home/.config",
+                "XDG_DATA_HOME": base / "home/.local/share",
+                "XDG_CACHE_HOME": base / "home/.cache",
+                "XDG_STATE_HOME": base / "home/.local/state",
+                "CODEX_HOME": base / "home/.codex", "OPENCODE_DB": base / "opencode.db"}
+    allowed = {*expected, "PATH", "LANG", "TERM", "OPENCODE_PASSWORD",
+               "OPENSPEC_TELEMETRY", "PYTHONDONTWRITEBYTECODE"}
+    if (not set(env) <= allowed or any(env.get(k) != str(v) for k, v in expected.items()) or
+            not env.get("OPENCODE_PASSWORD") or env.get("OPENSPEC_TELEMETRY") != "0" or
+            env.get("PYTHONDONTWRITEBYTECODE") != "1"):
+        raise RuntimeError("private environment contains unapproved source/auth/config")
+    entries = env.get("PATH", "").split(os.pathsep)
+    if (entries[:2] != [str(base / "home/.local/bin"), str(base / "bin")] or
+            any(not Path(p).is_absolute() or (
+                Path(p).is_relative_to(Path.home()) and not Path(p).is_relative_to(base))
+                for p in entries)):
+        raise RuntimeError("private PATH contains ambient operator paths")
+
+
+def private_inventory(base):
+    """Validate privately, never publish paths/contents of native auth storage."""
+    if base != base.resolve() or not base.is_dir():
+        raise RuntimeError("private profile path/symlink mismatch")
+    for parent in (base, *base.parents):
+        if parent.is_symlink() or parent.stat().st_uid not in (0, os.getuid()):
+            raise RuntimeError("private profile ancestor ownership mismatch")
+    for item in (base, *base.rglob("*")):
+        mode = item.lstat()
+        if mode.st_uid != os.getuid():
+            raise RuntimeError("private profile ownership mismatch")
+        if item.is_symlink():
+            if not item.resolve().is_relative_to(base):
+                raise RuntimeError("private profile external symlink")
+        elif not (stat.S_ISDIR(mode.st_mode) or stat.S_ISREG(mode.st_mode)):
+            raise RuntimeError("private profile special file")
+        elif stat.S_IMODE(mode.st_mode) & 0o077:
+            raise RuntimeError("private profile permissions must exclude group/other")
+
+
+def privatize_new_files(directory):
+    """Only freshly created known fixtures/install snapshots, NEVER auth state."""
+    for item in (directory, *directory.rglob("*")):
+        if not item.is_symlink():
+            item.chmod(0o700 if item.is_dir() or os.access(item, os.X_OK) else 0o600)
+
+
+def private_binding(base, cli, revision):
+    private_inventory(base)
+    if sha(Path(cli)) != RUNTIME_SHA256:
+        raise RuntimeError("unsupported runtime provenance; stop before login")
+    # Only explicit configuration/instructions, never DB, auth, cache or logs.
+    config = {}
+    for directory in (base / "home/.config/opencode", base / "home/.codex"):
+        if directory.exists():
+            for item in directory.rglob("*"):
+                if item.is_file():
+                    relative = item.relative_to(directory)
+                    allowed = relative.as_posix() in ("AGENTS.md", "opencode.json", "opencode.jsonc")
+                    allowed |= (relative.parts[0] == "skills" and item.suffix == ".md" and
+                                item.resolve().is_relative_to(
+                                    base / "home/.local/share/my-ai-skills"))
+                    if directory.name == ".codex" or not allowed:
+                        raise RuntimeError("unexpected private configuration artifact")
+                    config[str(item.relative_to(base))] = sha(item)
+    return {"candidate": revision, "approved_proposal": APPROVED_PROPOSAL,
+            "runtime_sha256": RUNTIME_SHA256, "runtime_source": RUNTIME_SOURCE,
+            "profile": str(base), "config": config}
+
+
+def native_metadata(cli, repo, env, path):
+    if path not in ("/api/integration/openai", "/api/provider/openai", "/api/model"):
+        raise RuntimeError("metadata endpoint not allowlisted")
+    try:
+        response = checked_json(
+            [cli, "api", "--standalone", "--log-level", "none", "get", path], cwd=repo, env=env)
+    except Exception as error:
+        # Neither provider metadata nor native stderr is an auth diagnostic log.
+        status = re.search(r"\bHTTP (\d{3})\b", str(error))
+        detail = "HTTP " + status[1] if status else "unavailable"
+        raise RuntimeError(f"native metadata {detail}; no raw payload retained") from None
+    if response.get("location", {}).get("directory") != str(repo):
+        raise RuntimeError("metadata Location mismatch")
+    return response["data"]
+
+
+def chatgpt_method(integration):
+    """Public integration projection, never assume a public post-login methodID."""
+    if integration.get("id") != "openai" or not isinstance(integration.get("connections"), list):
+        raise RuntimeError("unsupported integration schema; stop before login")
+    methods = [m for m in integration.get("methods", [])
+               if m.get("type") == "oauth" and m.get("label") == "Sign in with ChatGPT"]
+    if (len(methods) != 1 or not isinstance(methods[0].get("id"), str) or
+            methods[0]["id"] != "chatgpt-token-sharing"):
+        raise RuntimeError("ChatGPT method absent/ambiguous; stop before login")
+    return {key: methods[0][key] for key in ("id", "type", "label")}
+
+
+def prepare_private_pause(base, cli, revision, env, *, expected=None):
+    """Metadata-only pause. A checksum validates continuity, NOT authentication."""
+    validate_private_environment(base, env)
+    binding = private_binding(base, cli, revision)
+    receipt_path = base / "private-preparation.json"
+    if expected:
+        if not receipt_path.is_file() or sha(receipt_path) != expected:
+            raise RuntimeError("private preparation receipt missing/tampered")
+        receipt = json.loads(receipt_path.read_text())
+        if receipt["binding"] != binding or receipt["state"] != "metadata_only":
+            raise RuntimeError("private preparation HEAD/runtime/config/profile mismatch")
+    else:
+        if receipt_path.exists():
+            raise RuntimeError("private preparation already exists")
+        receipt = {"binding": binding, "nonce": secrets.token_hex(24), "state": "metadata_only"}
+    integration = native_metadata(cli, ROOT, env, "/api/integration/openai")
+    method = chatgpt_method(integration)
+    if integration["connections"]:
+        # This offline command never inspects an actual account, nor promotes
+        # arbitrary JSON or an already-authenticated profile to a trusted receipt.
+        raise RuntimeError("offline pause requires zero connections; supervised controller required")
+    if expected and receipt["method"] != method:
+        raise RuntimeError("private preparation method mismatch")
+    receipt["method"] = method
+    # Check the supported non-secret Provider/Model schema without selecting
+    # a model or inspecting any actual account. Missing/changed API blocks here.
+    provider = native_metadata(cli, ROOT, env, "/api/provider/openai")
+    catalog = native_metadata(cli, ROOT, env, "/api/model")
+    if (provider.get("id") != "openai" or provider.get("integrationID") != "openai" or
+            provider.get("activation") not in ("auto", "enabled", "disabled") or
+            not isinstance(catalog, list) or any(
+                not isinstance(m, dict) or not {"id", "providerID", "type", "cost",
+                                                "capabilities", "enabled"} <= m.keys()
+                for m in catalog)):
+        raise RuntimeError("native provider/catalog schema unsupported; stop before login")
+    if not expected:
+        receipt_path.write_text(json.dumps(receipt, sort_keys=True))
+        receipt_path.chmod(0o600)
+    return {"state": "metadata_only", "inference_verified": False,
+            "profile_alias": hashlib.sha256(receipt["nonce"].encode()).hexdigest(),
+            "candidate": revision, "approved_proposal": APPROVED_PROPOSAL,
+            "runtime_sha256": RUNTIME_SHA256, "runtime_source": RUNTIME_SOURCE,
+            "receipt_sha256": sha(receipt_path), "method": method,
+            "auth_availability": "pending_manual", "route_proof": "pending",
+            "economic_eligibility": "pending", "native_proof": "NOT_RUN",
+            "login_requested": False}
+
+
+def model_preflight(cli, repo, env, record, override=None, *, subscription=None):
     """Native metadata only, same isolated env/location; never generate or retry."""
     record.update(source="RESUME_SMOKE_MODEL" if override else "native:/api/model/default",
                   requested=override, status="metadata_unavailable", inference_verified=False)
@@ -1918,13 +2159,139 @@ def model_preflight(cli, repo, env, record, override=None):
             model.get("type") != "chat" or caps.get("tools") is not True or
             "text" not in caps.get("input", []) or "text" not in caps.get("output", [])):
         raise RuntimeError("selected model lacks enabled chat/tools/text capability")
-    if not costs or not all(
+    zero = bool(costs) and all(
         all(type(value) in (int, float) and value == 0 for value in
             (cost.get("input"), cost.get("output"), cost.get("cache", {}).get("read"),
-             cost.get("cache", {}).get("write"))) for cost in costs):
+             cost.get("cache", {}).get("write"))) for cost in costs)
+    if subscription is not None:
+        if not isinstance(subscription, SupervisedSubscription):
+            raise RuntimeError("subscription requires live trusted supervisor, not JSON")
+        subscription.recheck(cli, repo, env, model)
+        # Empty means display unknown only in this separately authorized route.
+        if costs != [] and not zero:
+            raise RuntimeError("subscription metadata conflicts with API pricing; no fallback")
+        record.update(economic_branch="subscription-quota",
+                      price_display="unknown" if costs == [] else "numerical-zero",
+                      route_proof=subscription.public_receipt(),
+                      quota_available="UNKNOWN", final_settlement="UNKNOWN")
+    elif not zero:
         raise RuntimeError("selected model pricing unknown or paid; no fallback")
+    else:
+        record["economic_branch"] = "credential-free-all-zero"
     record["status"] = "metadata_eligible"
     return requested
+
+
+class SupervisedSubscription:
+    """Trusted controller only, outside model tools; never load a proof from JSON.
+
+    The process object and callback are observed here, not claimed by the model.
+    Keep this object alive through all phases. Restart/transfer without the
+    authentic controller is blocked, not recovered from a checkbox/checksum.
+    0700/flock are cooperative controls, not hostile-same-user isolation.
+    """
+    def __init__(self, base, cli, env, revision, receipt_sha256):
+        self.base, self.cli, self.revision = base, cli, revision
+        self.env = {k: v for k, v in env.items() if k != "OPENCODE_PASSWORD"}
+        private_inventory(base)
+        validate_private_environment(base, env)
+        self.lock = os.fdopen(os.open(base / "supervisor.lock",
+                                     os.O_CREAT | os.O_APPEND | os.O_WRONLY | os.O_NOFOLLOW,
+                                     0o600), "a")
+        try:
+            fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.preparation = prepare_private_pause(
+                base, cli, revision, env, expected=receipt_sha256)
+        except Exception:
+            self.lock.close()
+            raise
+        self.binding = private_binding(base, cli, revision)
+        self.method = self.preparation["method"]
+        self.connection = None  # private runtime credential ID, never evidence
+        self.process = None
+        self.callback = None
+        self.quota_authorized = self.entitlement_confirmed = False
+
+    def close(self):
+        self.lock.close()
+
+    def manual_login(self, env, *, quota_authorized, entitlement_confirmed, on_terminal):
+        # Called ONLY from the person's direct native terminal after review.
+        # Never call via an agent shell/logger. No pipes, capture, auth export,
+        # token parsing, DB queries or URLs/codes in this controller's report.
+        if (self.process is not None or not all(os.isatty(fd) for fd in (0, 1, 2)) or
+                quota_authorized is not True or entitlement_confirmed is not True or
+                not callable(on_terminal)):
+            raise RuntimeError("manual native terminal/authorization/observer unavailable; stop before login")
+        self._continuity(self.cli, env)
+        before = native_metadata(self.cli, ROOT, env, "/api/integration/openai")
+        if before["connections"] or chatgpt_method(before) != self.method:
+            raise RuntimeError("fresh method/inventory changed; stop before login")
+        command = [self.cli, "auth", "login", "openai", "--standalone",
+                   "--log-level", "none", "--method", self.method["id"]]
+        self.process = subprocess.Popen(command, cwd=ROOT, env=env)
+        code = self.process.wait()
+        # Native parent callback must identify THIS actual process completion.
+        callback = on_terminal(self.process, self.preparation["profile_alias"])
+        if (code != 0 or not isinstance(callback, dict) or
+                set(callback) != {"worker_id", "execution_id", "pid", "exit_code", "profile_alias"} or
+                not callback["worker_id"] or not callback["execution_id"] or
+                callback["pid"] != self.process.pid or callback["exit_code"] != code or
+                callback["profile_alias"] != self.preparation["profile_alias"]):
+            raise RuntimeError("manual authentication incomplete/cancelled or callback unbound")
+        after = native_metadata(self.cli, ROOT, env, "/api/integration/openai")
+        connections = after.get("connections", [])
+        if (chatgpt_method(after) != self.method or len(connections) != 1 or
+                connections[0].get("type") != "credential" or
+                connections[0].get("method") != "oauth" or connections[0].get("status") or
+                not isinstance(connections[0].get("id"), str)):
+            raise RuntimeError("manual authentication route/inventory inconclusive")
+        self.connection = connections[0]["id"]
+        self.callback = callback
+        self.quota_authorized = quota_authorized
+        self.entitlement_confirmed = entitlement_confirmed
+
+    def _continuity(self, cli, env):
+        dynamic = {"OPENCODE_PASSWORD", "RESUME_GH_ROOT", "RESUME_RUNTIME_ROOT",
+                   "OPENCODE_CONFIG_CONTENT"}
+        if (self.lock.closed or cli != self.cli or
+                {k: v for k, v in env.items() if k not in dynamic} != self.env or
+                private_binding(self.base, cli, self.revision) != self.binding or
+                git(ROOT, os.environ, "rev-parse", "HEAD") != self.revision or
+                git(ROOT, os.environ, "status", "--porcelain")):
+            raise RuntimeError("supervised profile/runtime/HEAD/config/environment continuity lost")
+
+    def recheck(self, cli, repo, env, model):
+        self._continuity(cli, env)
+        if (not self.process or self.process.poll() != 0 or not self.callback or
+                not self.connection or self.quota_authorized is not True or
+                self.entitlement_confirmed is not True):
+            raise RuntimeError("subscription method/completion/consent proof pending")
+        integration = native_metadata(cli, repo, env, "/api/integration/openai")
+        connections = integration.get("connections", [])
+        if (chatgpt_method(integration) != self.method or len(connections) != 1 or
+                connections[0].get("id") != self.connection or
+                connections[0].get("method") != "oauth" or
+                connections[0].get("type") != "credential" or connections[0].get("status")):
+            raise RuntimeError("subscription connection/method mismatch")
+        provider = native_metadata(cli, repo, env, "/api/provider/openai")
+        catalog = native_metadata(cli, repo, env, "/api/model")
+        if (provider.get("id") != "openai" or provider.get("integrationID") != "openai" or
+                provider.get("activation") not in ("auto", "enabled") or
+                model.get("providerID") != "openai" or
+                len([m for m in catalog if m == model]) != 1):
+            raise RuntimeError("subscription provider/catalog mismatch")
+
+    def public_receipt(self):
+        if not self.callback or not self.connection:
+            raise RuntimeError("subscription completion not observed")
+        return {key: self.preparation[key] for key in
+                ("profile_alias", "candidate", "approved_proposal", "runtime_sha256",
+                 "runtime_source", "method", "receipt_sha256")} | {
+                    "connection_alias": "sole-new-oauth", "before_count": 0, "after_count": 1,
+                    "completion": {key: self.callback[key] for key in
+                                   ("worker_id", "execution_id", "pid", "exit_code")},
+                    "quota_authorized": True, "entitlement_confirmed": True}
 
 
 class ModelExecutionError(RuntimeError):
@@ -1959,9 +2326,7 @@ def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
     (base / f"{case}-terminal.json").write_text(json.dumps(terminal))
     stdout, stderr = redact(stdout, env), redact(stderr, env)
     transcript = base / f"{case}-events.jsonl"
-    transcript.write_text(stdout + "\n")
-    (base / f"{case}-stderr.log").write_text(stderr)
-    events, malformed = [], []
+    events, malformed, public_lines = [], [], []
     for number, line in enumerate(stdout.splitlines(), 1):
         if not line.strip():
             continue
@@ -1976,8 +2341,18 @@ def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
                     not isinstance(event["part"]["state"].get("input"), dict)):
                 raise ValueError("malformed tool state")
             events.append(event)
+            public_lines.append(line)
         except ValueError:
             malformed.append(number)
+    # Only parsed native events, with a positive outer schema; malformed/raw
+    # streams are never copied into evidence. Denied tool attempts stay visible.
+    for event in events:
+        if not set(event) <= {"type", "sessionID", "timestamp", "part", "error"}:
+            raise RuntimeError("unexpected native event fields; publication blocked")
+        public_evidence(event)
+    public_evidence(stderr)
+    transcript.write_text("".join(line + "\n" for line in public_lines))
+    (base / f"{case}-stderr.log").write_text(stderr)
     texts = [item["part"]["text"] for item in events
              if item.get("type") == "text" and isinstance(item.get("part", {}).get("text"), str)]
     sessions = sorted({item["sessionID"] for item in events if item.get("sessionID")})
@@ -2029,11 +2404,14 @@ def prepared_phase(base, results, case, record, launch, take_snapshot):
     return value
 
 
-def main():
+def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscription=None):
+    os.umask(0o077)
     cli = shutil.which("opencode")
     openspec = shutil.which("openspec")
     if not cli or not openspec:
         raise RuntimeError("OpenCode V2 and OpenSpec are required")
+    if sha(Path(cli)) != RUNTIME_SHA256:
+        raise RuntimeError("unsupported runtime provenance; no login or inference")
     revision = run(["git", "rev-parse", "HEAD"], cwd=ROOT, env=os.environ)
     if run(["git", "status", "--porcelain"], cwd=ROOT, env=os.environ):
         raise RuntimeError("Commit the candidate before installing its exact revision")
@@ -2041,31 +2419,39 @@ def main():
     git(ROOT, os.environ, "merge-base", "--is-ancestor", APPROVED_PROPOSAL, revision)
     approved_contract = contract_source(ROOT, APPROVED_PROPOSAL)
     output = os.environ.get("RESUME_SMOKE_OUTPUT")
-    base = Path(output) if output else Path(tempfile.mkdtemp(
-        prefix="resume-candidate-", dir="/tmp/opencode"))
-    if output:
-        base.mkdir(exist_ok=False)
+    if subscription is not None:
+        if not isinstance(subscription, SupervisedSubscription):
+            raise RuntimeError("live supervised subscription required")
+        private_base = subscription.base
+        receipt_sha256 = subscription.preparation["receipt_sha256"]
+    base = Path(private_base) if private_base else (
+        Path(output) if output else Path(tempfile.mkdtemp(
+            prefix="resume-candidate-", dir="/tmp/opencode")))
+    if private_base:
+        if not receipt_sha256:
+            raise RuntimeError("resume requires independently retained preparation checksum")
+        private_inventory(base)
+        receipt = base / "private-preparation.json"
+        if not receipt.is_file() or sha(receipt) != receipt_sha256:
+            raise RuntimeError("resume preparation missing/tampered")
+        if json.loads(receipt.read_text())["binding"] != private_binding(base, cli, revision):
+            raise RuntimeError("resume profile/runtime/HEAD/config mismatch")
+    elif output:
+        base.mkdir(mode=0o700, exist_ok=False)
     home = base / "home"
-    home.mkdir()
+    if not private_base:
+        home.mkdir(mode=0o700)
     bin_dir = base / "bin"
-    opencode_shim = disposable_opencode_shim(bin_dir, cli)
+    opencode_shim = bin_dir / "opencode"
+    if not private_base:
+        opencode_shim = disposable_opencode_shim(bin_dir, cli)
     # The installer checks gh on PATH. Expose the read-only fixture before that
     # preflight, never the operator's HOME or real authenticated GitHub CLI.
     shim = bin_dir / "gh"
-    shutil.copy2(ROOT / "tests/fixtures/resume_gh.py", shim)
-    shim.chmod(0o755)
-    env = {key: os.environ[key] for key in ("PATH", "LANG", "TERM") if key in os.environ}
-    path_entries = disposable_path(home, os.environ.get("PATH", os.defpath),
-                                   os.environ["HOME"]).split(os.pathsep)
-    env["PATH"] = os.pathsep.join([path_entries[0], str(bin_dir), *path_entries[1:]])
-    env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
-               XDG_DATA_HOME=str(home / ".local/share"),
-               XDG_CACHE_HOME=str(home / ".cache"),
-                XDG_STATE_HOME=str(home / ".local/state"),
-                CODEX_HOME=str(home / ".codex"),
-               OPENCODE_DB=str(base / "opencode.db"),
-               OPENCODE_PASSWORD=secrets.token_hex(24),
-               OPENSPEC_TELEMETRY="0", PYTHONDONTWRITEBYTECODE="1")
+    if not private_base:
+        shutil.copy2(ROOT / "tests/fixtures/resume_gh.py", shim)
+        shim.chmod(0o700)
+    env = private_environment(base, cli, os.environ)
     assert shutil.which("opencode", path=env["PATH"]) == str(opencode_shim)
     assert run(["opencode", "--version"], cwd=ROOT, env=env) == run(
         [cli, "--version"], cwd=ROOT, env=env)
@@ -2087,9 +2473,10 @@ def main():
               "source=sys.argv[2]; sys.argv=[sys.argv[1],*sys.argv[3:]]; "
               "original=m.install; m.install=lambda args: original(args,source=source); "
               "sys.exit(m.main())")
-    run(["python3", "-c", loader, str(ROOT / "scripts/install-global"),
-         str(ROOT), "--agent", "opencode", "--revision", revision], cwd=base, env=env,
-        timeout=180)
+    if not private_base:
+        run(["python3", "-c", loader, str(ROOT / "scripts/install-global"),
+             str(ROOT), "--agent", "opencode", "--revision", revision], cwd=base, env=env,
+            timeout=180)
     active = home / ".local/share/my-ai-skills/active"
     manifest = json.loads((active / "manifest.json").read_text())
     skill = active / "skills/resume-workflow/SKILL.md"
@@ -2104,6 +2491,32 @@ def main():
     assert shutil.which("worktree-reservation", path=env["PATH"]) == str(
         home / ".local/bin/worktree-reservation")
     assert os.access(home / ".local/bin/worktree-reservation", os.X_OK)
+
+    if not private_base:
+        privatize_new_files(base)
+    if prepare_only or (private_base and subscription is None):
+        # This command NEVER logs in, selects a model, or starts a model phase.
+        # Serializes only metadata, not profile, database or authentication I/O.
+        with os.fdopen(os.open(base / "supervisor.lock",
+                               os.O_CREAT | os.O_APPEND | os.O_WRONLY | os.O_NOFOLLOW,
+                               0o600), "a") as lease:
+            fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                results["preparation"] = prepare_private_pause(
+                    base, cli, revision, env, expected=receipt_sha256)
+            except Exception as error:
+                results.update(status="blocked", inference_verified=False,
+                               preparation={"state": "blocked", "inference_verified": False,
+                                            "login_requested": False, "native_proof": "NOT_RUN",
+                                            "auth_availability": "technical_blocked",
+                                            "route_proof": "pending", "economic_eligibility": "blocked",
+                                            "error": str(error)})
+                persist(base, results)
+                raise
+        results.update(status="metadata_only", inference_verified=False)
+        persist(base, results)
+        print(json.dumps(results["preparation"], sort_keys=True))
+        return
 
     # No external GitHub requests or write endpoints, even during preparation.
     for case, prompt in PROMPTS.items():
@@ -2330,6 +2743,9 @@ def main():
             case_env["OPENCODE_CONFIG_CONTENT"] = json.dumps({
                 "$schema": "https://opencode.ai/config.json", "permissions": permissions,
                 "plugins": [guard["plugin"]]})
+            # Only newly created disposable fixture files, not HOME/DB/auth.
+            for directory in (repo, runtime_root, gh_root, *worktrees):
+                privatize_new_files(directory)
             record = {"phase": phase, "prompt": message, "before": before,
                       "published_read_only_locators": phase_locators[phase - 1],
                       "native": None, "runtime_receipts": receipts,
@@ -2345,7 +2761,8 @@ def main():
                 shell_guard_preflight(cli, repo, case_env, guard)
                 persist(base, results)
                 model = model_preflight(cli, repo, case_env, record["model_preflight"],
-                                        os.environ.get("RESUME_SMOKE_MODEL"))
+                                        os.environ.get("RESUME_SMOKE_MODEL"),
+                                        subscription=subscription)
                 results["model"] = model
                 # Persist selected capabilities/source/pricing BEFORE inference.
                 record["effective_inputs"] = effective_input_binding(
@@ -2552,11 +2969,21 @@ def main():
         if case == "T7":
             assert phases[0]["session_id"] == phases[1]["session_id"]
     results["finished_at"] = datetime.now(timezone.utc).isoformat()
-    (base / "results.json").write_text(json.dumps(results, indent=2) + "\n")
+    persist(base, results)
     print(f"Model-backed observations retained at {base}/results.json; inspect responses "
           "and events against T1/T5/T7 before claiming scenario PASS")
 
 
 if __name__ == "__main__":
-    argparse.ArgumentParser(description=__doc__).parse_args()
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--prepare-private", action="store_true",
+                       help="prepare metadata-only private profile; never login/infer")
+    modes.add_argument("--resume-private", type=Path,
+                       help="revalidate same preparation metadata only; never login/infer")
+    parser.add_argument("--receipt-sha256", help="independently retained preparation checksum")
+    args = parser.parse_args()
+    if bool(args.resume_private) != bool(args.receipt_sha256):
+        parser.error("--resume-private requires --receipt-sha256 (and vice versa)")
+    main(prepare_only=args.prepare_private, private_base=args.resume_private,
+         receipt_sha256=args.receipt_sha256)
