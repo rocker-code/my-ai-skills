@@ -3323,3 +3323,42 @@ Todos os 13 runs inteiros FAILED e o attempt-log anterior foram preservados
 byte a byte. Nove ignorados comparados com baseline do início deste worker
 corretivo e iguais. Reserva permanece individual, com checkpoint/verify.
 Nenhuma evolução fora do escopo; **NOT READY FOR PR**.
+
+### Fechamento da preparação offline após prova no HEAD limpo
+
+Em `407b7730d5fc4a638bc3b356d42c7bdde7a14ac5`, a entrada real
+`--prepare-private` concluiu metadata_only: prova
+`ev-20261126T235155Z-c1c89e15`, perfil privado
+`/tmp/opencode/issue61-private-review-407b773`. A retomada real
+`--resume-private` com checksum independente passou em
+`ev-20261126T235318Z-590d02da`. Alias de perfil idêntico
+`a320746b437c6e91719b9771d1fb8767933d00634e09e5735df849627b89de48`,
+checksum de preparação idêntico
+`ce73eba291190d3894b403d9bef664eb0f6e3756a45ffa0134774c4080798b41`.
+Os processos próprios **1001798/1037515** tiveram versão/PID/Location
+conferidos, condição plugin observada (6 consultas cada), método nativo
+`chatgpt-token-sharing`/OAuth/Sign in with ChatGPT realmente entregue e
+**exit0 por EOF** antes dos recibos. Conexões iniciais vazias foram exigidas.
+Sem login solicitado, auth availability pending_manual, route/economic
+eligibility pending, native proof NOT_RUN, inference_verified=false.
+
+No mesmo HEAD limpo: focados **80/80**
+`ev-20261126T235142Z-cf71cdee`; completo offline **336/336**
+`ev-20261126T235157Z-fd7c92cb`; strict1/1
+`ev-20261126T235142Z-d976e9f4`; strict13/13
+`ev-20261126T235143Z-d126f39e`. Todos verified/passed; exit3 do verifier é
+no_required_gate, não entrega. A primeira declaração --env-name do wrapper
+foi rejeitada antes do comando; nenhum runtime foi iniciado nesse erro.
+Foi corrigida apenas a declaração pública de perfil; nenhum guard foi
+contornado. Provas retêm stdout público; o perfil/DB não é evidence bundle.
+
+Esses fatos encerram o escopo **offline** de 3.10, além de 3.11 corrigida;
+não encerram auth manual, entitlement, cadeia autenticada ou 3.4/4.3.
+O pai ainda precisa revisar independentemente as superfícies corrigidas
+antes de envolver a pessoa. Não alegar revisão própria independente ou
+prontidão de PR. Esta atualização de tracking produz novo HEAD: preparar
+outro perfil fresh vinculado a esse HEAD e reconferir continuidade e gates
+offline, sem copiar o perfil anterior ou aceitar drift. Os novos IDs,
+alias/checksum e saída exata serão entregues fora do commit, evitando
+commits somente para IDs. Os perfis anteriores e todas as falhas históricas
+ficam preservados; nenhuma inferência, auth ou operação Git remota ocorreu.
