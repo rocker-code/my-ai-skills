@@ -6,6 +6,8 @@ A entrada `resume-workflow` já foi entregue pela PR #62, mas falta completar a 
 
 Emenda atual: o proprietário autorizou preparar login manual novo pela assinatura ChatGPT em perfil privado isolado, sem copiar credenciais/configuração/histórico pessoais nem usar API paga. OpenCode instalado agora é 2.4.2, diferente do 2.3.2 observado; autorização de preparação não é autorização de autenticação pelo agente ou de inferência.
 
+Revisão de `21d0712` após finding independente `ses_de5f1cb7affeU03kmjpOtA6i4m`: a autorização explícita **“autorizado”**, após distinguir quota ChatGPT Plus/Pro de API por uso, permite quota de assinatura em princípio. Supersede somente nessa rota comprovada a antiga exigência numérica all-zero; o ramo sem credenciais mantém esse guard intacto. `cost=[]` permanece display unknown, nunca zero/grátis. Entitlement ainda requer confirmação manual; API paga/paygo/quota extra/fallback não estão autorizados. O recibo concreto de método nativo→conclusão→perfil/conexão/provider/catalog está em design §6.2, com parada pré-login se suporte/proveniência não forem verificáveis.
+
 ## What Changes
 
 - Preservar a integração não forçada de `main@12ca324faf2865faa62d16e55715d3ddd0adb53a`, já entregue em `5b0fc0ad5ff553a0e091527ddff6ac4001b46dc4`, e o histórico exclusivo/dados locais; não repetir integração ou tarefas implementadas.

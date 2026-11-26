@@ -1,6 +1,53 @@
 # Prova isolada de retomada — issue #61
 
-## Handoff de planejamento — 26/11/2026: preparação ChatGPT isolada
+## Handoff atual — revisão de quota/recibo após revisão independente
+
+Re-Planning no mesmo run/worker/checkout; entrada limpa `21d071288dc2bd5ef02eb9cb071a644ac978314d`.
+Revisor independente `ses_de5f1cb7affeU03kmjpOtA6i4m` pediu revisão:
+all-zero aplicado incondicionalmente à assinatura com cost=[] tornava esse
+ramo insatisfazível. O pai selecionou continuação por assinatura conforme
+autorização explícita do proprietário **“autorizado”**, após explicação de quota
+Plus/Pro versus cobrança API por uso. Decisão limitada supersede somente esse
+ramo econômico e é registrada na issue/design §6.2; nenhum novo paid-API grant.
+
+Contrato atual: ramo sem credenciais conserva all-zero; assinatura exige
+rota comprovada + autorização de quota + entitlement confirmado, com cost=[]
+**display unknown**, nunca zero/grátis. Entitlement Plus/Pro ainda não foi
+confirmado; ausência/limite de quota/API route bloqueiam sem fallback.
+Auth availability, route proof, economic eligibility e native proof são
+distintos; preparação metadata-only não significa prontidão do smoke.
+
+Pesquisa read-only adicional: archive oficial linux-x64 v2.4.2 tem SHA-256
+`452912288f934d1771bd5bd0d8611ba3a6adc3db3ac3333c37facf373770ba66`;
+binário contido e instalado têm ambos
+`523b1502d1d556998b0904235cef65eb1d8cf8362b4e2faa7ae7a170c9a44cd4`.
+Comparação em memória, sem extrair/instalar/executar download ou ler dados
+pessoais. Fonte imutável `fc31a485317970bcf6be7b431a9830aaef875731`,
+login.ts109–122/173–187/223–237/305–316, liga método passado ao OAuth connect
+e espera complete nativo antes de sucesso; plugin chatgpt.ts188–197 valida
+grant/ID token internamente, 329–344 define cost=[].
+
+Design §6.2 agora especifica descoberta pública antes de login, ID real passado
+via --method, supervisor confiável/nonce/argv/perfil/execução/callback reais,
+inventário sem conexão→única OAuth, confirmação não secreta de entitlement,
+provider/catalog e reconferência sem auth DB. Não confiar em JSON arbitrário,
+exit0 isolado ou declaração do modelo. Streams auth só no terminal privado da
+pessoa; nenhum raw log/token/code/accountID capturado. Confiança operacional
+no runtime/pai/operador cooperante é explícita, não certificação criptográfica
+da conta; interferência/continuidade incerta bloqueia. Fonte/proveniência/API
+incompatíveis bloqueiam **antes de solicitar login**. Cadeia é desenho
+suportado pela release pesquisada, ainda não executada comportamentalmente.
+
+Próximo: mesmo revisor confere novo pin; só depois fresh Apply offline
+3.10/3.11 com A1/A2/A3/R1. Matriz inclui cost=[] subscription autorizado
+e elegível/display unknown, genericOAuth/unknown/API/sem autorização rejeitados,
+mismatches e ramo credential-free preservado. 17 concluídos intactos,
+3.4/4.3/3.10/3.11 pendentes, 13 whole runs FAILED e attempt-log abaixo intactos.
+Sem login/inferência/harness implementation/runtime/global update/archive/
+push/PR/merge nesta Planning. O handoff anterior a seguir é histórico;
+seus bloqueios econômicos absolutos foram substituídos somente como acima.
+
+## Histórico do handoff de planejamento — 26/11/2026: pin 21d0712
 
 Run `wf-20261116T064328Z-45cb0ecc`, worker real
 `ses_de5fccf97ffeOd8Os1W63n1lDE`, Planning somente. Entrada limpa

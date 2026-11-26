@@ -108,7 +108,11 @@ O harness existente SHALL preparar perfil privado novo, pausar para OAuth manual
 
 #### Scenario: OAuth or displayed zero price alone cannot prove subscription route
 - **WHEN** metadados nativos suportados são consultados sem material secreto depois do login
-- **THEN** a verificação exige vínculo do método ChatGPT efetivamente escolhido com a única conexão OAuth ativa e origem/catálogo autenticados; OAuth genérico, env/key/external, subtipo ambíguo ou vínculo indisponível mantêm BLOCKED sem leitura de auth DB/token; modelo só é escolhido posteriormente no catálogo real e todos os tiers conhecidos zero continuam obrigatórios, com preço vazio/desconhecido/pago rejeitado e sem fallback/retry automático
+- **THEN** a verificação exige recibo confiável do método ChatGPT descoberto e realmente passado ao CLI→processo/conclusão nativa→perfil vazio antes/única conexão OAuth ativa depois→provider/catalog coerentes; OAuth genérico, exit0 isolado, arquivo declarativo, env/key/external ou vínculo indisponível mantêm BLOCKED sem auth DB/token; método/schema/handler/proveniência não suportados param antes de pedir login, sem inventar campos públicos ausentes
+
+#### Scenario: Explicit subscription quota authorization is distinct from numerical zero pricing
+- **WHEN** o usuário autorizou consumo de quota Plus/Pro após distinção de API por uso e a rota de assinatura foi comprovada pelo recibo e entitlement confirmado
+- **THEN** o modelo só pode ser escolhido no catálogo real posterior e o ramo subscription-quota pode ser elegível com cost=[] como display unknown, nunca preço numérico zero/grátis; autorização/recibo/entitlement ausentes, rota API/desconhecida, preço API nonzero ou mismatch de método/conexão/perfil/provider/catalog bloqueiam; o ramo sem credenciais conserva todos os tiers conhecidos zero e rejeita lista vazia/desconhecida; não há API paga/paygo/compra de quota extra/fallback/retry automático e custos/saldo não observados permanecem UNKNOWN
 
 #### Scenario: Authenticated runtime compatibility and evidence exclude secret material
 - **WHEN** runtime/schema mudam ou o DB privado passa a conter OAuth
