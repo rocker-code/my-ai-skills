@@ -94,6 +94,26 @@ O fluxo SHALL exigir prova real completa T1/T5/T7 e preservar sua identidade ori
 - **WHEN** texto/tarefa/spec consumido, runtime/modelo/perfil, skill/guard/config, fixture/prompt/oráculo ou fato de recuperação muda, ou sua irrelevância não é demonstrável
 - **THEN** a prova afetada permanece pendente até execução real novamente; nomes de arquivo, metadados, replay e marcação de tarefas não substituem prova nativa nem autorizam reuso
 
+### Requirement: Prepare isolated subscription authentication without importing personal state
+
+O harness existente SHALL preparar perfil privado novo, pausar para OAuth manual pela pessoa e retomar somente o mesmo sandbox verificado. MUST NOT autenticar pela pessoa, importar/exportar credenciais, copiar estado pessoal ou usar API paga/fallback. Preparação MUST permanecer metadata-only, sem prova de inferência ou alteração dos gates nativos/read-only.
+
+#### Scenario: Fresh preparation pauses before any inference
+- **WHEN** o pin revisado é preparado num HOME/XDG/CODEX_HOME/OPENCODE_DB privado novo com env/PATH filtrados e standalone
+- **THEN** o harness valida ownership, paths/symlinks/inventário/permissões privadas e registra apenas identidade opaca/HEAD/pin/runtime/perfil não secretos; pausa antes de modelo para login manual nativo Sign in with ChatGPT, sem método adivinhado, transcript auth, token/code ou identificador pessoal em output/evidência
+
+#### Scenario: Resume requires the same prepared private sandbox
+- **WHEN** a pessoa conclui login manual e pede retomada
+- **THEN** somente o mesmo sandbox previamente preparado, sem owner conflitante/processo incerto ou mismatch de runtime/HEAD/config/rota, pode avançar; perfil arbitrário, recibo adulterado, symlink ou dados pessoais importados bloqueiam sem takeover, cópia ou aceite genérico de drift
+
+#### Scenario: OAuth or displayed zero price alone cannot prove subscription route
+- **WHEN** metadados nativos suportados são consultados sem material secreto depois do login
+- **THEN** a verificação exige vínculo do método ChatGPT efetivamente escolhido com a única conexão OAuth ativa e origem/catálogo autenticados; OAuth genérico, env/key/external, subtipo ambíguo ou vínculo indisponível mantêm BLOCKED sem leitura de auth DB/token; modelo só é escolhido posteriormente no catálogo real e todos os tiers conhecidos zero continuam obrigatórios, com preço vazio/desconhecido/pago rejeitado e sem fallback/retry automático
+
+#### Scenario: Authenticated runtime compatibility and evidence exclude secret material
+- **WHEN** runtime/schema mudam ou o DB privado passa a conter OAuth
+- **THEN** a captura MUST usar somente projeção consistente read-only de instruções/sessão não secretas, sem backup/serialize/hash do DB inteiro nem consulta a credenciais; compatibilidade desconhecida bloqueia e modelo não recebe acesso ao DB; relatórios/manifestos/bundles usam allowlists antes de persistir e excluem SQLite/WAL/SHM, auth transcripts/material e IDs pessoais inclusive estruturados, preservando prova nativa/ordem T7 e falhas originais sem regex-only ou retro-PASS; runtime/modelo/perfil/auth novos invalidam reuso afetado e exigem revisão e novo T1/T5/T7 completo autorizado
+
 ### Requirement: Respect original scope and recovery limits
 
 O workflow SHALL preservar limites explícitos de issue/milestone e modo de merge vigente comprovado, sem duplicar artefatos. Merge MUST permanecer retido sem autorização vigente comprovada. MUST informar dados locais perdidos/indisponíveis em vez de alegar restauração.

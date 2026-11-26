@@ -4,6 +4,8 @@
 
 A entrada `resume-workflow` já foi entregue pela PR #62, mas falta completar a prova nativa T1/T5/T7 da #61 e encerrar seu contrato. Após a revisão de aceite por fase já implementada, a auditoria de capacidade identificou exclusão artificial de Verify no perfil descartável T5; corrigir essa lacuna não transforma os runs sem dispatch nativo em aprovação.
 
+Emenda atual: o proprietário autorizou preparar login manual novo pela assinatura ChatGPT em perfil privado isolado, sem copiar credenciais/configuração/histórico pessoais nem usar API paga. OpenCode instalado agora é 2.4.2, diferente do 2.3.2 observado; autorização de preparação não é autorização de autenticação pelo agente ou de inferência.
+
 ## What Changes
 
 - Preservar a integração não forçada de `main@12ca324faf2865faa62d16e55715d3ddd0adb53a`, já entregue em `5b0fc0ad5ff553a0e091527ddff6ac4001b46dc4`, e o histórico exclusivo/dados locais; não repetir integração ou tarefas implementadas.
@@ -12,6 +14,7 @@ A entrada `resume-workflow` já foi entregue pela PR #62, mas falta completar a 
 - Completar prova independente de writer parado em T1 e as duas fases T7 na mesma sessão; manter desconhecidos os resultados sem término/relatório acessível.
 - Corrigir somente o oráculo da fixture: combinar campos semânticos limitados com fatos nativos obrigatórios, separar condições de posse pré-escrita e diagnóstico de serialização, sem classificar prosa, ignorar blockers arbitrários ou conceder efeitos.
 - Autorizar expressamente no Apply futuro **somente em T5** uma regra `skill/openspec-verify-change/allow` e sua alternativa canônica de fonte/prova/catálogo. Isso altera materialmente a capacidade de carregar instruções, não shell/FS/escrita/MCP/credenciais; T1 e os limites T7 permanecem inalterados, sem wildcard ou nova etapa/framework.
+- Estender minimamente o harness existente para preparar HOME/XDG/CODEX_HOME/DB privados novos, pausar antes de inferência para login OAuth manual nativo e retomar o **mesmo** sandbox mediante verificação de identidade/posse/runtime/HEAD/rota. Nenhum import/export de segredo ou fallback API; preço zero sozinho não prova assinatura. Se metadados nativos seguros não comprovarem a rota, manter BLOCKED (design §6.2).
 - Substituir explicitamente a obrigação anterior de repetir native após qualquer commit por vínculo de entradas efetivas e revisão de impacto; T1/T5/T7 reais completos continuam obrigatórios e a suíte local completa continua vinculada ao HEAD final limpo exato.
 - Verificar, arquivar/sincronizar e preparar a PR residual da #61, com suíte final no HEAD limpo exato e revisão independente.
 
@@ -29,7 +32,7 @@ A entrada `resume-workflow` já foi entregue pela PR #62, mas falta completar a 
 
 Alterações residuais previstas: `tests/smoke_resume_candidate_opencode.py`, `tests/test_resume_reinventory.py`, `tests/fixtures/resume_gh.py`, teste público em `tests/test_global_install.py`, documentação operacional e changelog; ajustar `skills/resume-workflow/SKILL.md` somente se houver lacuna comprovada após integração. Reutilizar instalador/launchers de main sem mudar seus bytes ou pins. Sem serviço, coletor, banco, nova API ou segunda máquina de estados.
 
-Esta emenda estreita parte de `2438fbfafc8aec0bf992c566d3518e6c08739e4b`, fonte de harness `703ffb979b21b94fbcd830f7cac3bdba0f725220` e proposta de fase aprovada `e1408dafbb7c6b2251b206afe62a2785708d1e08`. Só o Apply novo após revisão independente poderá mudar o perfil/testes. Preservar os 16 itens concluídos e todos os onze runs inteiros FAILED; T5 teve omissões reais de dispatch e T7 nunca rodou. A alternativa Verify exige futura prova real completa T1/T5/T7 após mudança de inputs, não retro-PASS ou reuso automático do T1 aprovado apenas nos inputs antigos. Nenhum décimo segundo run é autorizado nesta Planning.
+Esta emenda parte de `a9bc6b23f5a4dd5bc512a78ca3cb8198f9386d87`; proposta antes aprovada `a0b4796fb1a2646125c6e62bfa6ca450d2118e7e`, implementação `cce46754a5494c27ab2454dd1df9feac6ca64f99`. Preservar os 17 itens concluídos e todos os treze runs inteiros FAILED, inclusive `ev-20261125T144642Z-ea89df23` (T1 fenced JSON e nenhuma invocação OpenSpec nativa; T5/T7 NOT RUN). Só Apply genuinamente novo após revisão independente do novo pin poderá implementar preparação/compatibilidade. Runtime/modelo/perfil/auth são mudanças materiais F1: exigir novo T1/T5/T7 completo depois de revisão e autorização separada do pai. Nenhum décimo quarto run, autenticação, instalação ou alteração de runtime/instruções globais nesta Planning.
 
 ## Scope and approved decisions
 

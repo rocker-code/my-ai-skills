@@ -1,5 +1,99 @@
 # Prova isolada de retomada — issue #61
 
+## Handoff de planejamento — 26/11/2026: preparação ChatGPT isolada
+
+Run `wf-20261116T064328Z-45cb0ecc`, worker real
+`ses_de5fccf97ffeOd8Os1W63n1lDE`, Planning somente. Entrada limpa
+`a9bc6b23f5a4dd5bc512a78ca3cb8198f9386d87`, branch/worktree existente
+`issue-61-resume-closeout`; proposta antes aprovada
+`a0b4796fb1a2646125c6e62bfa6ca450d2118e7e`, implementação
+`cce46754a5494c27ab2454dd1df9feac6ca64f99`.
+
+**Escopo autorizado informado pelo pai:** preparar perfil novo privado para
+login manual da pessoa pela assinatura ChatGPT, após explicações; não copiar
+credenciais/config/histórico/DB pessoais, não usar API paga. A decisão limitada
+está em proposal/design §6.2 e delta; revisão independente do **novo pin** ainda
+pendente. Esta Planning não implementa harness/testes, autentica, instala/atualiza
+runtime/instruções globais, executa modelo, archive, push, PR ou merge.
+
+Preservados 17 itens concluídos e os 13 runs inteiros FAILED. Latest
+`ev-20261125T144642Z-ea89df23`: T1 fenced JSON + nenhuma invocação OpenSpec
+nativa, source6/9; T5/T7 NOT RUN. Seq59–61 e todos os bytes históricos abaixo
+intactos; 322 offline/66 focados/strict13 pre-smoke não são gates finais.
+3.4/4.3 permanecem pendentes; 3.10/3.11 são **novos pendentes**, não regressão
+de tarefas concluídas. Nenhuma décima quarta observação.
+
+**Descoberta verificável, sem auth/inferência:** OpenCode help/version mostram
+2.4.2 e `auth login <target> --standalone`, `auth list --format json`;
+OpenSpec 2.1.1, root/change oficiais existentes. Context7 não dispõe da versão
+2.4.2 e serviu fonte corrente; referências oficiais de login/plugin/schema e
+limites estão em design §6.2. Metadado público `method=oauth` sozinho não
+comprova subtipo ChatGPT; rota segura depende de verificar a cadeia
+método nativo → única conexão → origem/catálogo da versão instalada.
+Se não demonstrável sem segredo, **BLOCKED antes de inferência**.
+Fonte dev ChatGPT usa `cost=[]`: o guard atual rejeita preço vazio; não o
+converter em zero. A assinatura pode consumir quota/ter limites.
+
+Pesquisa adicional versionada: tag oficial 2.4.2 resolve a
+`fc31a485317970bcf6be7b431a9830aaef875731`; executável local SHA-256
+`523b1502d1d556998b0904235cef65eb1d8cf8362b4e2faa7ae7a170c9a44cd4`.
+Fonte da tag confirma outros métodos OAuth e omissão do methodID na
+projeção pública; OpenAPI V2 não publica sourceConnection em Provider.Info.
+Design §6.2 distingue **auth pending/manual**, **route proof BLOCKED nos campos
+identificados**, **economic eligibility BLOCKED se cost=[] persistir** e
+native proof não executada neste perfil. Preparação/pausa são viáveis sem
+prometer caminho garantido até inferência; nem sucesso manual autoriza 4.3
+enquanto rota/preço continuarem bloqueados.
+
+**Lacunas concretas e mínimo Apply:** `main()` cria sempre base nova;
+`delivered_skill_catalog`/`catalog_discovery` fixam 2.3.2 e fazem backup/
+serialize/hash de DB inteiro. Não executar esses caminhos com auth.
+Estender somente preparação/retomada do mesmo sandbox, projeção transacional
+de instruções/sessão não secretas e export por allowlist no harness existente;
+preservar guards/tools/resources, oráculo/parser/prompt e skills.
+Graph lookup retornou zero comunidades/cobertura estrutural insuficiente;
+fallback estático leu diretamente esses consumidores e testes existentes.
+Nenhuma dependência ou framework novo. Cache local gerado pelo próprio lookup
+foi removido apenas nos quatro arquivos próprios; nenhum dado anterior tocado.
+
+**Próxima ação:** pai revisa pin imutável; depois novo Apply com reserva própria
+implementa 3.10/3.11 **offline**, roda amostra
+`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p test_resume_reinventory.py`
+antes dos grupos afetados. Matriz A1/A2/A3/R1 descreve negativos de
+ownership/path/runtime/rota/segredos/preço e compatibilidade/eventos/T7.
+Políticas lidas neste baseline: `protocol/AI_WORKFLOW.md`, `WORKTREES.md`,
+`TEST_STRATEGY.md`, `INCREMENTAL_DELIVERY.md` e skills canônicas locais;
+prevalecem sobre globais antigos: sem audit/ready separado, telemetry ou
+workflow-event/report reinstalados. Nenhuma evolução independente qualificada.
+
+Após revisão afetada: preparar perfil metadata-only e parar para a pessoa fazer
+OAuth no terminal/browser privado sem capturar transcript/tokens/codes/IDs.
+Só depois de rota/catálogo/runtime suportados comprovados e autorização
+separada do pai, **um run completo** real T1/T5/T7, mantendo ID T7,
+escolha→reinventário→primeiro conteúdo/invocação em todos os status e revisão
+independente de eventos. F1 material invalida prova antiga; não garante sucesso.
+Verify/strict/archive/sync/preparo e suite completa exata no HEAD final limpo
+seguem obrigatórios. Merge futuro auto-if-green, **COMMIT somente**, todos
+os gates/proteções/review; nenhuma autorização de merge nesta Planning.
+
+**Reconciliação deste próprio writer:** após o primeiro checkpoint, omiti
+verify antes da última edição de design; checkpoint recusou com exit3
+“Verify the current baseline before writing/checkpointing”. Parei sem bypass,
+commit ou release. O pai recebeu o callback terminal e atestou ausência de
+outro writer/escrita, HEAD original, somente estes cinco drafts 132+/11-,
+unknown_untracked vazio, nove ignorados iguais. Na retomada do **mesmo ID**,
+li `reconcile --help`, inventário completo e diffs: code digest
+`sha256:v1:34eea8c7f6c7dde74ab7c308de760e31c6b982dc1fa5100512f8545297c2d931`
+e inventory digest
+`sha256:v1:0a01b0ead227e4eb9172415cda59c0082042958ba73d3b4ae4648e3abee4340d`
+coincidiram com a atestação do pai de `2026-11-26T22:46:17.908615Z`.
+Usei somente o procedimento documentado explicitamente autorizado
+`reconcile --accept-external --session <meu-ID> --reason <delta próprio/atestação/digests>`,
+sem takeover ou edição do registry; retornou0, seguido de verify0 antes
+das novas edições. O erro permanece documentado, não foi reclassificado como
+checkpoint bem-sucedido. A validação oficial pinada e revisão independente
+continuam etapas separadas; esta reconciliação não as aprova.
+
 ## Recuperação atual — 25/11/2026
 
 ### Décima terceira observação — T1 sem dispatch nativo e handoff fenced
