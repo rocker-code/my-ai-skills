@@ -133,6 +133,7 @@ O harness existente SHALL preparar perfil privado novo, pausar para OAuth manual
 #### Scenario: Phase evidence excludes auth without losing live authority or native facts
 - **WHEN** controlador inicia fase nativa autorizada após login e confirmação local
 - **THEN** API de fase suportada no helper existente registra no mesmo processo sem capturar auth, child controller ou comando fictício; preserva log/manifest/checksums/fingerprints e artefatos reais de events/session/terminal/catalog/source/guard/snapshots para verify/export/import/revisão independente, nunca metadata-only como native PASS ou phase como suíte final/CI; suporte indisponível bloqueia antes de login
+- **AND** o contrato dono test-evidence distingue modo de execução e conclusão tipada: fase usa exit_code=null, não exit OS fictício; leitores sem suporte, conclusão desconhecida e transporte inconsistente não aprovam a execução
 
 ### Requirement: Respect original scope and recovery limits
 

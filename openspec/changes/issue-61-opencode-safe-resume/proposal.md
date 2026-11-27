@@ -10,6 +10,8 @@ Revisão de `21d0712` após finding independente `ses_de5f1cb7affeU03kmjpOtA6i4m
 
 ## What Changes
 
+- Correção normativa após MUST FIX de `ses_de584b87dffe1Oa5PebxLhh6YK` no pin `0e657424aef4baee6636e3717a329ee947313df6`: acrescentar delta da capacidade **test-evidence** ao mesmo change. Definir execução local de fase separada de subprocess/hosted, conclusão tipada e `exit_code:null` obrigatório, transporte/projeção sem downgrade e incompatibilidade fail-closed com leitores antigos. Não implementar helper nem alterar specs vivos nesta Planning.
+
 - Emenda de continuação integral sobre `40c94cb966943d5cc6d0307e1eb8232f8b544f9f`: 3.12 está aprovada somente offline, mas seu CLI encerra e destrói a cadeia viva antes de 4.3. Acrescentar **3.13/§6.4/L2**: autorização futura específica do coordenador antes de login, mesma instância Supervisor até main completo, seleção/confirmação local pós-catálogo e evidência **pós-auth no mesmo processo**. Estender minimamente a biblioteca workflow_evidence existente para essa fronteira, sem envolver login no recorder capturante. Nenhuma autorização de inferência existe nesta Planning; flags/recibos não a inventam. Preservar os 20 itens concluídos e todo histórico.
 
 - Emenda de observação local sobre `e0cea77d530270d395dd596c0a4556d8a87f1dc3`: acrescentar somente 3.12/design §6.3. O shell do agente não fornece TTY e não há observer interativo não capturante demonstrado. Permitir controlador local versionado, iniciado posteriormente pela pessoa no próprio terminal, que valida capacidade/identidade **antes** de spawn e observa diretamente Popen/wait do filho auth com FDs herdados. Essa prova é `local-controller/os-wait`, não callback/sessão OpenCode inventados. Mudança material de interface de proveniência exige revisão do novo pin antes de Apply; 3.10/3.11 concluídas offline são preservadas. Não abrir terminal, pedir login ou executar autenticação nesta Planning.
@@ -33,10 +35,11 @@ Revisão de `21d0712` após finding independente `ses_de5f1cb7affeU03kmjpOtA6i4m
 ### Modified Capabilities
 
 - `global-workflow-distribution`: acrescentar cenário de roteamento natural sem substituir os contratos de distribuição, cinco skills oficiais e seleção independente de agentes já entregues.
+- `test-evidence`: estender minimamente a biblioteca existente para registro de fase callable no mesmo processo, com discriminante/resultados/privacidade/transporte normativos próprios e sem substituir argv/exit de subprocess, política hosted ou gates finais.
 
 ## Impact
 
-Alterações residuais previstas: `tests/smoke_resume_candidate_opencode.py`, `tests/test_resume_reinventory.py`, `tests/fixtures/resume_gh.py`, teste público em `tests/test_global_install.py`, documentação operacional e changelog; ajustar `skills/resume-workflow/SKILL.md` somente se houver lacuna comprovada após integração. Reutilizar instalador/launchers de main sem mudar seus bytes ou pins. Sem serviço, coletor, banco, nova API ou segunda máquina de estados.
+Alterações residuais previstas: harness e testes existentes, incluindo `scripts/workflow_evidence.py` e `tests/test_workflow_evidence.py` para a API mínima record_phase e seus consumidores verify/export/import/public_projection; documentação operacional e changelog. Essa **nova API de biblioteca** e seu delta test-evidence são explícitos, sem novo serviço/framework/SDK/protocolo de auth ou refatoração ampla. Preservar subprocess/hosted, instalador/launchers/pins e os 20 itens concluídos. Alterar `skills/resume-workflow/SKILL.md` somente com lacuna comprovada; esta correção não implica mudança dessa skill.
 
 Esta emenda parte de `a9bc6b23f5a4dd5bc512a78ca3cb8198f9386d87`; proposta antes aprovada `a0b4796fb1a2646125c6e62bfa6ca450d2118e7e`, implementação `cce46754a5494c27ab2454dd1df9feac6ca64f99`. Preservar os 17 itens concluídos e todos os treze runs inteiros FAILED, inclusive `ev-20261125T144642Z-ea89df23` (T1 fenced JSON e nenhuma invocação OpenSpec nativa; T5/T7 NOT RUN). Só Apply genuinamente novo após revisão independente do novo pin poderá implementar preparação/compatibilidade. Runtime/modelo/perfil/auth são mudanças materiais F1: exigir novo T1/T5/T7 completo depois de revisão e autorização separada do pai. Nenhum décimo quarto run, autenticação, instalação ou alteração de runtime/instruções globais nesta Planning.
 

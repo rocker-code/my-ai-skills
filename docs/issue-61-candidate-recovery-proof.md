@@ -1,6 +1,42 @@
 # Prova isolada de retomada — issue #61
 
-## Handoff atual — continuação integral e evidência pós-auth (Planning somente)
+## Handoff atual — correção do contrato dono test-evidence
+
+Entrada `0e657424aef4baee6636e3717a329ee947313df6`, mesmo run/worker
+`wf-20261116T064328Z-45cb0ecc` / `ses_de5fccf97ffeOd8Os1W63n1lDE`.
+Reviewer terminal `ses_de584b87dffe1Oa5PebxLhh6YK` NEEDS REVISION:
+design de record_phase omitira delta do contrato dono que exige argv/exit
+originais e trata exit desconhecido/interrupção como incomplete.
+
+Owning spec test-evidence lida inteira. Fontes conferidas: registro269–340,
+projeção404–425, verify560–610/670–677 e export/import691–763 do helper;
+consumidores CLI e testes de log/exit/projeção/unknown extensions/roundtrip.
+Graph vazio, fallback estático; memória não substituiu contrato atual.
+Correção só de planejamento: novo delta test-evidence no mesmo change,
+proposal capabilities/Impact, design§6.5, task3.13/E1 e cenário resume
+reconciliados. Main specs/código/helper/testes não foram alterados.
+
+Escolha mínima compatível: schema privado v1/kind local preservados,
+execution_mode na raiz (legacy ausente⇒subprocess, phase explícito),
+exit_code=null obrigatório de fase, command.argv=null e callable próprio.
+phase_completion fechado distingue retorno None/inteiro conhecido de
+exceção/interrupção/finalização desconhecida. Verify novo faz dispatch por
+modo antes de terminal/result/gates. Leitor antigo610 encontra null e
+retorna incomplete, nunca OS success; projeção fase preserva modo na
+allowlist específica e nunca vira prova sem pacote. Transporte não pode
+apagar modo, fabricar exit0 ou aceitar phase como required gate local/
+hosted. Checksums não são assinatura contra host malicioso coerente.
+
+E1/L2 planejam casos representativos de retorno/falha/desconhecido,
+shape/status/mode inválidos, downgrade, leitor antigo, roundtrip/projeção,
+unknown extensions legadas, gates e sentinelas auth, mantendo chain integrada
+mesmoobjeto→main→bundle. 20done/3.13pending/3.4/4.3pending e13nativeFAILED/
+attempt-log intactos. Grant futuro de inferência NÃO emitido; manual terminal,
+checks de rota/entitlement/quota e todas as condições anteriores permanecem.
+Sem auth/inferência/implementação/perfilDB/runtime/global/archive/push/PR.
+Próximo: mesmo reviewer no novo pin→fresh Apply3.13 somente após aprovação.
+
+## Histórico — continuação integral e evidência pós-auth (Planning somente)
 
 Entrada `40c94cb966943d5cc6d0307e1eb8232f8b544f9f`, plano aprovado anterior
 `c0224e1e8825def93c2d72e1e78685b22cfd8e29`; mesmo run/worker real
