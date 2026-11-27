@@ -126,6 +126,14 @@ O harness existente SHALL preparar perfil privado novo, pausar para OAuth manual
 - **WHEN** o controlador conserva ou encerra o Supervisor após login
 - **THEN** somente objeto vivo contínuo pode ser usado pelo harness completo após autorização separada e todos os checks de rota/conexão/provider/catalog/entitlement; recibo serializado, flag completed, término de pane ou probe PTY não reconstroem auth, Skill ou sessão; indisponibilidade de terminal externo e limites de recording do host são explícitos, sem captura de auth ou promessa de sigilo contra o próprio host
 
+#### Scenario: Complete foreground continuation requires future authorization before login
+- **WHEN** código revisado dispõe de continuação integral e a pessoa participa posteriormente no terminal próprio
+- **THEN** grant específico real do coordenador para uma tentativa completa, ligado a HEAD/plano/runtime/perfil e condições de catálogo, é verificado antes de auth; mesmo Supervisor vivo mantém checks pós-login e escolha explícita de modelo real com confirmação local fresca antes de uma chamada do loop completo; flag/ref/JSON não inventam grant, e ausência/recusa/falha/cancel/restart bloqueiam sem inferência/retry/fallback
+
+#### Scenario: Phase evidence excludes auth without losing live authority or native facts
+- **WHEN** controlador inicia fase nativa autorizada após login e confirmação local
+- **THEN** API de fase suportada no helper existente registra no mesmo processo sem capturar auth, child controller ou comando fictício; preserva log/manifest/checksums/fingerprints e artefatos reais de events/session/terminal/catalog/source/guard/snapshots para verify/export/import/revisão independente, nunca metadata-only como native PASS ou phase como suíte final/CI; suporte indisponível bloqueia antes de login
+
 ### Requirement: Respect original scope and recovery limits
 
 O workflow SHALL preservar limites explícitos de issue/milestone e modo de merge vigente comprovado, sem duplicar artefatos. Merge MUST permanecer retido sem autorização vigente comprovada. MUST informar dados locais perdidos/indisponíveis em vez de alegar restauração.

@@ -1,6 +1,58 @@
 # Prova isolada de retomada — issue #61
 
-## Handoff atual — Apply offline somente 3.12
+## Handoff atual — continuação integral e evidência pós-auth (Planning somente)
+
+Entrada `40c94cb966943d5cc6d0307e1eb8232f8b544f9f`, plano aprovado anterior
+`c0224e1e8825def93c2d72e1e78685b22cfd8e29`; mesmo run/worker real
+`wf-20261116T064328Z-45cb0ecc` / `ses_de5fccf97ffeOd8Os1W63n1lDE`.
+Revisão terminal `ses_de5911b4effeWUMKG0Dj29PIgz` APPROVED_OFFLINE3.12,
+sem MUST FIX nesse recorte, mas DIRECT LOGIN BLOCKED end-to-end:
+supervise_subscription3541–3570 fecha scope e close2635–2640 destrói
+completion/connection/lease; não há CLI→main(subscription=mesmo objeto).
+Metadata refresh/JSON/resume/restart não corrigem isso.
+
+Pesquisa: workflow_evidence.py269–340 só record via Popen novo capturante,
+stdout=file/stderr=STDOUT313. Não existe hoje API callable inprocess.
+Não envolver login no recorder, nem chamar validador posterior de execução
+nativa original. Context7 Python confirmou None sem redirecionamento e
+redirect_stdout global sem controle de subprocessos. Graph de supervise
+vazio; fallback fonte/chamadas reais. Nenhuma conta/perfil/DB foi lida.
+
+§6.4/3.13/L2 planeja a cadeia **inteira**: grant futuro real do coordenador
+no corpo canônico da issue, vinculado a run/HEAD/plano/runtime/perfil/
+checksum/uma tentativa e condições de catálogo; verificar antes de auth,
+não aceitar flag/approval.json. Esse grant não existe nesta Planning.
+Depois observer/TTY e recorder pre-spawn, login direto sem captura, checks
+método/soleOAuth/provider/catalog, escolha explícita do catálogo real e
+confirmação local fresca de entitlement/quota/modelo/uma execução.
+Mesmo Supervisor chama main completo uma vez; fecha somente depois da
+finalização/verificação de evidência, também em falha/cancel.
+
+Mínima API record_phase **a implementar** no helper existente registra
+closure pós-auth no mesmo PID com discriminante inprocess-phase, retorno/
+exceção honestos e log de fatos allowlisted, não streams de auth/comando
+fictício. Reusar snapshot/runner/store/checksums/verify/export/import;
+pacote só de eventos/terminals/session/catalog/source/guard/snapshots/
+bindings reais seguros. Sem DB/WAL/SHM/HOME/authoutput/IDs pessoais ou
+staging no checkout. Compatibilidade/verificação/exportação fazem parte
+da mesma entrega/teste integrado, não followup após login. API ausente/
+incapaz bloqueia antes de pedir segredo; phase não é suite final/CI.
+Revisão independente dos eventos continua necessária para native proof.
+
+20 concluídos preservados, inclusive 3.12 offline; só3.13 novo pendente,
+3.4/4.3 ainda pendentes. 347/91 focados/strict13 são pré-login, 13whole
+native FAILED e attempt-log abaixo intactos. Subscription-quota comprovado
+com cost=[] display unknown e credential-free all-zero não mudam.
+Nenhum grant/inferência/login/código/test implementation/global/runtime
+update/archive/push/PR/merge nesta Planning. Terminal externo continua
+manual/environment BLOCKED; não declarar headless TTY disponível.
+
+Próximo: revisão do pin→fresh Apply3.13 + L2 integral sem auth/modelo→revisão
+afetada da cadeia entrada→mesmoobjeto→main→bundle→preparo fresh exato→
+decisão posterior específica do coordenador→participação posterior da pessoa.
+Não fornecer comando sensível antes disso.
+
+## Histórico — Apply offline somente 3.12
 
 Entrada pinada `c0224e1e8825def93c2d72e1e78685b22cfd8e29`, run
 `wf-20261116T064328Z-45cb0ecc`, worker nativo próprio

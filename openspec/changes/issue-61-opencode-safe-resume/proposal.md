@@ -10,6 +10,8 @@ Revisão de `21d0712` após finding independente `ses_de5f1cb7affeU03kmjpOtA6i4m
 
 ## What Changes
 
+- Emenda de continuação integral sobre `40c94cb966943d5cc6d0307e1eb8232f8b544f9f`: 3.12 está aprovada somente offline, mas seu CLI encerra e destrói a cadeia viva antes de 4.3. Acrescentar **3.13/§6.4/L2**: autorização futura específica do coordenador antes de login, mesma instância Supervisor até main completo, seleção/confirmação local pós-catálogo e evidência **pós-auth no mesmo processo**. Estender minimamente a biblioteca workflow_evidence existente para essa fronteira, sem envolver login no recorder capturante. Nenhuma autorização de inferência existe nesta Planning; flags/recibos não a inventam. Preservar os 20 itens concluídos e todo histórico.
+
 - Emenda de observação local sobre `e0cea77d530270d395dd596c0a4556d8a87f1dc3`: acrescentar somente 3.12/design §6.3. O shell do agente não fornece TTY e não há observer interativo não capturante demonstrado. Permitir controlador local versionado, iniciado posteriormente pela pessoa no próprio terminal, que valida capacidade/identidade **antes** de spawn e observa diretamente Popen/wait do filho auth com FDs herdados. Essa prova é `local-controller/os-wait`, não callback/sessão OpenCode inventados. Mudança material de interface de proveniência exige revisão do novo pin antes de Apply; 3.10/3.11 concluídas offline são preservadas. Não abrir terminal, pedir login ou executar autenticação nesta Planning.
 
 - Preservar a integração não forçada de `main@12ca324faf2865faa62d16e55715d3ddd0adb53a`, já entregue em `5b0fc0ad5ff553a0e091527ddff6ac4001b46dc4`, e o histórico exclusivo/dados locais; não repetir integração ou tarefas implementadas.
