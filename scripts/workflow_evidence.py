@@ -6,6 +6,7 @@ import fnmatch
 import gzip
 import hashlib
 import io
+import inspect
 import json
 import os
 import platform
@@ -13,6 +14,7 @@ import re
 import secrets
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tarfile
@@ -41,6 +43,306 @@ MAX_BUNDLE_BYTES = 256 * 1024 * 1024
 MAX_MEMBER_BYTES = 64 * 1024 * 1024
 # Include tar framing and extended headers, not just the sizes of returned members.
 MAX_ARCHIVE_BYTES = MAX_BUNDLE_BYTES + 16 * 1024 * 1024
+PHASE_API = 1
+PHASE_MODE = "inprocess-phase"
+PHASE_NAMES = {"results.json"} | {
+    f"{case}-phase{phase}-{suffix}" for case, phases in (("T1", (1,)), ("T5", (1,)), ("T7", (1, 2)))
+    for phase in phases
+    for suffix in ("events.jsonl", "terminal.json", "stderr.log")}
+PHASE_FIELDS = {"state", "return_kind", "return_code", "result", "finalized", "error_code"}
+
+
+def execution_mode(manifest, *, projection=False):
+    """Discriminate before legacy exit handling. No reserved fields in extensions."""
+    mode = manifest.get("execution_mode")
+    command = manifest.get("command", {})
+    phase_fields = {"phase_identity", "phase_completion"}
+    extensions = manifest.get("extensions", {})
+    if isinstance(extensions, dict) and (phase_fields | {"execution_mode", "callable"}) & extensions.keys():
+        raise ValueError("reserved execution extension")
+    if mode is None or mode == "subprocess":
+        if (phase_fields & manifest.keys() or "callable" in command or
+                manifest.get("kind") == "hosted" and mode is not None):
+            raise ValueError("execution mode mismatch")
+        return "subprocess"
+    if mode != PHASE_MODE or manifest.get("kind") != "local":
+        raise ValueError("unknown execution mode")
+    if projection:
+        return mode
+    if any(o.get("required_gate") is not None for o in manifest.get("obligations", [])):
+        raise ValueError("phase cannot declare required gates")
+    call = command.get("callable", {})
+    path = call.get("path")
+    ident = manifest.get("phase_identity", {})
+    completion = manifest.get("phase_completion", {})
+    if ("exit_code" not in manifest or manifest["exit_code"] is not None or command.get("argv", "missing") is not None or
+            set(command) != {"argv", "cwd", "callable", "origin"} or
+            command["origin"] != "foreground-post-auth" or
+            not isinstance(command["cwd"], str) or Path(command["cwd"]).is_absolute() or
+            ".." in Path(command["cwd"]).parts or
+            set(call) != {"path", "qualname", "sha256"} or not isinstance(path, str) or
+            not path or Path(path).suffix != ".py" or Path(path).is_absolute() or ".." in Path(path).parts or
+            not re.fullmatch(r"[A-Za-z0-9_.<>]+", str(call.get("qualname", ""))) or
+            not re.fullmatch(r"[a-f0-9]{64}", str(call.get("sha256", ""))) or
+            set(ident) != {"controller_pid", "controller_start", "execution_id"} or
+            any(type(ident.get(k)) is not int or ident[k] <= 0
+                for k in ("controller_pid", "controller_start")) or
+            not re.fullmatch(r"[a-f0-9]{48}", str(ident.get("execution_id", ""))) or
+            set(completion) != PHASE_FIELDS):
+        raise ValueError("invalid phase identity")
+    state = completion["state"]
+    status = manifest.get("status")
+    if state == "returned":
+        kind, code = completion["return_kind"], completion["return_code"]
+        if not ((kind == "none" and code is None) or (kind == "int" and type(code) is int)):
+            raise ValueError("invalid phase return")
+        result = "passed" if code in (None, 0) else "failed"
+        if (completion["result"] != result or status != result or
+                completion["finalized"] is not True or completion["error_code"] is not None or
+                not manifest.get("finished_at") or not manifest.get("code", {}).get("fingerprint_after")):
+            raise ValueError("inconsistent phase return")
+    else:
+        codes = {"running": {None}, "raised": {None, "phase_exception"},
+                 "interrupted": {None, "phase_interrupted"},
+                 "finalization_failed": {None, "phase_finalize_failed"},
+                 "unknown": {None, "phase_unknown", "unsupported_return"}}
+        if (state not in codes or completion["error_code"] not in codes[state] or
+                any(completion[k] is not None for k in ("return_kind", "return_code", "result")) or
+                completion["finalized"] is not False or
+                status != ("running" if state == "running" else "interrupted")):
+            raise ValueError("inconsistent phase completion")
+    return mode
+
+
+def phase_descriptor(manifest):
+    return {key: manifest[key] for key in ("execution_mode", "evidence_id", "phase_identity")} | {
+        "callable": manifest["command"]["callable"]}
+
+
+def phase_read(path, *, private=True):
+    """No-follow, bounded regular file; never traverse a profile or auth database."""
+    path = Path(path).absolute()
+    if any(parent.is_symlink() for parent in (path, *path.parents)):
+        raise ValueError("unsafe phase file ancestry")
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1 or
+                private and stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > MAX_MEMBER_BYTES):
+            raise ValueError("unsafe phase file")
+        data = stream.read(MAX_MEMBER_BYTES + 1)
+        after = os.fstat(stream.fileno())
+        if len(data) > MAX_MEMBER_BYTES or any(getattr(after, k) != getattr(info, k)
+                for k in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")):
+            raise ValueError("phase file changed")
+        return data
+
+
+def phase_payload(name, data):
+    """Closed filename/format boundary, before retaining any external payload."""
+    if name not in PHASE_NAMES or len(data) > MAX_MEMBER_BYTES:
+        raise ValueError("unsupported phase artifact")
+    def safe(value, depth=0):
+        if depth > 32:
+            raise ValueError("phase nesting exceeded")
+        if isinstance(value, dict):
+            if value.get("type") == "credential" and "id" in value:
+                raise ValueError("private phase identity")
+            for key, child in value.items():
+                if re.sub(r"[^a-z0-9]", "", key.lower()) in {
+                    "accountid", "clientid", "devicecode", "authorizationcode", "accesstoken",
+                    "refreshtoken", "idtoken", "apikey", "password", "authorization",
+                    "credential", "credentials", "authjson"}:
+                    raise ValueError("private phase field")
+                safe(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value:
+                safe(child, depth + 1)
+        elif isinstance(value, str):
+            if re.search(r"(?i)Bearer\s+\S+|https?://\S*(?:oauth|authorize|callback)\S*[?&#](?:code|token|state)=", value):
+                raise ValueError("private phase text")
+            if value.strip().startswith(('"', "{", "[")):
+                try:
+                    decoded = json.loads(value)
+                except ValueError:
+                    pass
+                else:
+                    safe(decoded, depth + 1)
+    values = [json.loads(line) for line in data.splitlines() if line.strip()] if name.endswith(".jsonl") else [json.loads(data)]
+    for value in values:
+        safe(value)
+        if name.endswith("-stderr.log") and value not in (
+                {"code": "native-stderr-present"}, {"code": "native-stderr-empty"}):
+            raise ValueError("raw diagnostic forbidden")
+        if name.endswith(".jsonl") and (not isinstance(value, dict) or not value.keys() <= {
+                "type", "sessionID", "timestamp", "part", "error"} or
+                value.get("type") not in {"text", "reasoning", "tool_use", "step_start", "step_finish", "error"}):
+            raise ValueError("unsupported native event")
+
+
+def phase_members(manifest):
+    execution_mode(manifest)
+    if manifest.get("schema") != SCHEMA or not isinstance(manifest.get("artifacts"), list):
+        raise ValueError("invalid phase manifest")
+    phase_payload("results.json", canonical(manifest))
+    names = {"manifest.json", "SHA256SUMS"}
+    for item in manifest["artifacts"]:
+        name = item.get("name")
+        if name == "execution.log":
+            if item.get("role") != "log":
+                raise ValueError("invalid phase log role")
+        elif not isinstance(name, str) or not name.startswith("outputs/") or name[8:] not in PHASE_NAMES or item.get("role") != "phase":
+            raise ValueError("unsupported phase member")
+        if "artifacts/" + name in names or item.get("state") != "present":
+            raise ValueError("duplicate/missing phase member")
+        names.add("artifacts/" + name)
+    if "artifacts/execution.log" not in names:
+        raise ValueError("phase log missing")
+    return names
+
+
+def check_phase_files(manifest, directory):
+    phase_members(manifest)
+    for item in manifest["artifacts"]:
+        data = phase_read(directory / "artifacts" / item["name"])
+        if hash_bytes(data) != item["sha256"] or len(data) != item["bytes"]:
+            raise ValueError("phase artifact changed")
+        if item["name"] != "execution.log":
+            phase_payload(item["name"][8:], data)
+    log = phase_read(directory / "artifacts/execution.log")
+    lines = [json.loads(line) for line in log.splitlines()]
+    expected = [{"event": "begin", **phase_descriptor(manifest)},
+                {"event": "complete", "phase_completion": manifest["phase_completion"]}]
+    if lines != expected:
+        raise ValueError("phase log marker mismatch")
+
+
+def phase_support(checkout, callback):
+    """Pre-auth capability/destination check. Does not start evidence or call callback."""
+    root = checkout_root(checkout)
+    if not Path.cwd().resolve().is_relative_to(root):
+        raise ValueError("phase cwd must remain inside checkout")
+    source = Path(inspect.getsourcefile(callback) or "").absolute()
+    if not inspect.isfunction(callback) or not source.is_relative_to(root) or source.is_symlink():
+        raise ValueError("phase requires internal tracked callable")
+    path = str(source.relative_to(root))
+    git(root, "ls-files", "--error-unmatch", "--", path)
+    # Probe only the existing common-dir store, not any auth/profile file.
+    destination = store(root)
+    if any(p.is_symlink() for p in (destination, *destination.parents)):
+        raise ValueError("unsafe evidence destination")
+    with tempfile.TemporaryFile(dir=destination) as probe:
+        probe.write(b"phase-api-1")
+        probe.flush()
+    start = int(Path(f"/proc/{os.getpid()}/stat").read_text().rsplit(")", 1)[1].split()[19])
+    return {"path": path, "qualname": callback.__qualname__, "sha256": hash_file(source)}, start
+
+
+def record_phase(checkout, callback, *, obligation, artifacts, config=(), required_gate=None,
+                 transport=False):
+    """Synchronous internal closure only. No stdout/stderr interception or OS exit.
+
+    Checksums are cooperative integrity, not authenticity against a host that
+    rewrites every byte. Unknown completion never becomes a passing execution.
+    """
+    if required_gate is not None:
+        raise ValueError("phase cannot declare required gates")
+    root = checkout_root(checkout)
+    call, start = phase_support(root, callback)
+    configs = [safe_relative(p, root) for p in config]
+    for path in configs:
+        if re.search(r"(?i)(?:\.db(?:-wal|-shm)?|\.sqlite(?:3)?|auth\.json|login\.log)$", path):
+            raise ValueError("private storage cannot be phase configuration")
+        git(root, "ls-files", "--error-unmatch", "--", path)
+    before = code_snapshot(root, configs)
+    evidence_id = "ev-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(4)
+    directory = record_dir(root, evidence_id)
+    directory.mkdir(mode=0o700, exist_ok=False)
+    (directory / "artifacts").mkdir(mode=0o700)
+    def completion(state, error=None):
+        return dict(state=state, return_kind=None, return_code=None, result=None,
+                    finalized=False, error_code=error)
+    manifest = {"schema": SCHEMA, "evidence_id": evidence_id, "kind": "local", "execution_mode": PHASE_MODE,
+                "repository": repository(root), "code": {**before, "fingerprint_after": None},
+                "command": {"argv": None, "cwd": str(Path.cwd().resolve().relative_to(root)),
+                            "callable": call, "origin": "foreground-post-auth"},
+                "phase_identity": {"controller_pid": os.getpid(), "controller_start": start,
+                                   "execution_id": secrets.token_hex(24)},
+                "phase_completion": completion("running"), "status": "running",
+                "selection": "post-auth-native-observation", "obligations": obligations(obligation),
+                "runner": runner({}, {}), "started_at": now(), "finished_at": None,
+                "exit_code": None, "counts": counts_from_reports([]), "artifacts": [],
+                "extensions": {}}
+    save_manifest(directory, manifest)
+    begin = {"event": "begin", **phase_descriptor(manifest)}
+    log = directory / "artifacts/execution.log"
+    def write_log():
+        log.write_bytes(canonical(begin) + b"\n" + canonical({
+            "event": "complete", "phase_completion": manifest["phase_completion"]}) + b"\n")
+        log.chmod(0o600)
+    log.write_bytes(canonical(begin) + b"\n")
+    log.chmod(0o600)
+    try:
+        value = callback()  # Exactly once, in this PID, with the live closure.
+    except (KeyboardInterrupt, SystemExit, InterruptedError):
+        manifest["phase_completion"] = completion("interrupted", "phase_interrupted")
+    except BaseException:
+        manifest["phase_completion"] = completion("raised", "phase_exception")
+    else:
+        if value is None or type(value) is int:
+            outcome = "passed" if value in (None, 0) else "failed"
+            manifest["phase_completion"] = dict(state="returned", return_kind="none" if value is None else "int",
+                                                return_code=value, result=outcome, finalized=True, error_code=None)
+        else:
+            manifest["phase_completion"] = completion("unknown", "unsupported_return")
+    manifest["status"] = manifest["phase_completion"]["result"] or "interrupted"
+    try:
+        outputs = artifacts()
+        if not isinstance(outputs, dict) or not outputs or not outputs.keys() <= PHASE_NAMES:
+            raise ValueError("explicit phase artifact set required")
+        total_bytes = 0
+        for name, source in outputs.items():
+            source = Path(source)
+            if source.name != name:
+                raise ValueError("phase artifact source mismatch")
+            data = phase_read(source)
+            phase_payload(name, data)
+            total_bytes += len(data)
+            if total_bytes > MAX_BUNDLE_BYTES:
+                raise ValueError("phase artifacts exceed bundle limit")
+            target = directory / "artifacts/outputs" / name
+            target.parent.mkdir(mode=0o700, exist_ok=True)
+            target.write_bytes(data)
+            target.chmod(0o600)
+            manifest["artifacts"].append({"name": "outputs/" + name, "role": "phase",
+                                          "sha256": hash_bytes(data), "bytes": len(data), "state": "present"})
+        after = code_snapshot(root, configs)
+        manifest["code"].update(fingerprint_after=after["fingerprint"], state_after=after["state"])
+    except BaseException:
+        manifest["phase_completion"] = completion("finalization_failed", "phase_finalize_failed")
+        manifest["status"] = "interrupted"
+    manifest["finished_at"] = now()
+    write_log()
+    manifest["artifacts"].insert(0, artifact(directory, log, "execution.log", "log"))
+    save_manifest(directory, manifest)
+    if transport and manifest["phase_completion"]["state"] == "returned":
+        bundle = directory / "phase-bundle.tar.gz"
+        try:
+            verified = verify_manifest(manifest, directory, root)
+            if verified["state"] != "verified":
+                raise ValueError("phase final verification incomplete")
+            export_bundle(root, evidence_id, bundle)
+            import_bundle(root, bundle, allow_existing=True)
+        except BaseException:
+            # This invocation alone allocated this directory/output. Never leave
+            # an earlier "passed" transport after its finalization failed.
+            if bundle.exists():
+                bundle.unlink()
+            manifest["phase_completion"] = completion("finalization_failed", "phase_finalize_failed")
+            manifest["status"] = "interrupted"
+            write_log()
+            manifest["artifacts"][0] = artifact(directory, log, "execution.log", "log")
+            save_manifest(directory, manifest)
+    return evidence_id
 
 
 class LimitedReader:
@@ -219,11 +521,20 @@ def save_manifest(directory, manifest):
     directory.mkdir(parents=True, exist_ok=True)
     temp = directory / ".manifest.tmp"
     temp.write_bytes(canonical(manifest) + b"\n")
+    if manifest.get("execution_mode") == PHASE_MODE:
+        temp.chmod(0o600)
     temp.replace(directory / "manifest.json")
 
 
 def load_manifest(directory):
-    return json.loads((directory / "manifest.json").read_text())
+    path = directory / "manifest.json"
+    if directory.is_symlink() or path.is_symlink():
+        raise ValueError("unsafe manifest link")
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 4 * 1024 * 1024:
+            raise ValueError("unsafe manifest file")
+        return json.loads(stream.read(4 * 1024 * 1024 + 1))
 
 
 def obligations(items, gate=None):
@@ -402,6 +713,7 @@ def register_hosted(checkout, args):
 
 
 def public_projection(manifest):
+    mode = execution_mode(manifest, projection=manifest.get("schema") == PUBLIC_SCHEMA)
     evidence_id, repo, kind = manifest.get("evidence_id"), manifest.get("repository"), manifest.get("kind")
     code, status = manifest.get("code"), manifest.get("status")
     if (not isinstance(evidence_id, str) or not EVIDENCE_ID.fullmatch(evidence_id)
@@ -412,6 +724,8 @@ def public_projection(manifest):
         raise ValueError("invalid public projection fields")
     result = {"schema": PUBLIC_SCHEMA, "evidence_id": evidence_id, "kind": kind,
               "repository": repo, "code": {"head": code["head"]}, "status": status}
+    if mode == PHASE_MODE:
+        result["execution_mode"] = PHASE_MODE
     if kind == "hosted":
         hosted = manifest.get("hosted")
         if not isinstance(hosted, dict):
@@ -547,6 +861,7 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
         return result
 
     try:
+        mode = execution_mode(manifest, projection=projection)
         if projection or manifest.get("kind") == "hosted":
             projected = public_projection(manifest)
             if projection and projected != manifest:
@@ -587,6 +902,14 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
                 if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
                     raise ValueError("unsafe declared path")
             validate_exclusions(checkout, code["excluded_paths"])
+            if mode == PHASE_MODE:
+                if code["excluded_paths"]:
+                    raise ValueError("phase cannot exclude checkout inputs")
+                for path in [manifest["command"]["callable"]["path"]] + [
+                        item["path"] for item in code["config_paths"]]:
+                    if re.search(r"(?i)(?:\.db(?:-wal|-shm)?|\.sqlite(?:3)?|auth\.json|login\.log)$", path):
+                        raise ValueError("private phase input forbidden")
+                    git(checkout, "ls-files", "--error-unmatch", "--", path)
         if projection and manifest.get("schema") != PUBLIC_SCHEMA:
             raise ValueError("unknown public schema")
     except (ValueError, TypeError, AttributeError, KeyError):
@@ -604,9 +927,27 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
             return finish("incomplete", "repository_identity_unavailable", "provide_identifiers")
     bindings = {}
     if kind == "local" and not projection:
+        try:
+            if mode == PHASE_MODE:
+                check_phase_files(manifest, directory)
+                if manifest["phase_completion"]["state"] != "returned":
+                    return finish("incomplete", "phase_not_terminal")
+                call = manifest["command"]["callable"]
+                if hash_file(checkout_root(checkout) / call["path"]) != call["sha256"]:
+                    return finish("stale", "phase_callable_changed")
+            else:
+                # A surviving phase marker prevents partial manifest downgrade.
+                log = directory / "artifacts/execution.log"
+                if log.is_file():
+                    with log.open("rb") as stream:
+                        first = stream.readline(16384)
+                    if b'"execution_mode":"inprocess-phase"' in first:
+                        return finish("incomplete", "phase_mode_downgrade")
+        except (ValueError, OSError, TypeError, KeyError):
+            return finish("incomplete", "phase_artifact_or_marker_invalid")
         if code.get("fingerprint") != code.get("fingerprint_after"):
             return finish("ambiguous", "code_changed_during_execution")
-        if manifest.get("status") in ("running", "interrupted") or manifest.get("exit_code") is None:
+        if mode != PHASE_MODE and (manifest.get("status") in ("running", "interrupted") or manifest.get("exit_code") is None):
             return finish("incomplete", "execution_not_terminal")
         if any(o.get("required_gate") == "hosted" for o in obs):
             return finish("not_applicable", "local_execution_cannot_satisfy_hosted_gate")
@@ -642,6 +983,8 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
         if not any(item.get("role") == "log" for item in manifest["artifacts"]):
             return finish("incomplete", "log_missing", "restore_artifact")
     elif kind == "local":
+        if mode == PHASE_MODE and obs:
+            return finish("not_applicable", "phase_cannot_satisfy_required_gate")
         if code["head"] != state.head:
             return finish("stale", "head_changed")
         return finish("metadata_only", "local_artifacts_unavailable", "import_bundle")
@@ -668,7 +1011,8 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
         if bindings and not all(bindings.values()):
             result["reasons"] = ["hosted_gate_binding_unconfirmed"]
     result["state"] = "verified"
-    result["result"] = result["result"] or ("passed" if manifest.get("exit_code") == 0 else "failed")
+    result["result"] = result["result"] or (manifest["phase_completion"]["result"] if mode == PHASE_MODE
+                                          else "passed" if manifest.get("exit_code") == 0 else "failed")
     result["obligations"] = [{"id": o["id"], "impact": "unaffected",
                               "gate": "not_required" if o.get("required_gate") is None else
                               ("satisfied" if result["result"] == "passed" and
@@ -690,12 +1034,26 @@ def verify_manifest(manifest, directory, checkout, *, tools=None, env_ids=None, 
 
 def export_bundle(checkout, evidence_id, destination):
     directory = record_dir(checkout, evidence_id)
-    load_manifest(directory)
-    # An imported directory contains the old checksum file. It describes the
-    # previous archive, not a member of the newly generated one.
-    members = sorted(p for p in directory.rglob("*")
-                     if p.is_file() and p.relative_to(directory).as_posix() != "SHA256SUMS")
-    if any(p.is_symlink() for p in directory.rglob("*")):
+    manifest = load_manifest(directory)
+    mode = execution_mode(manifest)
+    if mode == PHASE_MODE:
+        check_phase_files(manifest, directory)
+        # Manifest FIRST: importer validates the complete declared set before payload.
+        members = [directory / "manifest.json"] + [
+            directory / name for name in sorted(phase_members(manifest) - {"manifest.json", "SHA256SUMS"})]
+    else:
+        log = directory / "artifacts/execution.log"
+        if log.is_file():
+            with log.open("rb") as stream:
+                if b'"execution_mode":"inprocess-phase"' in stream.readline(16384):
+                    raise ValueError("phase mode downgrade")
+        # An imported directory contains the old checksum file. It describes the
+        # previous archive, not a member of the newly generated one.
+        members = sorted(p for p in directory.rglob("*")
+                         if p.is_file() and p.relative_to(directory).as_posix() != "SHA256SUMS")
+        if any(p.is_symlink() for p in directory.rglob("*")):
+            raise ValueError("symlink in evidence directory")
+    if any(p.is_symlink() for p in members):
         raise ValueError("symlink in evidence directory")
     sums = "".join(f"{hash_file(p)}  {p.relative_to(directory)}\n" for p in members).encode()
     with tarfile.open(destination, "w:gz") as bundle:
@@ -707,10 +1065,52 @@ def export_bundle(checkout, evidence_id, destination):
     return destination
 
 
-def import_bundle(checkout, source):
+def inspect_bundle(source):
+    """Metadata pass only: decide mode/member allowlist BEFORE hashing payloads.
+
+    Legacy member order is preserved. Phase packages have the new manifest-first
+    representation; a phase hidden later is refused before copying any payload.
+    """
+    if source.stat().st_size > MAX_ARCHIVE_BYTES:
+        raise ValueError("bundle exceeds import size limit")
+    names, total, manifest, marker = [], 0, None, False
+    with source.open("rb") as compressed, gzip.GzipFile(fileobj=LimitedReader(compressed, MAX_ARCHIVE_BYTES)) as inflated, \
+            tarfile.open(fileobj=LimitedReader(inflated, MAX_ARCHIVE_BYTES), mode="r|") as bundle:
+        for member in bundle:
+            name = member.name
+            if (len(names) >= MAX_BUNDLE_MEMBERS or name in names or not member.isfile() or
+                    not name or len(name) > 4096 or name.startswith(".") or Path(name).is_absolute() or
+                    ".." in Path(name).parts or str(Path(name)) != name):
+                raise ValueError("unsafe bundle members")
+            names.append(name)
+            total += member.size
+            if member.size > MAX_MEMBER_BYTES or total > MAX_BUNDLE_BYTES:
+                raise ValueError("bundle exceeds import size limit")
+            if name == "manifest.json":
+                if member.size > 4 * 1024 * 1024:
+                    raise ValueError("bundle metadata exceeds import size limit")
+                with bundle.extractfile(member) as stream:
+                    manifest = json.load(stream)
+            elif name == "artifacts/execution.log":
+                with bundle.extractfile(member) as stream:
+                    marker = b'"execution_mode":"inprocess-phase"' in stream.readline(16384)
+    if not isinstance(manifest, dict):
+        raise ValueError("bundle manifest missing")
+    mode = execution_mode(manifest)
+    if mode == PHASE_MODE:
+        if names[0] != "manifest.json" or set(names) != phase_members(manifest):
+            raise ValueError("phase manifest/member order or set invalid")
+    elif marker:
+        raise ValueError("phase mode downgrade")
+
+
+def import_bundle(checkout, source, *, allow_existing=False):
+    inspect_bundle(source)
     with tempfile.TemporaryDirectory(dir=store(checkout)) as temp:
         seen = {}
         total = 0
+        phase_allowed = None
+        first_name = None
         # Tarfile parses PAX extended headers before yielding a member. A size
         # check in the loop below alone cannot bound that allocation. Cap both
         # input and the entire inflated tar stream before it reaches tarfile.
@@ -720,6 +1120,13 @@ def import_bundle(checkout, source):
                 tarfile.open(fileobj=LimitedReader(inflated, MAX_ARCHIVE_BYTES), mode="r|") as bundle:
             for member in bundle:
                 name = member.name
+                if first_name is None:
+                    first_name = name
+                if phase_allowed is not None and name not in phase_allowed:
+                    raise ValueError("undeclared phase member")
+                if (name == "manifest.json" and member.size > 4 * 1024 * 1024 or
+                        name == "SHA256SUMS" and member.size > 1024 * 1024):
+                    raise ValueError("bundle metadata exceeds import size limit")
                 if (len(seen) >= MAX_BUNDLE_MEMBERS or name in seen or not member.isfile()
                         or len(name) > 4096 or not name or name.startswith(".") or Path(name).is_absolute()
                         or ".." in Path(name).parts or str(Path(name)) != name):
@@ -740,6 +1147,17 @@ def import_bundle(checkout, source):
                         remaining -= len(chunk)
                 seen[name] = digest.hexdigest()
                 total += member.size
+                target.chmod(0o600)
+                if name == "manifest.json":
+                    declared = json.loads(target.read_text())
+                    if execution_mode(declared) == PHASE_MODE:
+                        if first_name != "manifest.json":
+                            raise ValueError("phase manifest must precede payload")
+                        phase_allowed = phase_members(declared)
+                elif name == "artifacts/execution.log" and phase_allowed is None:
+                    with target.open("rb") as stream:
+                        if b'"execution_mode":"inprocess-phase"' in stream.readline(16384):
+                            raise ValueError("phase mode downgrade")
         if "SHA256SUMS" not in seen or "manifest.json" not in seen:
             raise ValueError("unsafe bundle members")
         if (Path(temp, "SHA256SUMS").stat().st_size > 1024 * 1024 or
@@ -756,8 +1174,16 @@ def import_bundle(checkout, source):
         manifest = json.loads(Path(temp, "manifest.json").read_text())
         if manifest.get("schema") != SCHEMA:
             raise ValueError("unknown evidence schema")
+        if execution_mode(manifest) == PHASE_MODE:
+            if set(seen) != phase_allowed:
+                raise ValueError("phase member set mismatch")
+            check_phase_files(manifest, Path(temp))
         directory = record_dir(checkout, manifest["evidence_id"])
         if directory.exists():
+            if (allow_existing and execution_mode(manifest) == PHASE_MODE and
+                    load_manifest(directory) == manifest):
+                check_phase_files(manifest, directory)
+                return manifest["evidence_id"]  # validated roundtrip; never overwrite
             raise ValueError("evidence ID already exists; refusing overwrite")
         Path(temp).rename(directory)
     return manifest["evidence_id"]

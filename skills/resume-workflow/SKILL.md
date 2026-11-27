@@ -1,6 +1,6 @@
 ---
 name: resume-workflow
-description: Recover an interrupted issue or milestone using durable Git/GitHub/OpenSpec, ownership, native runtime and test evidence; never infer success from old chat.
+description: Recover an interrupted issue or milestone using durable Git/GitHub/OpenSpec, ownership, native runtime and test evidence. For natural requests like "continue de onde parou", "retome o desenvolvimento" or "resume" after a reboot/crash, load this skill first, before inventory or native OpenSpec work; never infer success from old chat.
 ---
 
 # Resume interrupted work

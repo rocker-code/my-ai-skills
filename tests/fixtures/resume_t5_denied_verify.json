@@ -1,0 +1,30 @@
+{
+  "kind": "retained_negative_for_offline_unit_test",
+  "source_evidence": "ev-20261125T103548Z-f3771146",
+  "source_transcript_sha256": "133c2924c757e627a0cd4c1031dff2fa05093846b63fdc84d486c32f7ba72df6",
+  "event_index": 19,
+  "event": {
+    "type": "tool_use",
+    "timestamp": 1795603141691,
+    "sessionID": "ses_dedb6cf0dffeS60EcHgP3slpEv",
+    "part": {
+      "partID": "prt_2124993580017IztTi6wLG5s10",
+      "sessionID": "ses_dedb6cf0dffeS60EcHgP3slpEv",
+      "messageID": "msg_2124979d0001Sn1xAmMss3v6u2",
+      "type": "tool",
+      "id": "chatcmpl-tool-a63a6bd615bf96f6",
+      "tool": "shell",
+      "state": {
+        "status": "error",
+        "input": {"command": "worktree-reservation verify --session \"$OPENCODE_SESSION_ID\""},
+        "error": "fixture shell: raw command/cwd denied",
+        "metadata": {
+          "providerCall": {"executed": false},
+          "providerResult": {"executed": false},
+          "rawInput": "{\"command\": \"worktree-reservation verify --session \\\"$OPENCODE_SESSION_ID\\\"\"}"
+        },
+        "time": {"start": 1795603141464, "end": 1795603141691}
+      }
+    }
+  }
+}
