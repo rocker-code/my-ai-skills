@@ -118,6 +118,14 @@ O harness existente SHALL preparar perfil privado novo, pausar para OAuth manual
 - **WHEN** runtime/schema mudam ou o DB privado passa a conter OAuth
 - **THEN** a captura MUST usar somente projeção consistente read-only de instruções/sessão não secretas, sem backup/serialize/hash do DB inteiro nem consulta a credenciais; compatibilidade desconhecida bloqueia e modelo não recebe acesso ao DB; relatórios/manifestos/bundles usam allowlists antes de persistir e excluem SQLite/WAL/SHM, auth transcripts/material e IDs pessoais inclusive estruturados, preservando prova nativa/ordem T7 e falhas originais sem regex-only ou retro-PASS; runtime/modelo/perfil/auth novos invalidam reuso afetado e exigem revisão e novo T1/T5/T7 completo autorizado
 
+#### Scenario: Direct local controller must be proven before spawning authentication
+- **WHEN** a pessoa inicia posteriormente o controlador local revisado em seu próprio terminal nativo, sem ferramenta capturante
+- **THEN** o controlador valida identidade local, capacidade OS de spawn/wait com filho inofensivo, pin/perfil/lease e FDs/foreground antes de auth; observador ausente/injetado, callable/JSON arbitrário, non-TTY ou continuidade incerta bloqueiam sem spawn; só o mesmo controlador observa Popen/wait do filho auth com FDs herdados e rotula local-controller/os-wait, nunca callback/sessão de agente inventados
+
+#### Scenario: Local process evidence does not replace native proof or authorize inference
+- **WHEN** o controlador conserva ou encerra o Supervisor após login
+- **THEN** somente objeto vivo contínuo pode ser usado pelo harness completo após autorização separada e todos os checks de rota/conexão/provider/catalog/entitlement; recibo serializado, flag completed, término de pane ou probe PTY não reconstroem auth, Skill ou sessão; indisponibilidade de terminal externo e limites de recording do host são explícitos, sem captura de auth ou promessa de sigilo contra o próprio host
+
 ### Requirement: Respect original scope and recovery limits
 
 O workflow SHALL preservar limites explícitos de issue/milestone e modo de merge vigente comprovado, sem duplicar artefatos. Merge MUST permanecer retido sem autorização vigente comprovada. MUST informar dados locais perdidos/indisponíveis em vez de alegar restauração.

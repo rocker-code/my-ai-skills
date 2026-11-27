@@ -10,6 +10,8 @@ Revisão de `21d0712` após finding independente `ses_de5f1cb7affeU03kmjpOtA6i4m
 
 ## What Changes
 
+- Emenda de observação local sobre `e0cea77d530270d395dd596c0a4556d8a87f1dc3`: acrescentar somente 3.12/design §6.3. O shell do agente não fornece TTY e não há observer interativo não capturante demonstrado. Permitir controlador local versionado, iniciado posteriormente pela pessoa no próprio terminal, que valida capacidade/identidade **antes** de spawn e observa diretamente Popen/wait do filho auth com FDs herdados. Essa prova é `local-controller/os-wait`, não callback/sessão OpenCode inventados. Mudança material de interface de proveniência exige revisão do novo pin antes de Apply; 3.10/3.11 concluídas offline são preservadas. Não abrir terminal, pedir login ou executar autenticação nesta Planning.
+
 - Preservar a integração não forçada de `main@12ca324faf2865faa62d16e55715d3ddd0adb53a`, já entregue em `5b0fc0ad5ff553a0e091527ddff6ac4001b46dc4`, e o histórico exclusivo/dados locais; não repetir integração ou tarefas implementadas.
 - Adaptar as fixtures existentes T1/T5/T7 a Git/GitHub/OpenSpec, reservas e recibos de runtime verificáveis, sem `workflow-event`, `workflow-report`, comentários operacionais ou registro substituto.
 - Provar instalação da revisão candidata e descoberta/invocação nativa OpenSpec na sessão real, preservando o pedido natural de retomada e a distribuição OpenCode/Codex atual.

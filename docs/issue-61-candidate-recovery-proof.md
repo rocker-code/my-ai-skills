@@ -1,6 +1,63 @@
 # Prova isolada de retomada — issue #61
 
-## Handoff atual — revisão de quota/recibo após revisão independente
+## Handoff atual — observador local pre-spawn (Planning somente)
+
+Entrada limpa `e0cea77d530270d395dd596c0a4556d8a87f1dc3`, plano antes aprovado
+`bde179386f8b2283d8045cd03a61acd2a506efb2`, mesmo run
+`wf-20261116T064328Z-45cb0ecc`, worker nativo real
+`ses_de5fccf97ffeOd8Os1W63n1lDE`. Pai informou Apply
+`ses_de5e69035ffewOE814R8zpywic` terminado e revisão independente
+`ses_de5d1a7b7ffe3fbFasvE2s5Tpf` RESOLVED SAFE para os três MUST FIX
+symlink/hash, nested evidence e cold metadata; 336/80 focados/strict13
+continuam pré-login, não gates finais. 3.10/3.11 estão concluídas offline:
+preservar suas linhas/checkmarks e provas, sem reabrir por falta de auth.
+
+Descoberta terminal concluída `ses_de5ae2051ffedh3IOuVR3iJ4uw`: shell tools
+sem TTY nos FDs0/1/2, TUIOS_ENV não1, tuios0.13.3/protocol1 sem panes e
+nenhuma PTY interativa adequada disponível. Window-exit seria outer pane,
+não auth-child; history/scrollback podem gravar segredo. Nenhum login/pane/
+session/config change ocorreu. O perfil e0 e checksum
+`c3ba7ce4eaa1151e08a6cee48a41dcbb860a175295d7f0a932e4be5e63c0f703`
+não foram lidos ou reutilizados como nova continuidade nesta Planning.
+
+Static source: manual_login2624–2647 só verifica callable antes de spawn e
+valida identidade após auth; callers de testes99–114/195–203 são sintéticos.
+main2816 admite Supervisor vivo, mas CLI3387–3399 só expõe prepare/resume
+metadata-only. Graph de manual_login vazio, fallback fonte/testes direto.
+Context7 Python e docs subprocess/OS sustentam Popen com FDs None herdados,
+shell=False e wait real; não sustentam promessa de confidencialidade do host.
+
+Emenda §6.3/3.12/L1: menor extensão no mesmo harness, observador interno local
+versionado pre-spawn, sem callback JSON arbitrário; controlador lançado
+depois pela pessoa no seu terminal direto observa o próprio filho via OS.
+Identidade local/nonce/start/PID tipados não são sessão/worker OpenCode.
+Essa substituição limitada do callback interativo do pai é **material** e
+exige revisão independente do novo pin antes de Apply. Não muda callbacks de
+agentes/writer parado, native Skill, T7 ou autorização econômica.
+
+Pre-spawn exige código/hash/pin/runtime/perfil/lease, observer identity/
+capability com filho inofensivo e FDs/foreground coerentes; falha para antes
+de pedir login. I/O auth herdado, nenhuma captura/logger/PTY intermediária.
+Pessoa escolhe terminal sem recording e confirma limites; Python não prova
+ausência de gravação por emulador/OS. Disponibilidade desse terminal ainda
+manual/environment BLOCKED; não há instrução sensível ou comando operacional
+de login nesta entrega. Prova PTY offline futura só testa controlador.
+
+Manter Supervisor vivo no mesmo processo para eventual main(subscription),
+com autorização separada do pai e checks reais após auth. Exit/restart
+perde cadeia viva, sem completed flag/replay/import/reauth automático.
+Quota/entitlement/rota/provider/catalog continuam mandatórios; cost=[]
+subscription autorizado é display unknown, ramo credential-free all-zero
+inalterado. Nenhum modelo escolhido/inferência/login nesta Planning.
+
+Próximo: revisor independente do novo pin → fresh Apply somente3.12 offline
+e regressões L1/A1/A2/A3/R1 → revisão afetada → participação manual posterior,
+somente se pre-spawn/gates estiverem viáveis. 19 concluídos preservados;
+3.12/3.4/4.3 pendentes, 13 whole native FAILED e attempt-log intactos.
+AGENTS/política canônica lidos; sem telemetria/eventos/report restaurados,
+sem framework/serviço/SDK, global/runtime update, archive/push/PR/merge.
+
+## Histórico — revisão de quota/recibo após revisão independente
 
 Re-Planning no mesmo run/worker/checkout; entrada limpa `21d071288dc2bd5ef02eb9cb071a644ac978314d`.
 Revisor independente `ses_de5f1cb7affeU03kmjpOtA6i4m` pediu revisão:
