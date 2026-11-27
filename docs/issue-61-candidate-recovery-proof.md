@@ -3273,6 +3273,21 @@ pendente até execução nova e conclusiva; `ready` estrutural não o aprova.
 ,{"kind":"diagnosis","seq":60,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; fenced handoff JSON and missing native OpenSpec dispatch"},"class":"assertion/contract","checked":{"phase":"post-terminal T1 handoff50 is3867byte text starting Markdown json fence and ending fence, not raw JSON; original closed parser line643 json.loads returns(None,50), diagnostics parse failed/raw_handoff null/raw_hash null/extensions empty; exact event text hash539f69bd17f3d230961dacf9fee316882c48475390711a9a2c4735013050a0cc retained, no stripping/projecting; separately native_invocation[] at all statuses means helpers t1_proposal_proof line567 and t1_apply_gate_proof line575 reject despite successful CLI/provenance reads; current source_facts/semantic/typed condition false, acceptance blocked/scenario_pass false/write_authorized false; RuntimeError2545 recovery proof incomplete after failed result persisted","scope":"exactclean cce4675 installed/approved a0b4796 under reviewed O1 material oracle correction; all twelve earlier actual FAILED traces/pending fields unchanged; T1 Verify deny/T5-only canonicalVerify permission/T7 Explore-only prompts/reader/timeouts/guard/installer unchanged from908; canonicalVerify2.1.1 hash checked offline, no permission expansion or whole-run acceptance from projection; exactHEAD322/focused66/projection8negative/strict1/global13 existing proofs reverified before launch, not final delivery","lifecycle":"ses_decd3982effeXP737W5kmjliHv pid3942294 terminal0 at14:50:10.510805Z,52events/11completedsteps/28tools; no timeout/cancel/providererror/malformedlines, empty stderr/private nativeIDLEsucceeded; actual11assistant model fields all opencode/deepseek-v4.1-flash-free/default runtimevariant, fresh sourceRESUME_SMOKE_MODEL exact uniqueenabledactivechattoolstext alltierpriceszero; reportedcost0, settledfinalcost UNKNOWN; writer3941203 observed running14:46:44.045822Z then terminal0 at14:46:44.049003Z with exactowner/run/checkout/head; client/writer absent after normal termination, no kill/restart/DB cleanup","consumers":"six source facts terminal/inventory/snapshots/github/resume/no_stateful_attempts true, proposal/apply_gate/native false; eight snapshots/prereq comparisons unchanged verifiedtrue, forbidden_attempts[] and out_of_scope_reads[] but shell5/6/12/read9/42 denials retained; actual delivered T1 catalog Apply/Explore/resume baseline pre-user/completedassistant and blob/hash captured, not body dispatch; unique skill2 resume, Apply34 directread cannot substitute native; real receipt17/inventory16/20-24/proposal28/review31/ancestry27/29/diff30/CLI36/strict37/GitHub35/body40/41/45/46/locator47 do not override missing native call or parse failure; T5/T7 not prepared/launched, amendedT5 behavior and PR facts unobserved/T7 no choice/same-session/reinventory proof"},"runtime_proof":["evidence:ev-20261125T144642Z-ea89df23"],"simplest_alternative":"stop preserving raw fenced response and genuine missing native dispatch for independent review; do not strip fences, repair response, invoke skill on model behalf, expand parser/prompt or bypass T1 to force T5/T7; no fourteenth run or provider fallback","choice_rationale":"one explicit new parent authorization was consumed on reviewed changed source, not an unchanged automatic retry; current parse/native failures differ from original unknown-key O1 seq56-58 and historical T5 missing-native episode50/53, whose failures and counters remain untouched; response file/CLI/catalog/prose cannot become invocation proof, nor old T1 approval become current F1 acceptance; all actual completed assistants match override and normal lifecycle rules out provider/timeout as this failure cause","next_hypothesis":"independent read-only response/event review can assess raw fenced handoff and omitted native dispatch against approved current contract while final readiness remains false; any later code/contract/prompt/model experiment requires separate scoped decision and authorization"}
 ,{"kind":"blocker","seq":61,"group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; fenced handoff JSON and missing native OpenSpec dispatch"},"type":"technical","wait_reason":"environment","evidence":["evidence:ev-20261125T144642Z-ea89df23"],"diagnosis":"seq:60","options":[],"impact":"thirteenth whole observation FAILED T1 raw parse and actual native dispatch gates, source facts only6/9; amendedT5 capability still behaviorally unproved, T7 NOT RUN/F1 incomplete/final readiness false; no archive/final-suite/PR/another inference authorized","researchable":true}
 ,{"kind":"resolution","group":{"obligation":"T1","signature":"assertion: recovery proof incomplete; fenced handoff JSON and missing native OpenSpec dispatch"},"outcome":"blocked","via_seq":61}
+,{"kind":"attempt","seq":62,"obligation":"L2","signature":"fixture: copytree destination agents already exists","target":"offline integrated foreground test","class":"fixture/isolation","hypothesis":"clone fixture needs generated agents copied","change":"new integrated offline fixture","change_target":"test","observed_effect":"FileExistsError before preparation or synthetic auth; clone already contains agents","result":"fail","evidence":["evidence:ev-20261127T011725Z-17095736"]}
+,{"kind":"attempt","seq":63,"obligation":"L2","signature":"fixture: synthetic runtime help lacks installer required api run service","target":"offline integrated foreground test","class":"fixture/isolation","hypothesis":"version and minimal help stub suffice for isolated installer","change":"copy fixture agents with dirs_exist_ok; no production change","change_target":"test","observed_effect":"installer exits1 before preparation/auth; bounded production diagnostic omits cause","result":"fail","evidence":["evidence:ev-20261127T011740Z-cefbc0ad"]}
+,{"kind":"attempt","seq":64,"obligation":"L2","signature":"fixture: synthetic runtime help lacks installer required api run service","target":"offline integrated foreground test","class":"fixture/isolation","hypothesis":"retain safe synthetic installer diagnostic to identify prerequisite","change":"test-only stderr excerpt for local installer with no auth or model","change_target":"test","observed_effect":"installer explicitly refuses stub lacking API run service help; no auth or phase started","result":"fail","evidence":["evidence:ev-20261127T011814Z-5720a2fd"]}
+,{"kind":"diagnosis","seq":65,"group":{"obligation":"L2","signature":"fixture: synthetic runtime help lacks installer required api run service"},"class":"fixture/isolation","checked":{"phase":"installer preflight before prepare_private_pause, local supervisor or auth","scope":"new isolated offline clone/profile and harmless runtime stub only","lifecycle":"both unittest attempts terminal1 before synthetic auth/model; no native attempt","consumers":"scripts/install-global runtime preflight requires help tokens api/run/service, test stub returned offline-fixture-help"},"runtime_proof":["evidence:ev-20261127T011740Z-cefbc0ad","evidence:ev-20261127T011814Z-5720a2fd"],"simplest_alternative":"use actual runtime for installer help only; unnecessary because this tests in-process wiring, not native runtime","choice_rationale":"fix only harmless stub help to represent required interface; preserve installer bytes, preflight and all native recovery oracles","next_hypothesis":"accurate synthetic help passes unchanged installer so real full main can exercise offline fixtures"}
+,{"kind":"attempt","seq":66,"obligation":"L2","signature":"fixture: synthetic runtime help lacks installer required api run service","target":"offline integrated foreground test","class":"fixture/isolation","hypothesis":"listing required help tokens represents installer interface","change":"test-only help adds api/run/service tokens","change_target":"test","observed_effect":"installer still refuses before preparation; regex requires v2 prefix and each command at start of a line, not token presence","result":"fail","evidence":["evidence:ev-20261127T011907Z-ce0de5aa"]}
+,{"kind":"diagnosis","seq":67,"group":{"obligation":"L2","signature":"fixture: synthetic runtime help lacks installer required api run service"},"class":"fixture/isolation","checked":{"phase":"same installer preflight before auth","scope":"harmless stub version/help only, disposable test clone","lifecycle":"third attempt terminal1 with explicit preflight refusal, no auth/model/phase","consumers":"scripts/install-global preflight lines443-445 requires regex v2 and multiline command beginnings; existing DisposablePathTest fixture already uses matching format"},"runtime_proof":["evidence:ev-20261127T011907Z-ce0de5aa"],"simplest_alternative":"reuse matching harmless version/help format from nearby existing fixture","choice_rationale":"this is test setup, not production runtime support; keep installer and auth/model boundaries unchanged","next_hypothesis":"v2.4.2 plus one command per line satisfies exact preflight and reaches full main fixture"}
+,{"kind":"attempt","seq":68,"obligation":"L2","signature":"phase: public evidence integer receipt key","target":"offline integrated foreground test","class":"fixture/isolation","hypothesis":"matching harmless runtime interface reaches unchanged full main","change":"test-only v2 prefix and command-per-line help","change_target":"test","observed_effect":"installer/preparation/grant/synthetic child complete; phase records incomplete before first synthetic model; no native run","result":"fail","evidence":["evidence:ev-20261127T011946Z-13cb1993"]}
+,{"kind":"attempt","seq":69,"obligation":"L2","signature":"phase: public evidence integer receipt key","target":"offline integrated foreground test","class":"assertion/contract","hypothesis":"test-only callback exception inspection identifies fail-closed phase cause","change":"retain synthetic main exception class/message in unittest only, not phase log","change_target":"test","observed_effect":"full main raises AttributeError int has no lower before execute_model; phase remains incomplete and closes lease, observed phases empty","result":"fail","evidence":["evidence:ev-20261127T012013Z-719b5a28"]}
+,{"kind":"diagnosis","seq":70,"group":{"obligation":"L2","signature":"phase: public evidence integer receipt key"},"class":"assertion/contract","checked":{"phase":"first prepared_phase persist before execute_model; native record contains runtime_receipts with integer issue keys","scope":"existing full main producer versus public_evidence positive structural guard; profile/auth/recorder are synthetic or local only","lifecycle":"exact harmless child wait completed, one real main callback began, zero model callbacks, phase returns raised/incomplete and lease closes","consumers":"main record.runtime_receipts uses local int-key receipts map; persist invokes public_evidence key.lower before JSON could turn keys into strings; downstream on-disk consumers already expect string issue keys"},"runtime_proof":["evidence:ev-20261127T011946Z-13cb1993","evidence:ev-20261127T012013Z-719b5a28"],"simplest_alternative":"broaden public_evidence to coerce arbitrary key types, rejected because guard need not weaken","choice_rationale":"convert only issue keys to strings at the record producer; same JSON representation, same guards/oracles/permissions; corrected installer now passes without production installer edits","next_hypothesis":"closed structural guard accepts the canonical string-key receipt record and full main reaches synthetic model"}
+,{"kind":"attempt","seq":71,"obligation":"L2","signature":"fixture: synthetic t7 question does not match existing neutral shape","target":"offline integrated foreground test","class":"fixture/isolation","hypothesis":"string-key receipts permit full native-oracle fixture loop","change":"canonical string keys only at main evidence producer; structural validator unchanged","change_target":"test","observed_effect":"T1/T5 existing oracles and all before/after facts pass; T7 phase1 synthetic wording is rejected by unchanged neutral-question fullmatch; phase incomplete, no T7 phase2","result":"fail","evidence":["evidence:ev-20261127T012057Z-fc4e23fd"]}
+,{"kind":"attempt","seq":72,"obligation":"L2","signature":"fixture: synthetic t7 question does not match existing neutral shape","target":"offline integrated foreground test","class":"fixture/isolation","hypothesis":"reuse the existing positive synthetic question without changing its oracle","change":"test-only response matches existing bounded neutral shape","change_target":"test","observed_effect":"real full main completes T1/T5/T7phase1/T7phase2 with unchanged oracles; same object retained through valid verify/export/import before close; native proof NOT RUN","result":"pass","evidence":["evidence:ev-20261127T012128Z-d48aea7d"]}
+,{"kind":"resolution","group":{"obligation":"L2","signature":"fixture: synthetic t7 question does not match existing neutral shape"},"outcome":"passed","via_seq":72}
+,{"kind":"attempt","seq":73,"obligation":"L2","signature":"fixture: nested terminal double and non-tty class mock","target":"95-test focused offline resume sample","class":"fixture/isolation","hypothesis":"new post-auth negatives reach selection with existing local observer fixture","change":"add representative entry negatives and full sample","change_target":"test","observed_effect":"integrated full main passes; five new negatives stop early because nested terminal identities differ, old class mock bypasses static terminal refusal and intercepts Git Popen; no production auth/model","result":"fail","evidence":["evidence:ev-20261127T012401Z-9c1bc4a7"]}
+,{"kind":"attempt","seq":74,"obligation":"L2","signature":"fixture: nested terminal double and non-tty class mock","target":"95-test focused offline resume sample","class":"fixture/isolation","hypothesis":"consistent synthetic terminal and actual static non-TTY refusal exercise intended boundaries","change":"align harmless terminal identity, patch static refusal rather than entire class; retain/reap owned fixture streams","change_target":"test","observed_effect":"95/95 pass, all selection/refusal/cancel/lease negatives observe one harmless child and zero main/recorder calls; full main integrated transport passes without ResourceWarning","result":"pass","evidence":["evidence:ev-20261127T012507Z-d5a5e033"]}
+,{"kind":"resolution","group":{"obligation":"L2","signature":"fixture: nested terminal double and non-tty class mock"},"outcome":"passed","via_seq":74}
 ]}
 ```
 
@@ -3604,3 +3619,127 @@ offline, sem copiar o perfil anterior ou aceitar drift. Os novos IDs,
 alias/checksum e saída exata serão entregues fora do commit, evitando
 commits somente para IDs. Os perfis anteriores e todas as falhas históricas
 ficam preservados; nenhuma inferência, auth ou operação Git remota ocorreu.
+
+## Handoff atual — Apply 3.13 exclusivamente offline
+
+Esta seção posterior supersede somente o estado de planejamento das seções
+anteriores. Entrada/pin aprovado **a1c4a04fd4bd3843c622e92cf00a450481ea7282**;
+worker real **ses_de576ed5bffeL5OULzv3zeNFvm**, run de continuidade
+**wf-20261116T064328Z-45cb0ecc**. O pai informou revisão independente concluída
+`ses_de584b87dffe1Oa5PebxLhh6YK`, APPROVED_FOR_FRESH_APPLY3.13OFFLINE, sem
+MUST FIX, e aceitou a transferência. Reserva normal, sem takeover/aceite de
+drift, no checkout/branch existente `issue-61-resume-closeout`. Nenhum recurso
+de outra issue foi implementado. AGENTS global e progresso da raiz, políticas
+canônicas curtas do checkout, artefatos completos e skills geradas foram lidos;
+Apply oficial foi descoberto/invocado e suas instruções reais consultadas.
+
+**3.13 concluída somente no recorte offline, 21/23 tarefas.** Os vinte itens
+anteriores, inclusive 3.12, permanecem concluídos; 3.4/4.3 e follow-up de
+archive/sync/preparo/PR/gates finais continuam pendentes. Nenhuma inferência,
+autenticação, conta, perfil/DB de auth anterior, segredo, instalação global,
+runtime update, push, tag, release, PR, archive ou merge foi executado.
+As instalações nos testes são apenas snapshots em HOME descartável de fixture.
+
+### Implementação e menor prova
+
+| Obrigação | Implementação | Prova offline |
+| --- | --- | --- |
+| L2: entrada integral | `entrypoint` → `supervise_subscription` → escopo foreground com mesmo `SupervisedSubscription`, lease vivo e uma chamada de `main(subscription=..., selected_model=...)` | `test_foreground_entry_same_supervisor_real_full_main_and_phase_roundtrip_offline` executa o **main existente inteiro**, sem substituir seus oráculos, prompts ou permissões: T1, T5, T7 pergunta e T7 escolha/reinventário no mesmo ID sintético |
+| L2: autoridade/consentimento | decisão corrente no corpo público da issue61, conferida antes de auth e imediatamente antes da fase; consumo persistido no relatório privado existente; seleção explícita do catálogo posterior e confirmação fresca | grant ausente/flag/arquivo/genérico/revogado/divergente/consumido, recorder indisponível, seleção vazia/desconhecida, recusa/cancel/perda de lease bloqueiam; nenhum modelo nos negativos |
+| E1: resultado sem exit fictício | `workflow_evidence.record_phase`: closure síncrona uma vez, modo na raiz, callable/source hash/cwd, identidade OS local, argv/exit null, conclusão fechada | None/0/inteiro nãozero; bool/retorno desconhecido/exceção/interrupção/finalização falham fechados; a fase nunca declara required_gate |
+| E1: evidência/transportes | log estruturado sem stdout/stderr capturados; allowlist de treze arquivos possíveis do fluxo completo; validação no-follow/dono/0600/limites/schema antes de cópia/hash; manifesto antes do payload no formato de fase | verificação/export/import antes do close; campos/marker/callable/completion preservados, adulteração/modo inconsistente/downgrade rejeitados; membro DB não é extraído/hasheado; extensão neutra preservada |
+| E1: compatibilidade | legado sem modo conserva subprocess; hosted e gates continuam próprios; projeção pública conserva somente o discriminante adicional | regressões existentes completas mais leitor **real** pré-Apply recuperado de a1c4a04: fase com exit null e projeção com modo não viram subprocess PASS |
+| cancelamento/finalização | TERM/HUP levantam interrupção controlada; filho de modelo próprio é encerrado/esperado, fatos parciais projetados; falha de export/import invalida conclusão e remove só o bundle parcial desta execução | filho Python inofensivo, nenhum auth/modelo; conclusão incomplete, sem texto bruto de exceção no recorder ou falso sucesso |
+
+A integração usa clone/perfil privados de **teste**, metadata/eventos e schema
+SQLite sintéticos, filho Python inofensivo em vez do argv auth e modelo
+sintético em vez de inferência. A projeção transacional existente é realmente
+exercitada sem consultar a tabela-sentinela de credencial. Asserta mesma
+instância/PID, `main` uma vez, override ambiente ignorado para a assinatura,
+quatro fases completas, marker/artefatos/bundle válidos e export/import antes
+do fechamento. **Não é prova de OAuth, Skill nativa real, terminal externo,
+entitlement ou quota.** Sentinelas de auth/identidade não entram no pacote.
+
+Um defeito real do produtor anterior foi identificado pelo teste integrado:
+`runtime_receipts` tinha chaves inteiras antes da validação estrutural de JSON.
+Somente essas chaves foram convertidas para strings ao construir o record,
+sem ampliar `public_evidence`, alterar resposta, parser ou qualquer oráculo.
+Erros de setup/diagnósticos dos testes novos estão adicionados ao attempt-log;
+entradas originais 1–61, todos os treze runs native FAILED e seus resultados
+permanecem inalterados. Nenhum replay os resolve.
+
+Amostras antes da suíte ampla: **96/96** em
+`ev-20261127T013008Z-29d926f0` (resume/L1/L2/A1–A3/R1/oráculos existentes) e
+**66/66** em `ev-20261127T013030Z-74877211` (evidência subprocess/hosted/E1).
+São execuções sobre a candidata ainda não commitada, não o gate final.
+Após commit, os novos IDs de focados/completo/strict/preflight no HEAD limpo
+exato serão entregues **fora do commit**; nem esses gates de preparação
+substituem a suíte final pós-archive/preparo.
+
+Preflight: Python **3.14.8**, Git **2.55.0**, OpenSpec **2.1.1** e OpenCode
+**2.4.2**, dependências novas somente stdlib. Sem lockfile de aplicação,
+Magento/M2T ou serviço de dados aplicável. Testes em diretórios temporários
+próprios, child lifecycle observado e rollback por fixture; bytecode novo
+desabilitado. Políticas atuais prevalecem sobre o pacote global antigo:
+nenhum ledger/audit/ready foi restaurado. Grafo vazio, fallback fonte/callers
+e consumidores CLI/testes; Context7 `/python/cpython` consultado para FDs
+herdados/Popen.wait (3.14 não indexada, documentação corrente servida).
+
+### Forma da interface, ainda sem autorização de uso sensível
+
+Forma suportada, **não pedido para a pessoa executar agora**:
+
+```text
+python3 tests/smoke_resume_candidate_opencode.py --supervise-subscription <perfil-fresh> --receipt-sha256 <checksum-independente> --grant-reference sha256:<digest-da-decisão-canônica>
+```
+
+A decisão futura deve existir **no corpo da issue61**, delimitada pelos markers
+`issue61-native-attempt:start` e `issue61-native-attempt:end` em comentários
+HTML, contendo exatamente os campos fechados de `attempt_grant`:
+`decision=authorized`, `issue=61`, run acima, candidate HEAD exato,
+approved_proposal=a1c4a04, runtime_sha256 real, profile_alias e receipt_sha256
+da preparação fresh, scope `[T1,T5,T7]`, attempts=1,
+economic_route=chatgpt-subscription-quota,
+model=explicit-post-auth-catalog-selection, fresh_local_confirmation=true,
+paid_api/fallback/retry=false e coordinator_session nativa verdadeira.
+O digest liga o JSON canônico, não autentica criptograficamente o coordenador.
+A leitura é GET público fixo sem credencial, proxy ou redirect; referências,
+flags, arquivos locais ou a autorização geral anterior de quota **não são**
+essa decisão. Consumo perdido/inconclusivo não renova tentativa.
+
+**Grant ainda NÃO emitido.** Preparações antigas são stale no novo HEAD e
+não foram abertas/reutilizadas. Próximo passo é revisão independente afetada
+do código/contrato e provas desta entrega; depois preparação/continuidade
+fresh exatas, grant posterior específico e participação da pessoa em terminal
+próprio não capturante. O shell do agente continua non-TTY; sua recusa real
+pré-auth será registrada no HEAD exato sem abrir perfil ou executar login.
+Entitlement, quota/saldo e cadeia autenticada são pendências externas;
+cost=[] na rota comprovada continua display unknown, nunca grátis/zero.
+Sem API paga, fallback, reauth/retry ou recuperação da autoridade por JSON.
+COMMIT merge somente no fluxo futuro autorizado e após todos os gates.
+
+### Verify oficial — relatório consultivo deste recorte
+
+Using change: `issue-61-opencode-safe-resume`. Skill oficial
+`openspec-verify-change` descoberta/invocada novamente sobre os artefatos e
+superfícies corrigidos; não confundir com dispatch de modelo no smoke.
+
+| Dimensão | Resultado |
+| --- | --- |
+| Completude | 21/23 tarefas; dezesseis requisitos ADDED/MODIFIED localizados em código existente + delta. **CRITICAL:** 3.4 e 4.3 ainda incompletas |
+| Correção | L2/E1 com prova offline integrada/negativos e compatibilidade; cenários reais OAuth/entitlement/grant/terminal/T1/T5/T7 **Not verified**, por ausência de autorização específica/ambiente manual |
+| Coerência | Mesma biblioteca/harness/fluxo existente, sem novo framework; modos separados, gates legados e limites protegidos preservados |
+
+Dois itens críticos de completude impedem archive; completar os cenários
+reais somente após os pré-requisitos acima. A revisão independente afetada,
+native proof, archive/sync/preparo e gate final continuam pendentes.
+Este relatório próprio não substitui revisão independente nem libera login.
+
+Retenção de qualificação: o teste integrado admite somente saída opt-in para
+um nome novo `issue61-offline-phase-qual-*.tar.gz` em `/tmp/opencode`, contendo
+o pacote allowlisted já verificado, nunca HOME/DB. O worker conservará esse
+pacote por importação no store de evidência existente, sem mudar seu SHA de
+fixture ou fabricar source/native PASS. O resultado original é verified no
+clone sintético; fora dele pode ser stale, como deve ser. A execução externa
+do teste fica vinculada ao HEAD limpo real e é a prova da qualificação
+offline; nenhum dos dois registros é o gate native ou local final.

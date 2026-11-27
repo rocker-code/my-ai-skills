@@ -1,7 +1,8 @@
 """Offline regression for the T7 same-session, pre-native reinventory gate."""
-from contextlib import closing, redirect_stderr, redirect_stdout
+from contextlib import closing, contextmanager, redirect_stderr, redirect_stdout
 from io import StringIO
 import json
+import importlib.util
 import copy
 import hashlib
 import fcntl
@@ -17,6 +18,7 @@ import termios
 import time
 import select
 import signal
+import sqlite3
 import unittest
 from unittest.mock import patch
 from unittest.mock import Mock
@@ -52,7 +54,18 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               evidence_files, persist, chatgpt_method,
                                               private_binding, private_bytes, native_event_projection,
                                               OwnedMetadataRuntime, native_metadata,
-                                              entrypoint, supervise_subscription)
+                                               entrypoint, supervise_subscription)
+import smoke_resume_candidate_opencode as smoke
+
+
+@contextmanager
+def fixture_cwd(path):
+    previous = Path.cwd()
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(previous)
 
 
 class PrivatePreparationTest(unittest.TestCase):
@@ -510,16 +523,467 @@ class PrivatePreparationTest(unittest.TestCase):
         with (patch("smoke_resume_candidate_opencode.supervise_subscription") as local,
               patch("smoke_resume_candidate_opencode.main") as inference):
             entrypoint(["--supervise-subscription", str(self.base), "--receipt-sha256", "a"*64])
-        local.assert_called_once_with(self.base, "a"*64)
+        local.assert_called_once_with(self.base, "a"*64, None)
         inference.assert_not_called()
         controller = self.controller()
-        with (patch("smoke_resume_candidate_opencode.SupervisedSubscription", return_value=controller),
+        with (patch.object(SupervisedSubscription, "_terminal_identity",
+                           side_effect=RuntimeError("non-TTY")),
               patch("smoke_resume_candidate_opencode.shutil.which", return_value=str(self.cli)),
               self.continuity(), patch("builtins.input", side_effect=AssertionError("no human prompt")),
               patch("smoke_resume_candidate_opencode.subprocess.Popen") as spawn,
               self.assertRaises(RuntimeError)):
             supervise_subscription(self.base, controller.preparation["receipt_sha256"])
         spawn.assert_not_called()
+
+    def grant(self, controller):
+        decision = {
+            "decision": "authorized", "issue": 61, "run": smoke.NATIVE_RUN,
+            "candidate": controller.revision, "approved_proposal": smoke.APPROVED_PROPOSAL,
+            "runtime_sha256": smoke.RUNTIME_SHA256, "profile_alias": controller._profile_alias,
+            "receipt_sha256": controller._preparation_sha256, "scope": ["T1", "T5", "T7"],
+            "attempts": 1, "economic_route": "chatgpt-subscription-quota",
+            "model": "explicit-post-auth-catalog-selection", "fresh_local_confirmation": True,
+            "paid_api": False, "fallback": False, "retry": False,
+            "coordinator_session": "ses_SYNTHETICCOORDINATOR"}
+        body = smoke.GRANT_START + json.dumps(decision) + smoke.GRANT_END
+        reference = "sha256:" + hashlib.sha256(smoke.phase_evidence.canonical(decision)).hexdigest()
+        return decision, {"body": body}, reference
+
+    def test_specific_canonical_grant_is_not_preparation_consent_flag_or_approval_file(self):
+        controller = self.controller()
+        decision, issue, reference = self.grant(controller)
+        with patch.object(smoke, "canonical_attempt_issue", return_value=issue):
+            grant = smoke.attempt_grant(controller, reference)
+        self.assertEqual(grant["state"], "consumed")
+        for body in ("autorizado", "Plus/Pro authorized; quota allowed",
+                     issue["body"] * 2, smoke.GRANT_START + "{}" + smoke.GRANT_END):
+            with (patch.object(smoke, "canonical_attempt_issue", return_value={"body": body}),
+                  self.assertRaises(RuntimeError)):
+                smoke.attempt_grant(controller, reference)
+        for key, value in (("decision", "revoked"), ("candidate", "b"*40),
+                           ("profile_alias", "other"), ("attempts", True),
+                           ("paid_api", True), ("scope", ["T1"]), ("runtime_sha256", "b"*64)):
+            changed = {**decision, key: value}
+            with (self.subTest(key=key), patch.object(smoke, "canonical_attempt_issue", return_value={
+                    "body": smoke.GRANT_START + json.dumps(changed) + smoke.GRANT_END}),
+                  self.assertRaises(RuntimeError)):
+                smoke.attempt_grant(controller, reference)
+        for reference in (None, True, "approval.json", "sha256:"+"0"*64):
+            with (patch.object(smoke, "canonical_attempt_issue", return_value=issue),
+                  self.assertRaises(RuntimeError)):
+                smoke.attempt_grant(controller, reference)
+
+    def test_foreground_grant_recorder_and_consumed_attempt_block_before_auth_or_prompt(self):
+        controller = self.controller()
+        _, issue, reference = self.grant(controller)
+        for boundary in ("grant", "recorder", "consumed"):
+            with self.subTest(boundary=boundary):
+                if boundary == "consumed":
+                    persist(self.base, {"native_attempt": {"state": "consumed"}})
+                with (patch.object(smoke.SupervisedSubscription, "_terminal_identity",
+                                   return_value="synthetic-terminal"),
+                      patch.object(smoke, "SupervisedSubscription", return_value=controller),
+                      patch.object(smoke, "canonical_attempt_issue", return_value=(
+                          {"body": "no decision"} if boundary == "grant" else issue)),
+                      patch.object(smoke.phase_evidence, "phase_support", side_effect=(
+                          ValueError("unsupported") if boundary == "recorder" else None)),
+                      patch.object(smoke.shutil, "which", return_value=str(self.cli)),
+                      self.continuity(),
+                      patch.object(controller, "close"), patch.object(controller, "manual_login") as auth,
+                      patch("builtins.input", side_effect=AssertionError("no human prompt")),
+                      self.assertRaises((RuntimeError, ValueError))):
+                    supervise_subscription(self.base, controller.preparation["receipt_sha256"], reference)
+                auth.assert_not_called()
+
+    def test_foreground_entry_same_supervisor_real_full_main_and_phase_roundtrip_offline(self):
+        """L2/E1 integrated wiring, NOT native auth/Skill/model proof.
+
+        Execute the existing main and its complete T1/T5/T7 loop. Only external
+        runtime/model boundaries are synthetic; every recovery oracle, prompt,
+        permission, snapshot, fixture Git/receipt and evidence transport is real.
+        The synthetic native-schema DB is never an authenticated account DB.
+        """
+        from types import SimpleNamespace
+        source = self.base / "candidate-fixture"
+        subprocess.run(["git", "clone", "-q", str(ROOT), str(source)], check=True)
+        # An isolated test fixture snapshot, not another implementation worktree.
+        for path in ("tests/smoke_resume_candidate_opencode.py", "scripts/workflow_evidence.py"):
+            shutil.copyfile(ROOT / path, source / path)
+        shutil.copytree(ROOT / ".agents", source / ".agents", dirs_exist_ok=True)
+        subprocess.run(["git", "-C", str(source), "add", "tests/smoke_resume_candidate_opencode.py",
+                        "scripts/workflow_evidence.py"], check=True)
+        subprocess.run(["git", "-C", str(source), "-c", "user.name=Fixture",
+                        "-c", "user.email=fixture@localhost", "commit", "-qm",
+                        "offline integration snapshot", "--allow-empty"], check=True)
+        spec = importlib.util.spec_from_file_location(
+            "issue61_offline_full_main", source / "tests/smoke_resume_candidate_opencode.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        self.addCleanup(sys.modules.pop, spec.name, None)
+        spec.loader.exec_module(module)
+        runtime = self.base / "harmless-runtime"
+        runtime.write_text("#!/bin/sh\ncase \"$1\" in\n--version) echo v2.4.2;;\n"
+                           "--help) printf 'api\\nrun\\nservice\\n';;\n*) exit 91;;\nesac\n")
+        runtime.chmod(0o700)
+        module.RUNTIME_SHA256 = sha(runtime)
+        profile = self.base / "foreground-profile"
+        revision = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+        old_umask = os.umask(0o077)
+        self.addCleanup(os.umask, old_umask)
+        original_run, original_checked, original_main = module.run, module.checked_json, module.main
+        original_which, original_popen = shutil.which, subprocess.Popen
+        auth, order, observations, main_objects, fixture_errors, children = [], [], [], [], [], []
+        def reap():
+            for child in children:
+                if child.stdin and not child.stdin.closed:
+                    child.stdin.close()
+                if child.poll() is None:
+                    child.terminate()  # only fixture-owned harmless processes
+                    child.wait(timeout=5)
+                for stream in (child.stdout, child.stderr):
+                    if stream and not stream.closed:
+                        stream.close()
+        self.addCleanup(reap)
+        chosen = "openai/" + self.model["id"]
+        connection = dict(self.connection)
+        def metadata(cli, repo, env, path, **kwargs):
+            if path == "/api/integration/openai":
+                return {**self.integration, "connections": [connection] if auth else []}
+            return self.api(cli, repo, env, path)
+        def checked(command, *, cwd, env, **kwargs):
+            if command[:3] == [str(runtime), "api", "--standalone"]:
+                return {"location": {"directory": str(cwd)}, "data": (
+                    self.model if command[-1] == "/api/model/default" else [self.model])}
+            return original_checked(command, cwd=cwd, env=env, **kwargs)
+        def run(command, *, cwd, env, **kwargs):
+            if command[:2] == ["python3", "-c"]:
+                result = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True)
+                if result.returncode:
+                    raise AssertionError("offline installer fixture: " + result.stderr[-4000:])
+                return result.stdout.strip()
+            if command[:3] == [str(runtime), "debug", "agents"]:
+                # Supported runtime boundary double only; no production guard or
+                # oracle is changed. This is not a native plugin activation claim.
+                directory = Path(json.loads(env["OPENCODE_CONFIG_CONTENT"])["plugins"][0])
+                policy = json.loads((directory / "policy.json").read_text())
+                with Path(policy["audit"]).open("a") as stream:
+                    stream.write(json.dumps({"boundary": "setup", "decision": "active",
+                                             "source": str(directory / "index.mjs")}) + "\n")
+                return ""
+            return original_run(command, cwd=cwd, env=env, **kwargs)
+        def spawn(command, **kwargs):
+            if command[1:3] == ["auth", "login"]:
+                self.assertEqual(command[0], str(runtime))
+                self.assertEqual([kwargs[k] for k in ("stdin", "stdout", "stderr")], [None]*3)
+                order.append("synthetic-auth-child")
+                child = original_popen([sys.executable, "-I", "-S", "-c", "pass"], **kwargs)
+                children.append(child)
+                auth.append(child)
+                return child  # no auth command is ever executed
+            child = original_popen(command, **kwargs)
+            children.append(child)
+            return child
+        def synthetic_model(cli, repo, env, base, case, prompt, session=None, *, model):
+            self.assertEqual(model, chosen)
+            case_name, phase = case.split("-phase")
+            phase = int(phase)
+            current = json.loads((base / "results.json").read_text())["scenarios"][case_name][-1]
+            fixture = json.loads((repo / "recovery-evidence.json").read_text())
+            sid = session or "ses-offline-" + case_name
+            message = f"{case_name}-assistant-{phase}"
+            timestamp = 4 if phase == 1 else 9
+            events = [{"type": "step_start", "sessionID": sid, "timestamp": timestamp,
+                       "part": {"messageID": message}}]
+            def event(tool, inp, output):
+                events.append({"type": "tool_use", "sessionID": sid, "part": {
+                    "tool": tool, "id": str(len(events)), "state": {
+                        "status": "completed", "input": inp, "output": output,
+                        "metadata": {"metadata": {"exit": 0, "truncated": False}}}}})
+            policy = json.loads(Path(current["shell_guard"]["policy"]).read_text())
+            def shell(command, cwd=repo):
+                self.assertIn(command, policy["commands"][str(cwd)])
+                output = subprocess.check_output(shlex.split(command), cwd=cwd,
+                                                 env=policy["env"], text=True).strip()
+                event("shell", {"command": command, "workdir": str(cwd)}, output)
+            def skill(name, path):
+                event("skill", {"id": name}, f'<skill_content name="{name}">\n' +
+                      path.read_text().split("\n---\n", 1)[-1].strip() +
+                      f"\nBase directory: {path.parent}\n</skill_content>")
+            if phase == 1:
+                skill("resume-workflow", base / "home/.local/share/my-ai-skills/active/skills/resume-workflow/SKILL.md")
+            if case_name == "T7" and phase == 1:
+                for issue in (21, 22):
+                    shell(f"gh api repos/disposable/recovery/issues/{issue}")
+                response = ("Qual issue e run você escolhe: issue #21 / wf-disposable-a "
+                            "ou issue #22 / wf-disposable-b?")
+            else:
+                locators = current["published_read_only_locators"]
+                for locator in locators["inventory_locators"]:
+                    shell(locator["command"], Path(locator["cwd"]))
+                shell("git rev-parse --show-toplevel")
+                shell("git rev-parse HEAD")
+                for receipt in current["runtime_receipts"].values():
+                    path = receipt["checkout"]
+                    for args in ("rev-parse --show-toplevel", "rev-parse HEAD",
+                                 "status --porcelain=v1 --untracked-files=all"):
+                        shell(f"git -C {shlex.quote(path)} {args}")
+                for issue in ([61] if case_name == "T1" else [21, 22] if case_name == "T7" else [11, 13]):
+                    shell(f"gh api repos/disposable/recovery/issues/{issue}")
+                shell("openspec context --json")
+                shell("openspec list --json")
+                shell(locators["runtime_receipt_command"])
+                if case_name == "T1":
+                    for probe in current["fixture_proposal_facts"]["probes"]:
+                        shell(probe["command"])
+                    shell(locators["apply_instructions_locator"]["command"])
+                if case_name == "T5":
+                    for locator in locators["github_locators"]:
+                        shell(locator["command"], Path(locator["cwd"]))
+                event("read", {"path": ".agents/skills"},
+                      "Read directory .agents/skills, entries 1-2\n"
+                      "openspec-explore/\nopenspec-apply-change/")
+                skill("openspec-explore", repo / ".agents/skills/openspec-explore/SKILL.md")
+                shell(module.STRICT_VALIDATE)
+                if case_name == "T1":
+                    receipt = current["runtime_receipts"]["61"]
+                    response = json.dumps({
+                        "issue": 61, "run": fixture["run"], "evidence_scope": "controlled_fixture",
+                        "proposal_sha": current["fixture_proposal_facts"]["proposal_sha"],
+                        "review_sha": current["fixture_proposal_facts"]["review_sha"],
+                        "status": "BLOCKED", "last_verified_gate": "proposal_review_validated",
+                        "next_action": "reconcile-ownership", "apply_executed": False,
+                        "blockers": ["Reconcile ownership before write."], "limitations": [],
+                        "ownership_condition": module.t1_ownership_context(current["before"], receipt, fixture)})
+                elif case_name == "T5":
+                    response = f"PR 12 head {fixture['pr_head']} manual; dependent 13 waits."
+                else:
+                    response = "Issue 21, wf-disposable-a; read-only."
+            events.append({"type": "text", "sessionID": sid, "part": {"text": response}})
+            # Real supported projection against a SYNTHETIC schema DB. Auth
+            # sentinel remains in an unrelated table and is never queried.
+            database = base / "opencode.db"
+            with closing(sqlite3.connect(database)) as db, db:
+                db.executescript("""
+                    CREATE TABLE IF NOT EXISTS session_v2(id,directory,version,time_created);
+                    CREATE TABLE IF NOT EXISTS instruction_state(session_id,epoch_start,through_seq,initial_values,current_values);
+                    CREATE TABLE IF NOT EXISTS instruction_blob(hash,value);
+                    CREATE TABLE IF NOT EXISTS session_message(id,seq,time_created,data,session_id,type);
+                    CREATE TABLE IF NOT EXISTS credential(secret);
+                """)
+                if phase == 1:
+                    sources = module.t1_inspection_sources(repo, case=case_name)
+                    entries = [{"id": Path(s["path"]).parent.name, "name": Path(s["path"]).parent.name,
+                                "description": __import__("re").search(
+                                    r"^description: (.+)$", Path(s["path"]).read_text(), __import__("re").M)[1]}
+                               for s in sources]
+                    digest = hashlib.sha256(json.dumps(entries, sort_keys=True,
+                        ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+                    state = json.dumps({"core/skill-guidance": digest})
+                    db.execute("INSERT INTO session_v2 VALUES(?,?,?,?)", (sid, str(repo), "2.4.2", 1))
+                    db.execute("INSERT INTO instruction_state VALUES(?,?,?,?,?)", (sid, 4, 4, state, state))
+                    db.execute("INSERT INTO instruction_blob VALUES(?,?)", (digest, json.dumps(entries)))
+                    db.execute("INSERT INTO credential VALUES(?)", ("AUTH-SECRET-SENTINEL",))
+                for ident, seq, created, role, times in (
+                    (f"{case}-user", 5 if phase == 1 else 10, 2 if phase == 1 else 7, "user", {}),
+                    (message, 6 if phase == 1 else 11, 3 if phase == 1 else 8, "assistant",
+                     {"firstToken": 5 if phase == 1 else 10, "completed": 6 if phase == 1 else 11})):
+                    db.execute("INSERT INTO session_message VALUES(?,?,?,?,?,?)",
+                               (ident, seq, created, json.dumps({"time": times}), sid, role))
+            database.chmod(0o600)
+            transcript = base / f"{case}-events.jsonl"
+            transcript.write_text("".join(json.dumps(module.native_event_projection(e))+"\n" for e in events))
+            (base / f"{case}-stderr.log").write_text('{"code":"native-stderr-empty"}')
+            terminal = {"exit_code": 0, "timed_out": False, "candidate": revision,
+                        "session_ids": [sid], "malformed_lines": [], "error_events": [],
+                        "offline_fixture": True}
+            (base / f"{case}-terminal.json").write_text(json.dumps(terminal))
+            observations.append((case, sid))
+            return events, response, sid, str(transcript)
+        def full_main(**kwargs):
+            if kwargs.get("subscription") is not None:
+                main_objects.append(kwargs["subscription"])
+                self.assertEqual(kwargs["selected_model"], chosen)
+                order.append("full-main")
+            try:
+                return original_main(**kwargs)
+            except Exception as error:
+                fixture_errors.append(type(error).__name__ + ": " + str(error))
+                raise
+        original_close = module.SupervisedSubscription.close
+        def close(controller):
+            if auth:
+                order.append("close")
+                self.assertIs(controller, main_objects[0])
+            return original_close(controller)
+        evidence = module.phase_evidence
+        original_export, original_import = evidence.export_bundle, evidence.import_bundle
+        def export(*args, **kwargs):
+            self.assertIs(main_objects[0]._identity, main_objects[0])
+            order.append("export")
+            return original_export(*args, **kwargs)
+        def importing(*args, **kwargs):
+            self.assertIs(main_objects[0]._identity, main_objects[0])
+            order.append("import")
+            return original_import(*args, **kwargs)
+        with (fixture_cwd(source), patch.object(module.shutil, "which", side_effect=lambda name, **kw: (
+                str(runtime) if name == "opencode" and not kw else original_which(name, **kw))),
+              patch.object(module, "OwnedMetadataRuntime") as owned,
+              patch.object(module, "native_metadata", side_effect=metadata),
+              patch.object(module, "checked_json", side_effect=checked),
+              patch.object(module, "run", side_effect=run),
+              patch.object(module.subprocess, "Popen", side_effect=spawn),
+              patch.object(module, "execute_model", side_effect=synthetic_model),
+              patch.object(module.SupervisedSubscription, "_terminal_identity", return_value="synthetic-terminal"),
+              patch.object(module.SupervisedSubscription, "close", close),
+              patch.object(module, "main", side_effect=full_main),
+              patch.object(evidence, "export_bundle", side_effect=export),
+              patch.object(evidence, "import_bundle", side_effect=importing),
+              patch.dict(os.environ, {"RESUME_SMOKE_OUTPUT": str(profile),
+                                      "RESUME_SMOKE_MODEL": "wrong-environment-override"}),
+              redirect_stdout(StringIO())):
+            owned.return_value.__enter__.return_value.receipt.return_value = {
+                "synthetic": True, "plugin_ready": True, "exit_code": 0}
+            module.main(prepare_only=True)
+            prepared = json.loads((profile / "results.json").read_text())["preparation"]
+            proxy = SimpleNamespace(revision=revision, _profile_alias=prepared["profile_alias"],
+                                    _preparation_sha256=prepared["receipt_sha256"])
+            decision, _, _ = self.grant(proxy)
+            decision["runtime_sha256"] = module.RUNTIME_SHA256
+            issue = {"body": module.GRANT_START + json.dumps(decision) + module.GRANT_END}
+            reference = "sha256:" + hashlib.sha256(evidence.canonical(decision)).hexdigest()
+            with (patch.object(module, "canonical_attempt_issue", return_value=issue),
+                  patch("builtins.input", side_effect=["sim", "sim", "sim", chosen, "sim"])):
+                try:
+                    eid = module.entrypoint([
+                        "--supervise-subscription", str(profile), "--receipt-sha256",
+                        prepared["receipt_sha256"], "--grant-reference", reference])
+                except RuntimeError as error:
+                    self.fail(f"offline fixture: {error}; main={fixture_errors}; observed={observations}")
+        self.assertEqual(order, ["synthetic-auth-child", "full-main", "export", "import", "close"])
+        self.assertEqual(len(main_objects), 1)
+        self.assertEqual([case for case, _ in observations], ["T1-phase1", "T5-phase1", "T7-phase1", "T7-phase2"])
+        self.assertEqual(observations[2][1], observations[3][1])
+        directory = evidence.record_dir(source, eid)
+        manifest = evidence.load_manifest(directory)
+        self.assertEqual((manifest["execution_mode"], manifest["exit_code"]), ("inprocess-phase", None))
+        self.assertEqual(manifest["phase_identity"]["controller_pid"], os.getpid())
+        self.assertEqual(main_objects[0]._controller[0], os.getpid())
+        self.assertEqual(manifest["command"]["cwd"], ".")
+        self.assertEqual(manifest["phase_completion"]["state"], "returned")
+        self.assertEqual(evidence.verify_manifest(manifest, directory, source)["state"], "verified")
+        retained = json.loads((profile / "results.json").read_text())
+        self.assertTrue(all(r["proof_complete"] for rows in retained["scenarios"].values() for r in rows))
+        with __import__("tarfile").open(directory / "phase-bundle.tar.gz") as bundle:
+            names = bundle.getnames()
+            self.assertNotIn("opencode.db", names)
+            self.assertNotIn(b"AUTH-SECRET-SENTINEL", b"".join(
+                bundle.extractfile(member).read() for member in bundle.getmembers()))
+        # Explicit test-only retention of the already validated allowlisted
+        # package. Never retain the fixture HOME/DB or relabel its candidate SHA.
+        retained_bundle = os.environ.get("MY_AI_SKILLS_TEST_PHASE_BUNDLE")
+        if retained_bundle:
+            target = Path(retained_bundle)
+            if (target.parent.resolve() != Path("/tmp/opencode").resolve() or
+                    not target.name.startswith("issue61-offline-phase-qual-") or
+                    not target.name.endswith(".tar.gz")):
+                raise ValueError("unsafe offline qualification destination")
+            with os.fdopen(os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
+                                   0o600), "wb") as output:
+                output.write((directory / "phase-bundle.tar.gz").read_bytes())
+            print(json.dumps({"offline_phase_qualification": eid, "fixture_candidate": revision,
+                              "execution_mode": "inprocess-phase", "native_proof": "NOT_RUN",
+                              "final_gate": "NOT_RUN"}), file=sys.stderr)
+
+    def test_postauth_invalid_selection_refusal_cancel_or_lost_lease_never_infers(self):
+        original_manual = SupervisedSubscription.manual_login
+        for boundary in ("empty-model", "unknown-model", "fresh-refusal", "cancel", "lost-lease"):
+            with self.subTest(boundary=boundary):
+                # Independent harmless profiles; no production retry/reauth path.
+                self.base = Path(self.enterContext(tempfile.TemporaryDirectory(dir="/tmp/opencode")))
+                (self.base / "home").mkdir()
+                self.env = private_environment(self.base, str(self.cli), {
+                    "HOME": "/operator", "PATH": "/usr/bin:/bin"})
+                self.integration["connections"] = []
+                privatize_new_files(self.base)
+                prepared = self.pause()
+                from types import SimpleNamespace
+                proxy = SimpleNamespace(revision=self.revision, _profile_alias=prepared["profile_alias"],
+                                        _preparation_sha256=prepared["receipt_sha256"])
+                _, issue, reference = self.grant(proxy)
+                controllers = []
+                def login(controller, env, **kwargs):
+                    # The real local observer waits a harmless OS child, not auth.
+                    with patch.object(SupervisedSubscription, "manual_login", original_manual):
+                        self.complete(controller)
+                    self.integration["connections"] = [self.connection]
+                    controllers.append(controller)
+                replies = iter(["sim", "sim", "sim"])
+                def answer(prompt):
+                    if prompt.startswith("Informe"):
+                        if boundary == "empty-model":
+                            return ""
+                        if boundary == "unknown-model":
+                            return "openai/not-in-catalog"
+                        return "openai/" + self.model["id"]
+                    if prompt.startswith("Confirma Plus/Pro,"):
+                        if boundary == "cancel":
+                            raise KeyboardInterrupt()
+                        if boundary == "lost-lease":
+                            controllers[0].lock.close()
+                        return "não" if boundary == "fresh-refusal" else "sim"
+                    return next(replies)
+                with (self.continuity(),
+                      patch.object(SupervisedSubscription, "_terminal_identity",
+                                   return_value=(((1, 2, 3),)*3, os.getpgrp())),
+                      patch.object(SupervisedSubscription, "manual_login", login),
+                      patch.object(smoke, "native_metadata", side_effect=self.api),
+                      patch.object(smoke, "private_environment", return_value=self.env),
+                      patch.object(smoke.shutil, "which", return_value=str(self.cli)),
+                      patch.object(smoke, "canonical_attempt_issue", return_value=issue),
+                      patch.object(smoke, "main") as main,
+                      patch.object(smoke.phase_evidence, "record_phase") as recorder,
+                      patch("builtins.input", side_effect=answer), redirect_stdout(StringIO()),
+                      self.assertRaises((RuntimeError, KeyboardInterrupt))):
+                    supervise_subscription(self.base, prepared["receipt_sha256"], reference)
+                main.assert_not_called()
+                recorder.assert_not_called()  # evidence cannot begin before consent/route
+                self.assertEqual(len(controllers), 1)
+                self.assertIsNone(controllers[0]._identity)
+                self.assertEqual(json.loads((self.base / "results.json").read_text())[
+                    "native_attempt"]["state"], "consumed")
+
+    def test_interrupted_native_boundary_stops_exact_harmless_child_and_retains_incomplete_facts(self):
+        popen = subprocess.Popen
+        children = []
+        def spawn(command, **kwargs):
+            # Test double at the runtime boundary; never execute model argv.
+            if command[0] != "unused-fixture-runtime":
+                return popen(command, **kwargs)
+            child = popen([sys.executable, "-I", "-S", "-c",
+                           "import time; time.sleep(30)"], **kwargs)
+            communicate = child.communicate
+            first = True
+            def interrupted(*args, **kw):
+                nonlocal first
+                if first:
+                    first = False
+                    raise KeyboardInterrupt("AUTH-SECRET-SENTINEL")
+                return communicate(*args, **kw)
+            child.communicate = interrupted
+            children.append(child)
+            return child
+        with (patch.object(smoke.subprocess, "Popen", side_effect=spawn),
+              self.assertRaises(KeyboardInterrupt)):
+            execute_model("unused-fixture-runtime", ROOT, self.env, self.base,
+                          "T1-phase1", "offline synthetic cancellation", model="offline/model")
+        self.assertEqual(len(children), 1)
+        self.assertIsNotNone(children[0].poll())
+        for stream in (children[0].stdout, children[0].stderr):
+            stream.close()
+        terminal = json.loads((self.base / "T1-phase1-terminal.json").read_text())
+        self.assertTrue(terminal["interrupted"])
+        self.assertLess(terminal["exit_code"], 0)
+        self.assertNotIn("AUTH-SECRET-SENTINEL", json.dumps(terminal))
 
     def test_synthetic_os_child_chain_accepts_unknown_subscription_price_not_free(self):
         controller = self.controller()
@@ -539,7 +1003,15 @@ class PrivatePreparationTest(unittest.TestCase):
         self.assertNotIn("SENTINEL", json.dumps(record))
         public_evidence(record)
         paid = {**self.model, "cost": [{"input": 1, "output": 0,
-                                      "cache": {"read": 0, "write": 0}}]}
+                                       "cache": {"read": 0, "write": 0}}]}
+        unknown = {k: v for k, v in self.model.items() if k != "cost"}
+        with (self.continuity(),
+              patch.object(smoke, "checked_json", side_effect=[
+                  {"location": {"directory": str(ROOT)}, "data": unknown},
+                  {"location": {"directory": str(ROOT)}, "data": [unknown]}]),
+              self.assertRaisesRegex(RuntimeError, "pricing schema")):
+            model_preflight(str(self.cli), ROOT, self.env, {},
+                            "openai/catalog-only", subscription=controller)
         self.model = paid
         with (self.continuity(),
               patch("smoke_resume_candidate_opencode.native_metadata", side_effect=self.api),

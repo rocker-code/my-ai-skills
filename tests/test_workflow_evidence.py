@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/workflow-evidence"
 sys.path.insert(0, str(ROOT / "scripts"))
 from workflow_evidence import (code_snapshot, export_bundle, from_github, import_bundle, load_manifest,
-                               public_projection, record_dir, runner, scrub, verify_manifest)
+                               public_projection, record_dir, runner, scrub, verify_manifest,
+                               record_phase, save_manifest, hash_file, canonical)
 
 
 class EvidenceTests(unittest.TestCase):
@@ -49,6 +50,265 @@ class EvidenceTests(unittest.TestCase):
     def verify(self, evidence_id, *options):
         result = self.cli("verify", evidence_id, "--format", "json", *options)
         return result.returncode, json.loads(result.stdout)
+
+    def phase(self, action=lambda: None, *, artifacts=None, **kwargs):
+        source = self.repo / "phase.py"
+        source.write_text("def phase():\n    return action()\n")
+        self.git("add", "phase.py")
+        self.git("commit", "-qm", "phase source", "--allow-empty")
+        namespace = {"action": action}
+        exec(compile(source.read_text(), str(source), "exec"), namespace)
+        output = Path(self.temp.name) / "results.json"
+        output.write_text('{"status":"offline-fixture","native_proof":"NOT_RUN"}')
+        output.chmod(0o600)
+        previous = Path.cwd()
+        try:
+            os.chdir(self.repo)
+            eid = record_phase(self.repo, namespace["phase"], obligation=["E1"],
+                               artifacts=artifacts or (lambda: {"results.json": output}), **kwargs)
+        finally:
+            os.chdir(previous)
+        return eid, load_manifest(record_dir(self.repo, eid))
+
+    def test_phase_real_returns_are_not_os_exits_or_required_gates(self):
+        for returned, kind, result in ((None, "none", "passed"), (0, "int", "passed"), (7, "int", "failed")):
+            with self.subTest(returned=returned):
+                calls = []
+                def action():
+                    calls.append(os.getpid())
+                    return returned
+                eid, manifest = self.phase(action)
+                self.assertEqual(calls, [os.getpid()])
+                self.assertEqual(manifest["phase_identity"]["controller_pid"], os.getpid())
+                self.assertIsNone(manifest["exit_code"])
+                self.assertIsNone(manifest["command"]["argv"])
+                self.assertEqual(manifest["phase_completion"], {
+                    "state": "returned", "return_kind": kind, "return_code": returned,
+                    "result": result, "finalized": True, "error_code": None})
+                verified = self.verify(eid)[1]
+                self.assertEqual((verified["state"], verified["result"]), ("verified", result))
+                self.assertEqual(verified["obligations"][0]["gate"], "not_required")
+        for gate in ("local", "hosted"):
+            with self.assertRaisesRegex(ValueError, "required gates"):
+                self.phase(required_gate=gate)
+
+    def test_phase_raised_interrupted_unsupported_and_finalize_failure_are_incomplete(self):
+        def raised():
+            raise ValueError("AUTH-SECRET-SENTINEL")
+        def interrupted():
+            raise KeyboardInterrupt("AUTH-SECRET-SENTINEL")
+        for action, state in ((raised, "raised"), (interrupted, "interrupted"),
+                              (lambda: True, "unknown"), (lambda: {"status": "passed"}, "unknown")):
+            with self.subTest(state=state):
+                eid, manifest = self.phase(action)
+                self.assertEqual(manifest["phase_completion"]["state"], state)
+                self.assertFalse(manifest["phase_completion"]["finalized"])
+                self.assertIsNone(manifest["phase_completion"]["result"])
+                self.assertEqual(self.verify(eid)[1]["state"], "incomplete")
+                self.assertNotIn("AUTH-SECRET-SENTINEL", json.dumps(manifest))
+                self.assertNotIn(b"AUTH-SECRET-SENTINEL",
+                                 (record_dir(self.repo, eid) / "artifacts/execution.log").read_bytes())
+        eid, manifest = self.phase(artifacts=lambda: {"results.json": Path(self.temp.name) / "absent"})
+        self.assertEqual(manifest["phase_completion"]["state"], "finalization_failed")
+        self.assertEqual(self.verify(eid)[1]["state"], "incomplete")
+
+    def test_phase_unknown_contradictory_modes_and_returns_fail_closed(self):
+        import copy
+        eid, original = self.phase()
+        mutations = (
+            lambda m: m.pop("execution_mode"),
+            lambda m: m.update(execution_mode="unknown"),
+            lambda m: m.update(execution_mode="subprocess"),
+            lambda m: m.update(exit_code=0),
+            lambda m: m["command"].update(argv=["synthetic", "success"]),
+            lambda m: m["phase_completion"].update(return_kind="int", return_code=True),
+            lambda m: m["phase_completion"].pop("return_kind"),
+            lambda m: m["phase_completion"].update(unknown=True),
+            lambda m: m["phase_completion"].update(result="failed"),
+            lambda m: m["phase_completion"].update(finalized=False),
+            lambda m: m.update(kind="hosted"),
+            lambda m: m["obligations"][0].update(required_gate="local"),
+            lambda m: m["obligations"][0].update(required_gate="hosted"),
+            lambda m: m["extensions"].update(execution_mode="subprocess"),
+        )
+        for mutation in mutations:
+            manifest = copy.deepcopy(original)
+            mutation(manifest)
+            with self.subTest(manifest=manifest):
+                self.assertEqual(verify_manifest(manifest, record_dir(self.repo, eid), self.repo)["state"],
+                                 "incomplete")
+                save_manifest(record_dir(self.repo, eid), manifest)
+                with self.assertRaises((ValueError, TypeError)):
+                    export_bundle(self.repo, eid, Path(self.temp.name) / "invalid.tar.gz")
+        save_manifest(record_dir(self.repo, eid), original)
+        # Missing completion is not a normally returned None. Interrupted status
+        # and legacy null exit also remain incomplete, independent of text labels.
+        manifest = copy.deepcopy(original)
+        manifest.pop("phase_completion")
+        self.assertEqual(verify_manifest(manifest, record_dir(self.repo, eid), self.repo)["state"], "incomplete")
+
+    def test_phase_marker_detects_partial_downgrade_even_without_phase_fields(self):
+        eid, manifest = self.phase()
+        for key in ("execution_mode", "phase_identity", "phase_completion"):
+            manifest.pop(key)
+        manifest["command"] = {"argv": ["true"], "cwd": "."}
+        manifest["exit_code"] = 0
+        save_manifest(record_dir(self.repo, eid), manifest)
+        self.assertEqual(self.verify(eid)[1]["state"], "incomplete")
+        with self.assertRaisesRegex(ValueError, "downgrade"):
+            export_bundle(self.repo, eid, Path(self.temp.name) / "bad.tar.gz")
+
+    def test_phase_roundtrip_public_projection_and_neutral_extensions_preserved(self):
+        eid, manifest = self.phase()
+        manifest["extensions"]["neutral"] = {"future": "retained"}
+        directory = record_dir(self.repo, eid)
+        save_manifest(directory, manifest)
+        package = Path(self.temp.name) / "phase.tar.gz"
+        # Undeclared private files must never be traversed/read/hashed/exported.
+        (directory / "opencode.db").write_text("AUTH-SECRET-SENTINEL")
+        with patch("workflow_evidence.hash_file", wraps=hash_file) as hashing:
+            export_bundle(self.repo, eid, package)
+        self.assertFalse(any(call.args[0].name == "opencode.db" for call in hashing.call_args_list))
+        with tarfile.open(package) as bundle:
+            self.assertEqual(bundle.getnames()[0], "manifest.json")
+            self.assertNotIn("opencode.db", bundle.getnames())
+            self.assertNotIn(b"AUTH-SECRET-SENTINEL", b"".join(
+                bundle.extractfile(m).read() for m in bundle.getmembers()))
+        clone = Path(self.temp.name) / "phase-clone"
+        subprocess.run(["git", "clone", "-q", str(self.repo), str(clone)], check=True)
+        subprocess.run(["git", "-C", str(clone), "remote", "set-url", "origin",
+                        "https://github.com/example/repo.git"], check=True)
+        self.assertEqual(import_bundle(clone, package), eid)
+        imported = load_manifest(record_dir(clone, eid))
+        self.assertEqual(imported, manifest)
+        self.assertEqual(verify_manifest(imported, record_dir(clone, eid), clone)["state"], "verified")
+        second = Path(self.temp.name) / "second-phase.tar.gz"
+        export_bundle(clone, eid, second)
+        self.assertEqual(import_bundle(self.repo, second, allow_existing=True), eid)
+        projection = public_projection(manifest)
+        self.assertEqual(set(projection), {"schema", "evidence_id", "kind", "repository", "code",
+                                          "status", "execution_mode"})
+        self.assertEqual(projection["execution_mode"], "inprocess-phase")
+        self.assertEqual(verify_manifest(projection, directory, self.repo, projection=True)["state"], "metadata_only")
+        self.assertEqual(verify_manifest(projection, directory, self.repo, projection=True,
+                                         required_obligations=["FINAL"])["state"], "not_applicable")
+        # Old public allowlist cannot silently approve the new field; old local
+        # reader's null-exit rule also remains true for every phase.
+        self.assertIsNone(manifest["exit_code"])
+
+    def test_phase_artifact_schema_symlink_private_mode_and_auth_names_block_before_read(self):
+        output = Path(self.temp.name) / "opencode.db"
+        output.write_text("NEVER-READ-SENTINEL")
+        with patch("workflow_evidence.phase_read", side_effect=AssertionError("must not read DB")):
+            eid, manifest = self.phase(artifacts=lambda: {"opencode.db": output})
+        self.assertEqual(manifest["phase_completion"]["state"], "finalization_failed")
+        output = Path(self.temp.name) / "results.json"
+        for kind in ("symlink", "permissions", "secret"):
+            with self.subTest(kind=kind):
+                def outputs():
+                    output.unlink()
+                    if kind == "symlink":
+                        output.symlink_to(Path(self.temp.name) / "opencode.db")
+                    else:
+                        output.write_text('{"nested":{"account_id":"AUTH-SECRET-SENTINEL"}}'
+                                          if kind == "secret" else "{}")
+                        output.chmod(0o644 if kind == "permissions" else 0o600)
+                    return {"results.json": output}
+                eid, manifest = self.phase(artifacts=outputs)
+                self.assertEqual(manifest["phase_completion"]["state"], "finalization_failed")
+                output.unlink()
+
+    def test_phase_transport_checks_manifest_and_members_before_copying_payload(self):
+        eid, manifest = self.phase()
+        directory = record_dir(self.repo, eid)
+        good = Path(self.temp.name) / "good-phase.tar.gz"
+        export_bundle(self.repo, eid, good)
+        malformed = Path(self.temp.name) / "malformed-phase.tar.gz"
+        for shape in ("late-manifest", "undeclared-db", "unknown-mode"):
+            with self.subTest(shape=shape):
+                with tarfile.open(good) as source, tarfile.open(malformed, "w:gz") as target:
+                    if shape == "undeclared-db":
+                        info = tarfile.TarInfo("artifacts/opencode.db")
+                        info.size = len(b"NEVER-EXTRACT-OR-HASH")
+                        target.addfile(info, io.BytesIO(b"NEVER-EXTRACT-OR-HASH"))
+                    members = source.getmembers()
+                    if shape == "late-manifest":
+                        members = members[1:] + members[:1]
+                    for member in members:
+                        data = source.extractfile(member).read()
+                        if member.name == "manifest.json" and shape == "unknown-mode":
+                            data = canonical({**manifest, "execution_mode": "unknown"})
+                            member.size = len(data)
+                        target.addfile(member, io.BytesIO(data))
+                extracted = []
+                original = tarfile.TarFile.extractfile
+                def extract(bundle, member):
+                    extracted.append(member.name if hasattr(member, "name") else member)
+                    return original(bundle, member)
+                with (patch.object(tarfile.TarFile, "extractfile", extract),
+                      self.assertRaises(ValueError)):
+                    import_bundle(self.repo, malformed)
+                self.assertNotIn("artifacts/opencode.db", extracted)
+                self.assertNotIn("artifacts/outputs/results.json", extracted)
+        self.assertEqual(self.verify(eid)[1]["state"], "verified")
+
+    def test_phase_marker_tamper_missing_file_and_final_manifest_failure_stay_incomplete(self):
+        eid, manifest = self.phase()
+        directory = record_dir(self.repo, eid)
+        log = directory / "artifacts/execution.log"
+        log.write_text(log.read_text().replace('"qualname":"phase"', '"qualname":"other"'))
+        manifest["artifacts"][0]["sha256"] = hash_file(log)
+        manifest["artifacts"][0]["bytes"] = log.stat().st_size
+        save_manifest(directory, manifest)  # checksum alone cannot replace marker identity
+        self.assertEqual(self.verify(eid)[1]["state"], "incomplete")
+        with self.assertRaises(ValueError):
+            export_bundle(self.repo, eid, Path(self.temp.name) / "bad-marker.tar.gz")
+        eid, _ = self.phase()
+        (record_dir(self.repo, eid) / "artifacts/outputs/results.json").unlink()
+        self.assertEqual(self.verify(eid)[1]["state"], "incomplete")
+        original_save = save_manifest
+        allocated = []
+        def failure(directory, manifest):
+            if allocated:
+                raise OSError("AUTH-SECRET-SENTINEL")
+            allocated.append(manifest["evidence_id"])
+            original_save(directory, manifest)
+        with patch("workflow_evidence.save_manifest", side_effect=failure), self.assertRaises(OSError):
+            self.phase()
+        retained = load_manifest(record_dir(self.repo, allocated[0]))
+        self.assertEqual(retained["phase_completion"]["state"], "running")
+        self.assertIsNone(retained["phase_completion"]["result"])
+        self.assertEqual(self.verify(allocated[0])[1]["state"], "incomplete")
+
+    def test_actual_legacy_reader_never_interprets_phase_return_as_subprocess_success(self):
+        # Immutable approved pre-Apply reader, not a new implementation of its rule.
+        legacy_source = subprocess.check_output([
+            "git", "-C", str(ROOT), "show",
+            "a1c4a04fd4bd3843c622e92cf00a450481ea7282:scripts/workflow_evidence.py"], text=True)
+        legacy = {"__name__": "legacy_evidence_offline_fixture"}
+        exec(compile(legacy_source, "<approved-legacy-reader>", "exec"), legacy)
+        eid, manifest = self.phase()
+        directory = record_dir(self.repo, eid)
+        self.assertEqual(legacy["verify_manifest"](manifest, directory, self.repo)["state"], "incomplete")
+        projection = public_projection(manifest)
+        self.assertEqual(legacy["verify_manifest"](projection, directory, self.repo,
+                                                   projection=True)["state"], "incomplete")
+
+    def test_phase_transport_finalization_failure_invalidates_pass_and_partial_bundle(self):
+        for failed_step in ("export", "import"):
+            with self.subTest(step=failed_step):
+                def failure(*args, **kwargs):
+                    if failed_step == "export":
+                        Path(args[2]).write_bytes(b"owned-partial-output")
+                    raise ValueError("AUTH-SECRET-SENTINEL")
+                with patch("workflow_evidence." + failed_step + "_bundle", side_effect=failure):
+                    eid, manifest = self.phase(transport=True)
+                self.assertEqual(manifest["phase_completion"]["state"], "finalization_failed")
+                self.assertIsNone(manifest["phase_completion"]["result"])
+                self.assertEqual(self.verify(eid)[1]["state"], "incomplete")
+                directory = record_dir(self.repo, eid)
+                self.assertFalse((directory / "phase-bundle.tar.gz").exists())
+                self.assertNotIn("AUTH-SECRET-SENTINEL", json.dumps(manifest))
 
     def test_record_requires_obligation(self):
         result = self.cli("record", "--", "true")

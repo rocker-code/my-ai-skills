@@ -3,7 +3,8 @@
 
 Run from a clean candidate commit: python3 tests/smoke_resume_candidate_opencode.py
 This is a separate check from smoke_global_opencode.py (published-revision discovery).
-It never uses real GitHub resources or the operator's OpenCode configuration.
+Model fixtures never use real GitHub resources or the operator's OpenCode configuration.
+The future foreground entry reads only issue61's public canonical grant before auth.
 Only an exact clean candidate HEAD is eligible; retained results are audited evidence.
 """
 import argparse
@@ -34,9 +35,15 @@ import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import workflow_evidence as phase_evidence
+
 CONTROLLER_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 CHANGE = "issue-61-opencode-safe-resume"
-APPROVED_PROPOSAL = "c0224e1e8825def93c2d72e1e78685b22cfd8e29"
+APPROVED_PROPOSAL = "a1c4a04fd4bd3843c622e92cf00a450481ea7282"
+NATIVE_RUN = "wf-20261116T064328Z-45cb0ecc"
+GRANT_START = "<!-- issue61-native-attempt:start -->"
+GRANT_END = "<!-- issue61-native-attempt:end -->"
 RUNTIME_VERSION = "2.4.2"
 RUNTIME_SHA256 = "523b1502d1d556998b0904235cef65eb1d8cf8362b4e2faa7ae7a170c9a44cd4"
 RUNTIME_SOURCE = "fc31a485317970bcf6be7b431a9830aaef875731"
@@ -2098,7 +2105,7 @@ def evidence_files(base):
             continue
         if path.is_symlink() or not path.is_file() or path.resolve().parent != base.resolve():
             raise RuntimeError("unsafe evidence artifact")
-        text = path.read_text()
+        text = phase_evidence.phase_read(path).decode()
         if path.suffix == ".json":
             public_evidence(json.loads(text))
         elif path.suffix == ".jsonl":
@@ -2125,6 +2132,7 @@ def persist(base, results):
     path = base / "results.json"
     temporary = base / "results.json.new"
     temporary.write_text(json.dumps(results, indent=2) + "\n")
+    temporary.chmod(0o600)
     temporary.replace(path)
 
 
@@ -2513,7 +2521,9 @@ def prepare_private_pause(base, cli, revision, env, *, expected=None):
 
 def model_preflight(cli, repo, env, record, override=None, *, subscription=None):
     """Native metadata only, same isolated env/location; never generate or retry."""
-    record.update(source="RESUME_SMOKE_MODEL" if override else "native:/api/model/default",
+    input_source = ("explicit-local-catalog-selection" if override and subscription is not None else
+                    "RESUME_SMOKE_MODEL" if override else "native:/api/model/default")
+    record.update(source=input_source,
                   requested=override, status="metadata_unavailable", inference_verified=False)
     def api(path):
         data = checked_json([cli, "api", "--standalone", "get", path], cwd=repo, env=env)
@@ -2554,7 +2564,7 @@ def model_preflight(cli, repo, env, record, override=None, *, subscription=None)
     catalog = api("/api/model")
     requested = override or (f"{default['providerID']}/{default['id']}" if default else None)
     matches = [m for m in catalog if f"{m['providerID']}/{m['id']}" == requested]
-    record.update({"source": "RESUME_SMOKE_MODEL" if override else "native:/api/model/default",
+    record.update({"source": input_source,
                    "requested": requested, "default": summary(default) if default else None,
                    "catalog_matches": [summary(m) for m in matches],
                    "inference_verified": False, "status": "rejected"})
@@ -2573,6 +2583,10 @@ def model_preflight(cli, repo, env, record, override=None, *, subscription=None)
     if subscription is not None:
         if not isinstance(subscription, SupervisedSubscription):
             raise RuntimeError("subscription requires live trusted supervisor, not JSON")
+        if "cost" not in model or not isinstance(costs, list):
+            raise RuntimeError("subscription pricing schema unavailable")
+        if model.get("status") != "active":
+            raise RuntimeError("selected subscription model is not active")
         subscription.recheck(cli, repo, env, model)
         # Empty means display unknown only in this separately authorized route.
         if costs != [] and not zero:
@@ -2870,6 +2884,7 @@ def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                text=True, start_new_session=True)
     timed_out = False
+    interruption = None
     try:
         stdout, stderr = process.communicate(timeout=360)
     except subprocess.TimeoutExpired:
@@ -2880,8 +2895,17 @@ def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             stdout, stderr = process.communicate(timeout=20)
+    except (KeyboardInterrupt, InterruptedError) as error:
+        interruption = error
+        os.killpg(process.pid, signal.SIGTERM)  # only this owned model process group
+        try:
+            stdout, stderr = process.communicate(timeout=20)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate(timeout=20)
     terminal = {
         "pid": process.pid, "exit_code": process.returncode, "timed_out": timed_out,
+        "interrupted": interruption is not None,
         "event_projection": "supported-native-proof-fields-v1",
         "stderr_policy": "diagnostic-code-only",
         "candidate": git(ROOT, os.environ, "rev-parse", "HEAD"),
@@ -2925,6 +2949,8 @@ def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
                 "stderr": str(base / f"{case}-stderr.log"), "malformed_lines": malformed,
                 "error_events": [e for e in events if e.get("type") == "error"]}
     (base / f"{case}-terminal.json").write_text(json.dumps({**terminal, **metadata}))
+    if interruption is not None:
+        raise interruption  # partial native facts retained; phase remains incomplete
     if (timed_out or process.returncode != 0 or malformed or metadata["error_events"] or
             not texts or len(sessions) != 1 or (session and sessions != [session])):
         metadata["error"] = (f"{case}: terminal/events incomplete; exit={process.returncode}, "
@@ -2941,7 +2967,7 @@ def prepared_phase(base, results, case, record, launch, take_snapshot):
     persist(base, results)
     try:
         value = launch()
-    except Exception as error:
+    except BaseException as error:
         record.update(status="failed", error=redact(str(error), os.environ))
         results.update(status="failed", finished_at=datetime.now(timezone.utc).isoformat())
         if isinstance(error, ModelExecutionError):
@@ -2967,7 +2993,8 @@ def prepared_phase(base, results, case, record, launch, take_snapshot):
     return value
 
 
-def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscription=None):
+def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscription=None,
+         selected_model=None):
     os.umask(0o077)
     cli = shutil.which("opencode")
     openspec = shutil.which("openspec")
@@ -2985,6 +3012,13 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
     if subscription is not None:
         if not isinstance(subscription, SupervisedSubscription):
             raise RuntimeError("live supervised subscription required")
+        if (selected_model is None or selected_model != getattr(subscription, "_selected_model", None) or
+                not getattr(subscription, "_native_attempt", None) or
+                getattr(subscription, "_full_run_started", False)):
+            raise RuntimeError("one explicitly confirmed full subscription run required")
+        subscription._continuity(cli, subscription.env)
+        subscription._require_completion()
+        subscription._full_run_started = True
         private_base = subscription.base
         receipt_sha256 = subscription.preparation["receipt_sha256"]
     base = Path(private_base) if private_base else (
@@ -3028,6 +3062,8 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
                "opencode": run([cli, "--version"], cwd=ROOT, env=env),
                "openspec": run([openspec, "--version"], cwd=ROOT, env=env),
                "scenarios": {}}
+    if subscription is not None:
+        results["native_attempt"] = subscription._native_attempt
     # No model if the pinned canonical Verify or its supported CLI is unavailable.
     t1_inspection_sources(ROOT, case="T5", generator_version=results["openspec"])
     # The public installer has no source override. Inject the local Git transport
@@ -3312,7 +3348,7 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
                 privatize_new_files(directory)
             record = {"phase": phase, "prompt": message, "before": before,
                       "published_read_only_locators": phase_locators[phase - 1],
-                      "native": None, "runtime_receipts": receipts,
+                      "native": None, "runtime_receipts": {str(k): v for k, v in receipts.items()},
                       "shell_guard": guard,
                       "fixture_proposal_facts": provenance,
                       "permissions": permissions, "previous_session_id": session,
@@ -3325,6 +3361,7 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
                 shell_guard_preflight(cli, repo, case_env, guard)
                 persist(base, results)
                 model = model_preflight(cli, repo, case_env, record["model_preflight"],
+                                        selected_model if subscription is not None else
                                         os.environ.get("RESUME_SMOKE_MODEL"),
                                         subscription=subscription)
                 results["model"] = model
@@ -3409,7 +3446,8 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
                       "native": native_provenance, "native_discovery": native_discovery,
                       "native_invocation": native_invocation,
                       "native_instructions": native_instructions,
-                      "resume_invocation": resume_invocation, "runtime_receipts": receipts,
+                       "resume_invocation": resume_invocation,
+                       "runtime_receipts": {str(k): v for k, v in receipts.items()},
                        "runtime_reads": receipt_reads, "outcome": outcome,
                        "github_reads": new_reads, "status": "observed"})
             record["model_proposal_proved"] = proposal_proved
@@ -3538,34 +3576,194 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
           "and events against T1/T5/T7 before claiming scenario PASS")
 
 
-def supervise_subscription(base, receipt_sha256):
-    """Person-owned terminal entry; intentionally NO inference authorization mode.
+def canonical_attempt_issue():
+    """Fixed public GET, no gh credentials, proxy, redirects or arbitrary endpoint."""
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            raise RuntimeError("canonical grant redirect refused")
+    url = "https://api.github.com/repos/rocker-code/my-ai-skills/issues/61"
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        with opener.open(urllib.request.Request(url, headers={
+                "Accept": "application/vnd.github+json", "User-Agent": "issue61-local-controller"}),
+                timeout=20) as response:
+            if response.status != 200 or response.url != url:
+                raise RuntimeError("canonical grant source unavailable")
+            raw = response.read(1_000_001)
+        if len(raw) > 1_000_000:
+            raise ValueError("oversized canonical issue")
+        issue = json.loads(raw)
+        if (issue.get("number") != 61 or issue.get("state") != "open" or
+                issue.get("html_url") != "https://github.com/rocker-code/my-ai-skills/issues/61"):
+            raise ValueError("canonical issue identity mismatch")
+        return issue
+    except (OSError, ValueError, urllib.error.URLError):
+        raise RuntimeError("canonical grant unavailable; stop before login") from None
 
-    Ending this invocation destroys live authority. A serialized result cannot
-    resume it. A separately authorized future caller must retain this same object
-    to use main(subscription=...), never reconstruct it from results.json.
+
+def attempt_grant(supervisor, reference):
+    """Current canonical decision, NOT a caller-provided approval file/bool.
+
+    Trusted coordinator/operator with issue-body access, not cryptographic
+    native-session authentication. A hash binds content, not its authorship.
+    """
+    if not isinstance(reference, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", reference):
+        raise RuntimeError("specific canonical coordinator grant required before login")
+    issue = canonical_attempt_issue()
+    body = issue.get("body", "")
+    if body.count(GRANT_START) != 1 or body.count(GRANT_END) != 1:
+        raise RuntimeError("specific canonical coordinator grant absent/ambiguous")
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate grant field")
+            result[key] = value
+        return result
+    try:
+        value = json.loads(body.split(GRANT_START)[1].split(GRANT_END)[0],
+                           object_pairs_hook=unique)
+    except ValueError:
+        raise RuntimeError("canonical grant malformed") from None
+    expected = {
+        "decision": "authorized", "issue": 61, "run": NATIVE_RUN,
+        "candidate": supervisor.revision, "approved_proposal": APPROVED_PROPOSAL,
+        "runtime_sha256": RUNTIME_SHA256, "profile_alias": supervisor._profile_alias,
+        "receipt_sha256": supervisor._preparation_sha256, "scope": ["T1", "T5", "T7"],
+        "attempts": 1, "economic_route": "chatgpt-subscription-quota",
+        "model": "explicit-post-auth-catalog-selection", "fresh_local_confirmation": True,
+        "paid_api": False, "fallback": False, "retry": False}
+    if (not isinstance(value, dict) or set(value) != expected.keys() | {"coordinator_session"} or
+            any(type(value[k]) is not type(v) or value[k] != v for k, v in expected.items()) or
+            not re.fullmatch(r"ses_[A-Za-z0-9]+", str(value.get("coordinator_session", ""))) or
+            "sha256:" + hashlib.sha256(phase_evidence.canonical(value)).hexdigest() != reference):
+        raise RuntimeError("canonical grant revoked/divergent; stop before login")
+    return {"reference": reference, "issue": 61, "run": NATIVE_RUN,
+            "candidate": supervisor.revision, "profile_alias": supervisor._profile_alias,
+            "state": "consumed", "attempts": 1}
+
+
+def subscription_catalog(supervisor, env):
+    supervisor._continuity(supervisor.cli, env)
+    supervisor._require_completion()
+    with OwnedMetadataRuntime(supervisor.cli, ROOT, env) as runtime:
+        catalog = native_metadata(supervisor.cli, ROOT, env, "/api/model", runtime=runtime)
+    if not isinstance(catalog, list):
+        raise RuntimeError("subscription catalog unavailable")
+    eligible = []
+    for model in catalog:
+        if not isinstance(model, dict) or model.get("providerID") != "openai":
+            continue
+        caps, costs = model.get("capabilities", {}), model.get("cost", [])
+        if (model.get("enabled") is True and model.get("status") == "active" and
+                "cost" in model and isinstance(costs, list) and
+                model.get("type") == "chat" and caps.get("tools") is True and
+                "text" in caps.get("input", []) and "text" in caps.get("output", []) and
+                isinstance(model.get("id"), str) and
+                re.fullmatch(r"[A-Za-z0-9_.:/-]+", model["id"]) and
+                (costs == [] or bool(costs) and all(
+                    all(type(v) in (int, float) and v == 0 for v in (
+                        cost.get("input"), cost.get("output"), cost.get("cache", {}).get("read"),
+                        cost.get("cache", {}).get("write"))) for cost in costs))):
+            supervisor.recheck(supervisor.cli, ROOT, env, model)
+            eligible.append("openai/" + model["id"])
+    if not eligible or len(set(eligible)) != len(eligible):
+        raise RuntimeError("eligible subscription catalog absent/ambiguous")
+    return eligible
+
+
+def supervise_subscription(base, receipt_sha256, grant_reference=None):
+    previous = {}
+    def interrupted(signum, frame):
+        raise InterruptedError("foreground native attempt interrupted")
+    try:
+        for signum in (signal.SIGTERM, signal.SIGHUP):
+            previous[signum] = signal.signal(signum, interrupted)
+        return _foreground_subscription(base, receipt_sha256, grant_reference)
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
+def _foreground_subscription(base, receipt_sha256, grant_reference):
+    """Future person-owned foreground entry: one complete explicitly granted run.
+
+    No auth output recorder, restart, broker, implicit model, retry or fallback.
+    The only operational auth caller retains the exact Supervisor until evidence
+    has been finalized and transported. JSON never reconstructs that authority.
     """
     os.umask(0o077)
+    SupervisedSubscription._terminal_identity()  # no profile read/prompt on agent non-TTY
     cli = shutil.which("opencode")
     if not cli:
         raise RuntimeError("native runtime unavailable; stop before login")
     revision = git(ROOT, os.environ, "rev-parse", "HEAD")
     env = private_environment(base, cli, os.environ)
     with closing(SupervisedSubscription(base, cli, env, revision, receipt_sha256)) as supervisor:
+        def native_phase():
+            return main(subscription=supervisor, selected_model=selected)
+        if (getattr(phase_evidence, "PHASE_API", None) != 1 or
+                any(not callable(getattr(phase_evidence, name, None)) for name in
+                    ("record_phase", "phase_support", "verify_manifest", "export_bundle", "import_bundle")) or
+                sha(Path(phase_evidence.__file__)) != sha(ROOT / "scripts/workflow_evidence.py")):
+            raise RuntimeError("post-auth recorder unsupported; stop before login")
+        phase_evidence.phase_support(ROOT, native_phase)  # pre-auth, no record/log yet
+        grant = attempt_grant(supervisor, grant_reference)
+        prior = base / "results.json"
+        if prior.exists() and "native_attempt" in json.loads(private_bytes(base, prior)):
+            raise RuntimeError("attempt already consumed/uncertain; no auth retry")
         supervisor._preflight_terminal(env)  # technical gates BEFORE asking the person
         print("Terminal próprio obrigatório. isatty não detecta recording pelo host/emulador.")
-        print("Sem autorização de inferência neste modo; ao sair, perde-se a cadeia viva.")
         privacy = input("Confirma terminal sem gravação/persistência externa? [sim/N] ") == "sim"
         quota = input("Autoriza consumo da quota da assinatura, não API paga? [sim/N] ") == "sim"
         entitlement = input("Confirma assinatura Plus/Pro disponível? [sim/N] ") == "sim"
+        if not (privacy and quota and entitlement):
+            raise RuntimeError("local pre-auth consent refused; no login")
+        if attempt_grant(supervisor, grant_reference) != grant:
+            raise RuntimeError("canonical grant changed; no login")
+        supervisor._native_attempt = grant
+        persist(base, {"status": "blocked", "inference_verified": False,
+                       "native_attempt": grant, "native_proof": "NOT_RUN"})
         supervisor.manual_login(env, quota_authorized=quota, entitlement_confirmed=entitlement,
                                 terminal_privacy_confirmed=privacy)
-        result = {"status": "blocked", "inference_verified": False,
-                  "native_proof": "NOT_RUN", "route_proof": "pending-provider-catalog",
-                  "local_observation": supervisor.public_receipt(),
-                  "continuation": "ending-loses-live-authority; separate-authorization-required"}
-        persist(base, result)  # allowlisted metadata only, never profile/DB/auth output
-        print(json.dumps(result, sort_keys=True))
+        catalog = subscription_catalog(supervisor, env)
+        print("Catálogo elegível (cost=[] é display unknown, não grátis):")
+        print("\n".join(catalog))  # references only, no provider/account payload
+        selected = input("Informe uma referência exata deste catálogo (sem default): ").strip()
+        if selected not in catalog:
+            raise RuntimeError("explicit catalog selection required; no inference")
+        if input(f"Confirma Plus/Pro, quota autorizada e UM run completo T1/T5/T7 com {selected}? [sim/N] ") != "sim":
+            raise RuntimeError("fresh local confirmation refused; no inference")
+        supervisor._selected_model = selected
+        if attempt_grant(supervisor, grant_reference) != grant:
+            raise RuntimeError("canonical grant changed; no inference")
+        if selected not in subscription_catalog(supervisor, env):
+            raise RuntimeError("subscription catalog changed; no inference")
+        model_preflight(cli, ROOT, env, {}, selected, subscription=supervisor)
+        # Auth streams have ended; recording starts ONLY at this boundary.
+        def phase_outputs():
+            outputs = {p.name: p for p in evidence_files(base)}
+            # Missing expected native facts cannot disappear from a successful
+            # full callback merely because the filename collector skips absences.
+            for case, phases in (("T1", (1,)), ("T5", (1,)), ("T7", (1, 2))):
+                for phase in phases:
+                    for suffix in ("events.jsonl", "terminal.json", "stderr.log"):
+                        name = f"{case}-phase{phase}-{suffix}"
+                        outputs.setdefault(name, base / name)
+            outputs.setdefault("results.json", base / "results.json")
+            return outputs
+        evidence_id = phase_evidence.record_phase(
+            ROOT, native_phase, obligation=["T1", "T5", "T7"],
+            artifacts=phase_outputs, transport=True)
+        directory = phase_evidence.record_dir(ROOT, evidence_id)
+        manifest = phase_evidence.load_manifest(directory)
+        verified = phase_evidence.verify_manifest(manifest, directory, ROOT)
+        if verified["state"] != "verified":
+            raise RuntimeError(f"post-auth phase evidence incomplete: {evidence_id}")
+        print(json.dumps({"evidence_id": evidence_id, "execution_mode": "inprocess-phase",
+                          "result": verified["result"], "native_review": "pending",
+                          "final_gate": "NOT_RUN"}, sort_keys=True))
+        return evidence_id  # closing releases authority ONLY after verify/roundtrip
 
 
 def entrypoint(argv=None):
@@ -3576,14 +3774,17 @@ def entrypoint(argv=None):
     modes.add_argument("--resume-private", type=Path,
                        help="revalidate same preparation metadata only; never login/infer")
     modes.add_argument("--supervise-subscription", type=Path,
-                       help="person's own terminal only; local OS observer, no inference")
+                       help="future granted full run in person's terminal; never run through agent tools")
     parser.add_argument("--receipt-sha256", help="independently retained preparation checksum")
+    parser.add_argument("--grant-reference", help="sha256 of current specific decision in issue61 body")
     args = parser.parse_args(argv)
     if bool(args.resume_private or args.supervise_subscription) != bool(args.receipt_sha256):
         parser.error("resume/supervise requires --receipt-sha256 (and vice versa)")
     if args.supervise_subscription:
-        supervise_subscription(args.supervise_subscription, args.receipt_sha256)
+        return supervise_subscription(args.supervise_subscription, args.receipt_sha256, args.grant_reference)
     else:
+        if args.grant_reference:
+            parser.error("--grant-reference requires --supervise-subscription")
         main(prepare_only=args.prepare_private, private_base=args.resume_private,
              receipt_sha256=args.receipt_sha256)
 
