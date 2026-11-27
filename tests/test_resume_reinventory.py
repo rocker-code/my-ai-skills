@@ -4,6 +4,7 @@ from io import StringIO
 import json
 import copy
 import hashlib
+import fcntl
 import os
 from pathlib import Path
 import runpy
@@ -12,6 +13,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import termios
+import time
+import select
+import signal
 import unittest
 from unittest.mock import patch
 from unittest.mock import Mock
@@ -46,7 +51,8 @@ from smoke_resume_candidate_opencode import (disposable_opencode_shim,
                                               SupervisedSubscription, public_evidence,
                                               evidence_files, persist, chatgpt_method,
                                               private_binding, private_bytes, native_event_projection,
-                                              OwnedMetadataRuntime, native_metadata)
+                                              OwnedMetadataRuntime, native_metadata,
+                                              entrypoint, supervise_subscription)
 
 
 class PrivatePreparationTest(unittest.TestCase):
@@ -94,30 +100,44 @@ class PrivatePreparationTest(unittest.TestCase):
 
     def continuity(self):
         return patch("smoke_resume_candidate_opencode.git",
-                     side_effect=lambda root, env, *args: self.revision if args[0] == "rev-parse" else "")
+                     side_effect=lambda root, env, *args: (
+                         self.revision if args == ("rev-parse", "HEAD") else
+                         "synthetic-code-object" if args[0] in ("rev-parse", "hash-object") else ""))
 
-    def complete(self, controller, *, callback=None, exit_code=0):
-        process = Mock(pid=123, returncode=exit_code)
-        process.wait.return_value = process.poll.return_value = exit_code
+    def complete(self, controller, *, exit_code=0, real_terminal=False, child_source=None):
+        # Fixed harmless OS children ONLY. Never execute the auth argv under test.
+        popen = subprocess.Popen
+        auth = []
+        source = child_source or f"import sys; sys.exit({exit_code})"
+        def synthetic_spawn(command, **kwargs):
+            if command[1:3] == ["auth", "login"]:
+                self.assertEqual(command, [str(self.cli), "auth", "login", "openai",
+                                          "--standalone", "--log-level", "none",
+                                          "--method", self.method["id"]])
+                self.assertEqual({key: kwargs[key] for key in
+                                  ("stdin", "stdout", "stderr", "shell", "start_new_session")},
+                                 {"stdin": None, "stdout": None, "stderr": None,
+                                  "shell": False, "start_new_session": False})
+                process = popen([sys.executable, "-I", "-S", "-c", source], **kwargs)
+                auth.append(process)
+                return process
+            self.assertEqual(command, [sys.executable, "-I", "-S", "-c", "pass"])
+            return popen(command, **kwargs)
         def api(cli, repo, env, path, **kwargs):
             if path == "/api/integration/openai":
-                return {**self.integration, "connections": [] if process.wait.call_count == 0
-                        else [self.connection]}
+                return {**self.integration, "connections": [self.connection] if auth else []}
             return self.api(cli, repo, env, path)
-        callback = callback or (lambda p, alias: {"worker_id": "synthetic-worker",
-                    "execution_id": "synthetic-callback", "pid": p.pid,
-                    "exit_code": p.returncode, "profile_alias": alias})
-        with (self.continuity(), patch("smoke_resume_candidate_opencode.os.isatty", return_value=True),
+        from contextlib import nullcontext
+        tty = (nullcontext() if real_terminal else patch.object(
+            controller, "_terminal_identity", return_value=(((1, 2, 3),) * 3, os.getpgrp())))
+        with (self.continuity(), tty,
               patch("smoke_resume_candidate_opencode.native_metadata", side_effect=api),
-              patch("smoke_resume_candidate_opencode.subprocess.Popen", return_value=process) as spawn):
+              patch("smoke_resume_candidate_opencode.subprocess.Popen", side_effect=synthetic_spawn),
+              patch("smoke_resume_candidate_opencode.execute_model", side_effect=AssertionError("no inference"))):
             controller.manual_login(self.env, quota_authorized=True,
-                                    entitlement_confirmed=True, on_terminal=callback)
-        command = spawn.call_args.args[0]
-        self.assertEqual(command[-2:], ["--method", self.method["id"]])
-        self.assertNotIn("stdout", spawn.call_args.kwargs)
-        self.assertNotIn("stderr", spawn.call_args.kwargs)
-        self.assertNotIn("stdin", spawn.call_args.kwargs)
-        return process
+                                    entitlement_confirmed=True, terminal_privacy_confirmed=True)
+        self.assertEqual(len(auth), 1)
+        return auth[0]
 
     def test_metadata_pause_same_profile_resume_no_inference_and_filtered_environment(self):
         with patch("smoke_resume_candidate_opencode.execute_model",
@@ -184,25 +204,30 @@ class PrivatePreparationTest(unittest.TestCase):
                     side_effect=[self.integration, {}, [self.model]]), self.assertRaises(RuntimeError)):
             prepare_private_pause(self.base, str(self.cli), self.revision, self.env)
 
-    def test_supervisor_exclusivity_nonterminal_missing_authorization_and_callback(self):
+    def test_supervisor_exclusivity_nonterminal_missing_authorization_and_external_callback(self):
         controller = self.controller()
         with self.assertRaises(BlockingIOError):
             SupervisedSubscription(self.base, str(self.cli), self.env,
                                    self.revision, controller.preparation["receipt_sha256"])
-        with (patch("smoke_resume_candidate_opencode.os.isatty", return_value=False),
+        with (self.continuity(), patch("smoke_resume_candidate_opencode.os.isatty", return_value=False),
               patch("smoke_resume_candidate_opencode.subprocess.Popen",
                     side_effect=AssertionError("no login")), self.assertRaises(RuntimeError)):
             controller.manual_login(self.env, quota_authorized=True,
-                                    entitlement_confirmed=True, on_terminal=lambda *_: {})
-        for quota, entitlement, callback in ((False, True, lambda *_: {}),
-                                              (True, False, lambda *_: {}), (True, True, None)):
+                                    entitlement_confirmed=True, terminal_privacy_confirmed=True)
+        for quota, entitlement, privacy in ((False, True, True),
+                                            (True, False, True), (True, True, False)):
             with (patch("smoke_resume_candidate_opencode.os.isatty", return_value=True),
                   patch("smoke_resume_candidate_opencode.subprocess.Popen",
                         side_effect=AssertionError("no login")), self.assertRaises(RuntimeError)):
                 controller.manual_login(self.env, quota_authorized=quota,
-                                        entitlement_confirmed=entitlement, on_terminal=callback)
-        with self.assertRaises(RuntimeError):
-            self.complete(controller, callback=lambda *_: {})
+                                        entitlement_confirmed=entitlement,
+                                        terminal_privacy_confirmed=privacy)
+        for callback in (None, lambda *_: {"completed": True}, {"completed": True}):
+            with (patch("smoke_resume_candidate_opencode.subprocess.Popen") as spawn,
+                  self.assertRaises(TypeError)):
+                controller.manual_login(self.env, quota_authorized=True,
+                                        entitlement_confirmed=True, on_terminal=callback)
+            spawn.assert_not_called()
         self.assertIsNone(controller.connection)
 
     def test_cancelled_supervised_process_cannot_prove_authentication(self):
@@ -213,7 +238,290 @@ class PrivatePreparationTest(unittest.TestCase):
             controller.public_receipt()
         self.assertIsNone(controller.connection)
 
-    def test_real_observer_chain_unit_fixture_accepts_unknown_subscription_price_not_free(self):
+    def test_local_identity_lease_profile_runtime_head_and_code_fail_before_spawn(self):
+        controller = self.controller()
+        changes = (
+            ("_controller", (-1, 0, 0, 0)),
+            ("_lease", (-1, -1)),
+            ("_profile_alias", "wrong-profile"),
+            ("_execution", "external-execution-id"),
+            ("binding", {**controller.binding, "candidate": "other"}),
+            ("_attempted", True),
+        )
+        for name, value in changes:
+            with (self.subTest(change=name), self.continuity(),
+                  patch.object(controller, name, value),
+                  patch("smoke_resume_candidate_opencode.subprocess.Popen") as spawn,
+                  self.assertRaises(RuntimeError)):
+                controller.manual_login(self.env, quota_authorized=True,
+                                        entitlement_confirmed=True, terminal_privacy_confirmed=True)
+            spawn.assert_not_called()
+        for args in (("rev-parse", "HEAD"), ("hash-object", "tests/smoke_resume_candidate_opencode.py")):
+            def changed(root, env, *command):
+                if command == args:
+                    return "changed"
+                return (self.revision if command == ("rev-parse", "HEAD") else
+                        "synthetic-code-object" if command[0] in ("rev-parse", "hash-object") else "")
+            with (patch("smoke_resume_candidate_opencode.git", side_effect=changed),
+                  patch("smoke_resume_candidate_opencode.subprocess.Popen") as spawn,
+                  self.assertRaises(RuntimeError)):
+                controller.manual_login(self.env, quota_authorized=True,
+                                        entitlement_confirmed=True, terminal_privacy_confirmed=True)
+            spawn.assert_not_called()
+        self.cli.write_text("changed runtime")
+        with (self.continuity(), patch("smoke_resume_candidate_opencode.subprocess.Popen") as spawn,
+              self.assertRaises(RuntimeError)):
+            controller.manual_login(self.env, quota_authorized=True,
+                                    entitlement_confirmed=True, terminal_privacy_confirmed=True)
+        spawn.assert_not_called()
+
+    def test_failed_capability_probe_cannot_spawn_auth_or_be_replayed(self):
+        controller = self.controller()
+        popen = subprocess.Popen
+        calls = []
+        def failed_probe(command, **kwargs):
+            calls.append(command)
+            self.assertEqual(command, [sys.executable, "-I", "-S", "-c", "pass"])
+            return popen([sys.executable, "-I", "-S", "-c", "raise SystemExit(7)"], **kwargs)
+        with (self.continuity(),
+              patch.object(controller, "_terminal_identity", return_value="synthetic-terminal"),
+              patch("smoke_resume_candidate_opencode.subprocess.Popen", side_effect=failed_probe)):
+            with self.assertRaises(RuntimeError):
+                controller.manual_login(self.env, quota_authorized=True,
+                                        entitlement_confirmed=True, terminal_privacy_confirmed=True)
+            with self.assertRaises(RuntimeError):
+                controller.manual_login(self.env, quota_authorized=True,
+                                        entitlement_confirmed=True, terminal_privacy_confirmed=True)
+        self.assertEqual(len(calls), 1)
+        self.assertIsNone(controller.process)
+        self.assertIsNone(controller._completion)
+
+    def test_terminal_descriptor_and_foreground_checks(self):
+        good = Mock(st_dev=1, st_ino=2, st_rdev=3)
+        with (patch("smoke_resume_candidate_opencode.os.isatty", return_value=True),
+              patch("smoke_resume_candidate_opencode.os.get_inheritable", return_value=True),
+              patch("smoke_resume_candidate_opencode.os.tcgetpgrp", return_value=os.getpgrp()),
+              patch("smoke_resume_candidate_opencode.os.fstat", return_value=good)):
+            self.assertIsNotNone(SupervisedSubscription._terminal_identity())
+            for target, value in (
+                    ("os.get_inheritable", False), ("os.tcgetpgrp", -1),
+                    ("os.isatty", False)):
+                with (patch("smoke_resume_candidate_opencode." + target, return_value=value),
+                      self.assertRaises(RuntimeError)):
+                    SupervisedSubscription._terminal_identity()
+            with (patch("smoke_resume_candidate_opencode.os.fstat",
+                        side_effect=[good, good, Mock(st_dev=1, st_ino=9, st_rdev=8)]),
+                  self.assertRaises(RuntimeError)):
+                SupervisedSubscription._terminal_identity()
+
+    def test_pty_exact_harmless_child_wait_and_redirect_block_no_auth_or_inference(self):
+        """Real owned disposable PTY; all provider metadata synthetic, NO auth."""
+        master, slave = os.openpty()
+        read_fd, write_fd = os.pipe()
+        pid = os.fork()
+        if pid == 0:
+            os.close(read_fd)
+            os.close(master)
+            result = {"ok": False}
+            try:
+                os.setsid()
+                fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+                for fd in (0, 1, 2):
+                    os.dup2(slave, fd, inheritable=True)
+                if slave > 2:
+                    os.close(slave)
+                with closing(self.controller()) as controller:
+                    saved = os.dup(1)
+                    with open(os.devnull, "w") as redirected:
+                        os.dup2(redirected.fileno(), 1)
+                        with (self.continuity(),
+                              patch("smoke_resume_candidate_opencode.subprocess.Popen") as spawn,
+                              self.assertRaises(RuntimeError)):
+                            controller.manual_login(
+                                self.env, quota_authorized=True, entitlement_confirmed=True,
+                                terminal_privacy_confirmed=True)
+                        spawn.assert_not_called()
+                    os.dup2(saved, 1, inheritable=True)
+                    os.close(saved)
+                    child = self.complete(controller, real_terminal=True, child_source=(
+                        "import os; assert all(os.isatty(fd) and os.tcgetpgrp(fd)==os.getpgrp() "
+                        "for fd in (0,1,2)); print('OFFLINE-PTY-SENTINEL')"))
+                    with self.continuity():
+                        receipt = controller.public_receipt()
+                    self.assertIs(controller._observed_process, child)
+                    self.assertIsNot(child, controller._probe)
+                    self.assertEqual(child.returncode, 0)
+                    self.assertEqual(receipt["completion"]["completion_source"], "os-wait")
+                    self.assertEqual(receipt["completion"]["observer_kind"], "local-controller")
+                    self.assertNotIn("worker_id", json.dumps(receipt))
+                    self.assertNotIn("OFFLINE-PTY-SENTINEL", json.dumps(receipt))
+                    public_evidence(receipt)
+                    result = {"ok": True, "child": child.pid, "probe": controller._probe.pid,
+                              "observer": receipt["completion"]["observer_kind"]}
+            except BaseException as error:
+                result = {"ok": False, "error": type(error).__name__}
+            os.write(write_fd, json.dumps(result).encode())
+            os.close(write_fd)
+            os._exit(0 if result["ok"] else 1)
+        os.close(write_fd)
+        os.close(slave)
+        observed, report = b"", b""
+        deadline = time.monotonic() + 15
+        try:
+            while time.monotonic() < deadline:
+                ready, _, _ = select.select([read_fd, master], [], [], max(0, deadline-time.monotonic()))
+                for fd in ready:
+                    try:
+                        block = os.read(fd, 8192)
+                    except OSError:
+                        block = b""
+                    if fd == master:
+                        observed += block
+                    else:
+                        report += block
+                if report:
+                    break
+            if not report:
+                os.kill(pid, signal.SIGKILL)  # only this fixture-owned child
+            _, status = os.waitpid(pid, 0)
+            self.assertEqual(status, 0, report)
+            self.assertTrue(json.loads(report)["ok"])
+            self.assertNotEqual(json.loads(report)["child"], json.loads(report)["probe"])
+            # Capture is permitted ONLY for this synthetic fixture, never production login.
+            if b"OFFLINE-PTY-SENTINEL" not in observed:
+                try:
+                    observed += os.read(master, 8192)
+                except OSError:
+                    pass
+            self.assertIn(b"OFFLINE-PTY-SENTINEL", observed)
+        finally:
+            os.close(read_fd)
+            os.close(master)
+
+    def test_os_signal_child_failure_and_restart_or_serialized_receipt_do_not_authorize(self):
+        controller = self.controller()
+        with self.assertRaises(RuntimeError):
+            self.complete(controller, child_source="import os,signal; os.kill(os.getpid(),signal.SIGTERM)")
+        self.assertLess(controller.process.returncode, 0)
+        with (self.continuity(), self.assertRaises(RuntimeError)):
+            controller.public_receipt()
+        with (self.continuity(), patch("smoke_resume_candidate_opencode.subprocess.Popen") as spawn,
+              self.assertRaises(RuntimeError)):
+            controller.manual_login(self.env, quota_authorized=True,
+                                    entitlement_confirmed=True, terminal_privacy_confirmed=True)
+        spawn.assert_not_called()
+        controller.close()
+        with self.assertRaises(RuntimeError):
+            controller.recheck(str(self.cli), ROOT, self.env, self.model)
+        # JSON with favorable fields has no live OS object authority.
+        with (patch("smoke_resume_candidate_opencode.checked_json", side_effect=[
+                {"location": {"directory": str(ROOT)}, "data": self.model},
+                {"location": {"directory": str(ROOT)}, "data": [self.model]}]),
+              self.assertRaises(RuntimeError)):
+            model_preflight(str(self.cli), ROOT, self.env, {},
+                            subscription={"completed": True, "observer_kind": "local-controller"})
+
+    def wait_failure(self, kind):
+        controller = self.controller()
+        popen = subprocess.Popen
+        children = []
+        def spawn(command, **kwargs):
+            if command[1:3] != ["auth", "login"]:
+                return popen(command, **kwargs)  # harmless capability probe
+            child = popen([sys.executable, "-I", "-S", "-c",
+                           "import time; time.sleep(30)"], **kwargs)
+            children.append(child)
+            wait = child.wait
+            first = True
+            def interrupted_wait(timeout=None):
+                nonlocal first
+                if first:
+                    first = False
+                    if kind == "signal":
+                        os.kill(os.getpid(), signal.SIGTERM)  # handler installed by controller
+                    if kind == "timeout":
+                        raise subprocess.TimeoutExpired("synthetic-child", timeout)
+                    raise KeyboardInterrupt()
+                return wait(timeout=timeout)
+            child.wait = interrupted_wait
+            return child
+        with (self.continuity(),
+              patch.object(controller, "_terminal_identity", return_value="synthetic-terminal"),
+              patch("smoke_resume_candidate_opencode.native_metadata", side_effect=self.api),
+              patch("smoke_resume_candidate_opencode.subprocess.Popen", side_effect=spawn),
+              self.assertRaises((KeyboardInterrupt, InterruptedError, subprocess.TimeoutExpired))):
+            controller.manual_login(self.env, quota_authorized=True,
+                                    entitlement_confirmed=True, terminal_privacy_confirmed=True)
+        self.assertEqual(len(children), 1)
+        self.assertIsNotNone(children[0].poll())
+        self.assertIsNone(controller._completion)
+        self.assertIsNone(controller.connection)
+
+    def test_local_wait_timeout_stops_only_owned_child(self):
+        self.wait_failure("timeout")
+
+    def test_local_wait_cancellation_stops_only_owned_child(self):
+        self.wait_failure("cancel")
+
+    def test_local_controller_signal_stops_only_owned_child(self):
+        handler = signal.getsignal(signal.SIGTERM)
+        self.wait_failure("signal")
+        self.assertEqual(signal.getsignal(signal.SIGTERM), handler)
+
+    def test_probe_wrong_child_receipt_and_restart_cannot_restore_completion(self):
+        controller = self.controller()
+        self.complete(controller)
+        with self.continuity():
+            receipt = controller.public_receipt()
+            with self.assertRaises(RuntimeError):
+                copy.copy(controller).public_receipt()
+            for name, value in (("process", controller._probe),
+                                ("_completion", json.loads(json.dumps(receipt["completion"]))),
+                                ("_execution", "outer-pane-exit"),
+                                ("_controller", (-1, 0, 0, 0))):
+                with (self.subTest(change=name), patch.object(controller, name, value),
+                      self.assertRaises(RuntimeError)):
+                    controller.public_receipt()
+        controller.close()
+        self.integration["connections"] = [self.connection]
+        with (patch("smoke_resume_candidate_opencode.native_metadata", side_effect=self.api),
+              patch("smoke_resume_candidate_opencode.execute_model",
+                    side_effect=AssertionError("no inference")), self.assertRaises(RuntimeError)):
+            SupervisedSubscription(self.base, str(self.cli), self.env,
+                                   self.revision, controller.preparation["receipt_sha256"])
+
+    def test_changed_method_or_terminal_after_capability_stops_before_auth(self):
+        controller = self.controller()
+        with (self.continuity(),
+              patch.object(controller, "_terminal_identity", return_value="synthetic-terminal")):
+            controller._preflight_terminal(self.env)  # harmless OS probe only
+            self.assertIsNone(controller.process)
+            for name, value in (("_probe_binding", {"completed": True}),
+                                ("_terminal", "different-terminal"),
+                                ("method", {**self.method, "id": "wrong-method"})):
+                with (self.subTest(change=name), patch.object(controller, name, value),
+                      patch("smoke_resume_candidate_opencode.subprocess.Popen") as spawn,
+                      self.assertRaises(RuntimeError)):
+                    controller.manual_login(self.env, quota_authorized=True,
+                                            entitlement_confirmed=True, terminal_privacy_confirmed=True)
+                spawn.assert_not_called()
+
+    def test_terminal_entrypoint_no_inference_and_technical_failure_before_prompts(self):
+        with (patch("smoke_resume_candidate_opencode.supervise_subscription") as local,
+              patch("smoke_resume_candidate_opencode.main") as inference):
+            entrypoint(["--supervise-subscription", str(self.base), "--receipt-sha256", "a"*64])
+        local.assert_called_once_with(self.base, "a"*64)
+        inference.assert_not_called()
+        controller = self.controller()
+        with (patch("smoke_resume_candidate_opencode.SupervisedSubscription", return_value=controller),
+              patch("smoke_resume_candidate_opencode.shutil.which", return_value=str(self.cli)),
+              self.continuity(), patch("builtins.input", side_effect=AssertionError("no human prompt")),
+              patch("smoke_resume_candidate_opencode.subprocess.Popen") as spawn,
+              self.assertRaises(RuntimeError)):
+            supervise_subscription(self.base, controller.preparation["receipt_sha256"])
+        spawn.assert_not_called()
+
+    def test_synthetic_os_child_chain_accepts_unknown_subscription_price_not_free(self):
         controller = self.controller()
         self.complete(controller)
         self.integration["connections"] = [self.connection]

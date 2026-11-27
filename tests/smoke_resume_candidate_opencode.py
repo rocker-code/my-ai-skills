@@ -34,8 +34,9 @@ import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTROLLER_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 CHANGE = "issue-61-opencode-safe-resume"
-APPROVED_PROPOSAL = "bde179386f8b2283d8045cd03a61acd2a506efb2"
+APPROVED_PROPOSAL = "c0224e1e8825def93c2d72e1e78685b22cfd8e29"
 RUNTIME_VERSION = "2.4.2"
 RUNTIME_SHA256 = "523b1502d1d556998b0904235cef65eb1d8cf8362b4e2faa7ae7a170c9a44cd4"
 RUNTIME_SOURCE = "fc31a485317970bcf6be7b431a9830aaef875731"
@@ -2591,7 +2592,7 @@ def model_preflight(cli, repo, env, record, override=None, *, subscription=None)
 class SupervisedSubscription:
     """Trusted controller only, outside model tools; never load a proof from JSON.
 
-    The process object and callback are observed here, not claimed by the model.
+    The exact child is observed by OS wait here, not by an external callback.
     Keep this object alive through all phases. Restart/transfer without the
     authentic controller is blocked, not recovered from a checkbox/checksum.
     0700/flock are cooperative controls, not hostile-same-user isolation.
@@ -2613,38 +2614,160 @@ class SupervisedSubscription:
             raise
         self.binding = private_binding(base, cli, revision)
         self.method = self.preparation["method"]
+        self._preparation_sha256 = receipt_sha256
+        self._profile_alias = self.preparation["profile_alias"]
         self.connection = None  # private runtime credential ID, never evidence
         self.process = None
-        self.callback = None
+        self._auth_child = None
+        self._observed_process = None
+        self._completion = None
+        self._attempted = False
+        self._controller = self._process_identity(os.getpid())
+        self._execution = secrets.token_hex(24)  # local harness ID, NOT an agent session
+        self._lease = self._lease_identity()
+        self._identity = self
+        self._identity_binding = self._local_identity()
+        self._terminal = None
+        self._probe = None
+        self._probe_binding = None
         self.quota_authorized = self.entitlement_confirmed = False
 
     def close(self):
+        self._identity = None
+        self._completion = None
+        self.connection = None
+        self._stop_child()
         self.lock.close()
 
-    def manual_login(self, env, *, quota_authorized, entitlement_confirmed, on_terminal):
-        # Called ONLY from the person's direct native terminal after review.
-        # Never call via an agent shell/logger. No pipes, capture, auth export,
-        # token parsing, DB queries or URLs/codes in this controller's report.
-        if (self.process is not None or not all(os.isatty(fd) for fd in (0, 1, 2)) or
-                quota_authorized is not True or entitlement_confirmed is not True or
-                not callable(on_terminal)):
-            raise RuntimeError("manual native terminal/authorization/observer unavailable; stop before login")
+    def _local_identity(self):
+        return (self._controller, self._execution, self._lease, self._profile_alias,
+                self.revision, str(self.base), self.cli, APPROVED_PROPOSAL, CONTROLLER_SHA256,
+                tuple(sorted(self.method.items())))
+
+    @staticmethod
+    def _process_identity(pid):
+        # Linux /proc process-start ticks distinguish PID reuse; no auth storage.
+        try:
+            fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+            return (pid, int(fields[19]), os.getsid(pid), os.getpgid(pid))
+        except (OSError, ValueError, IndexError):
+            raise RuntimeError("local controller/process identity unavailable") from None
+
+    def _lease_identity(self):
+        if self.lock.closed:
+            raise RuntimeError("local controller lease closed")
+        fd = os.fstat(self.lock.fileno())
+        path = (self.base / "supervisor.lock").lstat()
+        if (not stat.S_ISREG(path.st_mode) or path.st_nlink != 1 or
+                path.st_uid != os.getuid() or stat.S_IMODE(path.st_mode) != 0o600 or
+                (fd.st_dev, fd.st_ino) != (path.st_dev, path.st_ino)):
+            raise RuntimeError("local controller lease replaced")
+        fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd.st_dev, fd.st_ino
+
+    def _code_identity(self):
+        path = "tests/smoke_resume_candidate_opencode.py"
+        if (sha(Path(__file__)) != CONTROLLER_SHA256 or
+                git(ROOT, os.environ, "rev-parse", f"{self.revision}:{path}") !=
+                git(ROOT, os.environ, "hash-object", path)):
+            raise RuntimeError("local controller source differs from loaded clean candidate")
+        git(ROOT, os.environ, "merge-base", "--is-ancestor", APPROVED_PROPOSAL, self.revision)
+
+    @staticmethod
+    def _terminal_identity():
+        try:
+            identities = []
+            for fd in (0, 1, 2):
+                if (not os.isatty(fd) or not os.get_inheritable(fd) or
+                        os.tcgetpgrp(fd) != os.getpgrp()):
+                    raise RuntimeError("direct inherited foreground terminal required")
+                info = os.fstat(fd)
+                identities.append((info.st_dev, info.st_ino, info.st_rdev))
+            if len(set(identities)) != 1:
+                raise RuntimeError("stdin/stdout/stderr must share the same terminal")
+            return tuple(identities), os.getpgrp()
+        except OSError:
+            raise RuntimeError("direct inherited foreground terminal unavailable") from None
+
+    def _preflight_terminal(self, env):
+        if type(self) is not SupervisedSubscription or self._attempted:
+            raise RuntimeError("local controller absent/injected or attempt already consumed")
         self._continuity(self.cli, env)
+        terminal = self._terminal_identity()
+        if self._terminal is not None and terminal != self._terminal:
+            raise RuntimeError("local controller terminal changed")
+        self._terminal = terminal
+        if self._probe is None:
+            # Fixed harmless child, no provider command/output. Never an auth receipt.
+            self._probe = subprocess.Popen(
+                [sys.executable, "-I", "-S", "-c", "pass"], cwd=ROOT, env=env,
+                shell=False, stdin=None, stdout=None, stderr=None, start_new_session=False)
+            try:
+                identity = self._process_identity(self._probe.pid)
+                code = self._probe.wait(timeout=5)
+                if code != 0:
+                    raise RuntimeError("local OS wait capability probe failed")
+                self._probe_binding = (self._probe, identity, self._controller,
+                                       self._execution, self._lease, self._terminal)
+            finally:
+                self._stop_child(self._probe)
+        if (type(self._probe_binding) is not tuple or
+                self._probe_binding[0] is not self._probe or self._probe.poll() != 0 or
+                self._probe_binding[2:] != (self._controller, self._execution,
+                                            self._lease, self._terminal)):
+            raise RuntimeError("local OS wait capability unavailable/unbound")
+        self._continuity(self.cli, env)
+
+    def _stop_child(self, process=None):
+        process = self._auth_child if process is None else process
+        # Never signal a process group: auth shares the person's foreground group.
+        if process is not None and process.poll() is None:
+            process.terminate()  # ONLY the Popen object created by this controller
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+    def manual_login(self, env, *, quota_authorized, entitlement_confirmed,
+                     terminal_privacy_confirmed):
+        # ONLY the person's own terminal after independent review; no callback,
+        # stream capture, auth export, token/URL parsing, or auth database access.
+        if (quota_authorized is not True or entitlement_confirmed is not True or
+                terminal_privacy_confirmed is not True):
+            raise RuntimeError("manual quota/entitlement/terminal privacy confirmation required")
+        self._preflight_terminal(env)
         before = native_metadata(self.cli, ROOT, env, "/api/integration/openai")
         if before["connections"] or chatgpt_method(before) != self.method:
             raise RuntimeError("fresh method/inventory changed; stop before login")
         command = [self.cli, "auth", "login", "openai", "--standalone",
                    "--log-level", "none", "--method", self.method["id"]]
-        self.process = subprocess.Popen(command, cwd=ROOT, env=env)
-        code = self.process.wait()
-        # Native parent callback must identify THIS actual process completion.
-        callback = on_terminal(self.process, self.preparation["profile_alias"])
-        if (code != 0 or not isinstance(callback, dict) or
-                set(callback) != {"worker_id", "execution_id", "pid", "exit_code", "profile_alias"} or
-                not callback["worker_id"] or not callback["execution_id"] or
-                callback["pid"] != self.process.pid or callback["exit_code"] != code or
-                callback["profile_alias"] != self.preparation["profile_alias"]):
-            raise RuntimeError("manual authentication incomplete/cancelled or callback unbound")
+        self._preflight_terminal(env)  # recheck FD/lease/HEAD after metadata, before spawn
+        self._attempted = True  # failed/cancelled attempts cannot retry on this object
+        previous = {}
+        def interrupted(signum, frame):
+            raise InterruptedError("local authentication interrupted")
+        try:
+            for signum in (signal.SIGTERM, signal.SIGHUP):
+                previous[signum] = signal.signal(signum, interrupted)
+            self.process = subprocess.Popen(
+                command, cwd=ROOT, env=env, shell=False,
+                stdin=None, stdout=None, stderr=None, start_new_session=False)
+            self._auth_child = self.process
+            identity = self._process_identity(self.process.pid)
+            code = self.process.wait(timeout=300)
+            if code != 0 or self.process is self._probe:
+                raise RuntimeError("manual authentication incomplete/cancelled")
+            self._continuity(self.cli, env)
+            if self._terminal_identity() != self._terminal:
+                raise RuntimeError("local terminal continuity lost")
+        except BaseException:
+            self._completion = None
+            self._stop_child()
+            raise
+        finally:
+            for signum, handler in previous.items():
+                signal.signal(signum, handler)
         after = native_metadata(self.cli, ROOT, env, "/api/integration/openai")
         connections = after.get("connections", [])
         if (chatgpt_method(after) != self.method or len(connections) != 1 or
@@ -2653,24 +2776,44 @@ class SupervisedSubscription:
                 not isinstance(connections[0].get("id"), str)):
             raise RuntimeError("manual authentication route/inventory inconclusive")
         self.connection = connections[0]["id"]
-        self.callback = callback
+        self._observed_process = self.process
+        self._completion = (identity, code, self._execution, self._controller,
+                            copy.deepcopy(self.binding), copy.deepcopy(self.method), self._lease)
         self.quota_authorized = quota_authorized
         self.entitlement_confirmed = entitlement_confirmed
 
     def _continuity(self, cli, env):
         dynamic = {"OPENCODE_PASSWORD", "RESUME_GH_ROOT", "RESUME_RUNTIME_ROOT",
                    "OPENCODE_CONFIG_CONTENT"}
-        if (self.lock.closed or cli != self.cli or
+        if (self._identity is not self or self._local_identity() != self._identity_binding or
+                self._controller != self._process_identity(os.getpid()) or
+                self._lease_identity() != self._lease or cli != self.cli or
+                self.preparation["profile_alias"] != self._profile_alias or
+                hashlib.sha256(private_bytes(
+                    self.base, self.base / "private-preparation.json")).hexdigest() !=
+                self._preparation_sha256 or
                 {k: v for k, v in env.items() if k not in dynamic} != self.env or
                 private_binding(self.base, cli, self.revision) != self.binding or
                 git(ROOT, os.environ, "rev-parse", "HEAD") != self.revision or
                 git(ROOT, os.environ, "status", "--porcelain")):
             raise RuntimeError("supervised profile/runtime/HEAD/config/environment continuity lost")
+        self._code_identity()
+
+    def _require_completion(self):
+        if (self._identity is not self or self._controller != self._process_identity(os.getpid()) or
+                self._lease_identity() != self._lease or
+                type(self._completion) is not tuple or not self._attempted or
+                self._observed_process is not self.process or self.process is not self._auth_child or
+                self.process is self._probe or
+                self.process.poll() != 0 or self._completion[0][0] != self.process.pid or
+                self._completion[1:] != (0, self._execution, self._controller,
+                                        self.binding, self.method, self._lease)):
+            raise RuntimeError("live local-controller OS completion unavailable")
 
     def recheck(self, cli, repo, env, model):
         self._continuity(cli, env)
-        if (not self.process or self.process.poll() != 0 or not self.callback or
-                not self.connection or self.quota_authorized is not True or
+        self._require_completion()
+        if (not self.connection or self.quota_authorized is not True or
                 self.entitlement_confirmed is not True):
             raise RuntimeError("subscription method/completion/consent proof pending")
         with OwnedMetadataRuntime(cli, repo, env) as runtime:
@@ -2690,14 +2833,25 @@ class SupervisedSubscription:
             raise RuntimeError("subscription provider/catalog mismatch")
 
     def public_receipt(self):
-        if not self.callback or not self.connection:
+        self._continuity(self.cli, self.env)
+        self._require_completion()
+        if (not self.connection or self.quota_authorized is not True or
+                self.entitlement_confirmed is not True):
             raise RuntimeError("subscription completion not observed")
         return {key: self.preparation[key] for key in
                 ("profile_alias", "candidate", "approved_proposal", "runtime_sha256",
                  "runtime_source", "method", "receipt_sha256")} | {
                     "connection_alias": "sole-new-oauth", "before_count": 0, "after_count": 1,
-                    "completion": {key: self.callback[key] for key in
-                                   ("worker_id", "execution_id", "pid", "exit_code")},
+                    "completion": {
+                        "observer_kind": "local-controller", "completion_source": "os-wait",
+                        "execution_id": self._execution,
+                        "controller_pid": self._controller[0],
+                        "controller_start": self._controller[1],
+                        "controller_os_session": self._controller[2],
+                        "controller_process_group": self._controller[3],
+                        "controller_sha256": CONTROLLER_SHA256,
+                        "pid": self.process.pid, "process_start": self._completion[0][1],
+                        "exit_code": self._completion[1]},
                     "quota_authorized": True, "entitlement_confirmed": True}
 
 
@@ -3384,16 +3538,55 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
           "and events against T1/T5/T7 before claiming scenario PASS")
 
 
-if __name__ == "__main__":
+def supervise_subscription(base, receipt_sha256):
+    """Person-owned terminal entry; intentionally NO inference authorization mode.
+
+    Ending this invocation destroys live authority. A serialized result cannot
+    resume it. A separately authorized future caller must retain this same object
+    to use main(subscription=...), never reconstruct it from results.json.
+    """
+    os.umask(0o077)
+    cli = shutil.which("opencode")
+    if not cli:
+        raise RuntimeError("native runtime unavailable; stop before login")
+    revision = git(ROOT, os.environ, "rev-parse", "HEAD")
+    env = private_environment(base, cli, os.environ)
+    with closing(SupervisedSubscription(base, cli, env, revision, receipt_sha256)) as supervisor:
+        supervisor._preflight_terminal(env)  # technical gates BEFORE asking the person
+        print("Terminal próprio obrigatório. isatty não detecta recording pelo host/emulador.")
+        print("Sem autorização de inferência neste modo; ao sair, perde-se a cadeia viva.")
+        privacy = input("Confirma terminal sem gravação/persistência externa? [sim/N] ") == "sim"
+        quota = input("Autoriza consumo da quota da assinatura, não API paga? [sim/N] ") == "sim"
+        entitlement = input("Confirma assinatura Plus/Pro disponível? [sim/N] ") == "sim"
+        supervisor.manual_login(env, quota_authorized=quota, entitlement_confirmed=entitlement,
+                                terminal_privacy_confirmed=privacy)
+        result = {"status": "blocked", "inference_verified": False,
+                  "native_proof": "NOT_RUN", "route_proof": "pending-provider-catalog",
+                  "local_observation": supervisor.public_receipt(),
+                  "continuation": "ending-loses-live-authority; separate-authorization-required"}
+        persist(base, result)  # allowlisted metadata only, never profile/DB/auth output
+        print(json.dumps(result, sort_keys=True))
+
+
+def entrypoint(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--prepare-private", action="store_true",
                        help="prepare metadata-only private profile; never login/infer")
     modes.add_argument("--resume-private", type=Path,
                        help="revalidate same preparation metadata only; never login/infer")
+    modes.add_argument("--supervise-subscription", type=Path,
+                       help="person's own terminal only; local OS observer, no inference")
     parser.add_argument("--receipt-sha256", help="independently retained preparation checksum")
-    args = parser.parse_args()
-    if bool(args.resume_private) != bool(args.receipt_sha256):
-        parser.error("--resume-private requires --receipt-sha256 (and vice versa)")
-    main(prepare_only=args.prepare_private, private_base=args.resume_private,
-         receipt_sha256=args.receipt_sha256)
+    args = parser.parse_args(argv)
+    if bool(args.resume_private or args.supervise_subscription) != bool(args.receipt_sha256):
+        parser.error("resume/supervise requires --receipt-sha256 (and vice versa)")
+    if args.supervise_subscription:
+        supervise_subscription(args.supervise_subscription, args.receipt_sha256)
+    else:
+        main(prepare_only=args.prepare_private, private_base=args.resume_private,
+             receipt_sha256=args.receipt_sha256)
+
+
+if __name__ == "__main__":
+    entrypoint()

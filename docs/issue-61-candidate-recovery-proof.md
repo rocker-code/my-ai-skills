@@ -1,6 +1,103 @@
 # Prova isolada de retomada — issue #61
 
-## Handoff atual — observador local pre-spawn (Planning somente)
+## Handoff atual — Apply offline somente 3.12
+
+Entrada pinada `c0224e1e8825def93c2d72e1e78685b22cfd8e29`, run
+`wf-20261116T064328Z-45cb0ecc`, worker nativo próprio
+`ses_de5a24849ffeIcQ1XGPACG08tk`. O pai informou aprovação independente
+`ses_de5a527aaffedMY8Gf0gasfVE1` (APPROVED_FOR_FRESH_APPLY,
+ARCHITECTURE OK, sem MUST FIX) e aceitou a transferência. Reserva normal
+do checkout existente, sem takeover/aceite de drift. AGENTS canônico da
+raiz, política atual e todos os artefatos pinados lidos; Apply oficial
+gerado/instructions usados. Somente 3.12 implementada, 19 itens anteriores
+preservados, agora 20/22. 3.4/4.3 continuam pendentes.
+
+Implementação em `tests/smoke_resume_candidate_opencode.py`, sem serviço,
+SDK, registry ou framework: observador interno vincula identidade do próprio
+objeto/processo OS/start, execução local/nonce, código carregado/hash/blob Git,
+pin revisado, runtime, método, perfil/checksum e lease ao preflight. Cópia do
+objeto, callback/JSON/completed externo, divergência conhecida ou lease fechado
+não concedem autoridade. FDs0/1/2 devem ser herdáveis, do mesmo TTY e foreground.
+Probe fixo Python sem output comprova spawn/wait, com espécie/objeto distintos
+do filho auth. O código retém o Popen exato, observa wait com limite, trata
+exit não-zero/sinal/cancelamento/timeout sem retry e termina somente filhos
+próprios; nunca sinaliza o grupo foreground da pessoa.
+
+A interface local nova conserva prepare/resume metadata-only. Seu modo de
+supervisão faz gates técnicos antes de prompts não secretos, exige consentimento
+de quota, entitlement e terminal sem recording externo; nenhum callable/
+worker_id do caller. I/O auth usa lista fixa/shell=False/FDs None herdados,
+sem PIPE/tee/communicate/logger ou criação de PTY em produção. Recibo público
+é allowlisted `local-controller/os-wait`, não callback de ferramenta nem sessão
+nativa de agente. Não prova autoria criptográfica ou ausência de gravação pelo
+host/emulador. Código dos guards, catálogo/projeção segura, prompts e oráculos
+T1/T5/T7 permanece protegido; só o pin aprovado foi atualizado no cabeçalho.
+
+**Sem inferência automática:** este modo termina com native proof NOT_RUN,
+rota ainda pending-provider-catalog e aviso de perda da cadeia viva ao sair.
+Não há modo de autorização remota, import de Supervisor autenticado ou
+reconstrução por recibo. Uma chamada futura a main(subscription=...) depende
+do mesmo objeto vivo e de autorização separada real do coordenador, mais
+conexão/método/provider/catalog/quota/entitlement; JSON não substitui isso.
+O CLI entregue não resolve essa futura autorização nem promete retomar após
+encerrar. Ramo credential-free all-zero inalterado; cost=[] no ramo autorizado
+continua display unknown, não zero/grátis. Nenhuma rota ou entitlement real
+foi confirmada neste Apply.
+
+### Matriz L1 e prova offline
+
+| Risco/aceite | Código e menor prova em test_resume_reinventory.py | Resultado |
+| --- | --- | --- |
+| Identidade/capacidade antes de segredo | `_continuity`, `_code_identity`, `_preflight_terminal`; negativos de identidade/execução/lease/perfil/runtime/HEAD/hash, callable externo, probe falho e binding alterado | PASS offline, nenhum spawn auth nos negativos |
+| Terminal herdado e foreground | `_terminal_identity`; non-TTY/FDs divergentes/não herdáveis/grupo errado; fixture PTY real e stdout redirecionado negado | PASS sintético, não prova terminal externo |
+| Filho exato e limites | `manual_login` e `_stop_child`; filho OS inofensivo/wait real, exit não-zero/sinal, timeout/cancelamento e SIGTERM do controlador com cleanup próprio | PASS offline, zero comandos reais auth |
+| Probe/pane/JSON não são auth | `_require_completion`; probe como filho, execução errada, recibo dict, cópia do objeto e restart com conexão existente rejeitados | PASS offline, nenhuma sessão/Skill nativa comprovada |
+| Continuidade e economia | `recheck`/`public_receipt`, A1/A2/A3/R1 e testes existentes; preço desconhecido autorizado versus API paga/rota/proof divergentes | PASS offline, entitlement/quota reais UNKNOWN |
+| Não iniciar modelo | `entrypoint`/`supervise_subscription`; wiring sem main e gates antes de input; todas as fixtures usam apenas filhos sintéticos | PASS offline, login/inferência NOT RUN |
+
+A fixture PTY é privada/descartável e só captura a sentinela explícita
+OFFLINE-PTY-SENTINEL de um filho Python inofensivo para conferir ausência nos
+metadados. Não executa auth, não prova OAuth/entitlement/quota e não persiste
+streams. Nenhum callback de agente/terminal foi fabricado: observação OS real
+somente desses filhos sintéticos. Fonte/callers conferidos por fallback direto
+porque query de grafo manual_login retornou grafo vazio. Context7 `/python/cpython`
+consultado: 3.14 não indexada, documentação corrente de Popen/FDs/wait usada.
+
+Amostra inicial: 86 testes, uma falha de fixture: mock global de Popen destinado
+a impedir login também interceptou Git chamado antes do teste non-TTY.
+Diagnóstico pelo traceback; corrigida somente a fixture com stub explícito de
+continuidade Git. Não era falha de auth/runtime nem nova tentativa model-backed.
+Amostra seguinte 90/90 `ev-20261127T002528Z-cad5adad`; após tornar identidade do
+objeto/execução imutavelmente vinculada e acrescentar negativo correspondente,
+91/91 `ev-20261127T002730Z-7bba49fe`. Suíte preliminar completa 347/347,
+`ev-20261127T002800Z-63a27184`, incluindo instalação/reserva/evidência/distribuição
+existentes, sem restaurar execution-state retirado. Recibos vinculam dirty
+candidate c0224e1 + diffs e são **preliminares**, não gates de entrega final.
+IDs de provas posteriores no HEAD limpo de saída ficam fora deste commit.
+Python3.14.8/OpenSpec2.1.1, env-id isolation=offline-synthetic-child-only-v1;
+outputs limitados a logs dos testes/strict no workflow-evidence, fixtures
+descartáveis fora do checkout, sem perfil autenticado/DB/WAL/SHM em artefatos.
+
+Verify oficial invocada para a superfície afetada: completude de 3.12/L1
+comprovada offline, aderência a §6.3 e padrões do harness conferida; change
+global **incompleto** pelos itens 3.4/4.3, sem aprovação de archive. Strict
+change/global e diff-check devem ser repetidos no HEAD limpo de saída.
+Não houve revisão independente desta implementação ainda.
+
+**NOT READY FOR PR — manual/environment BLOCKED.** Próximo: revisão
+independente afetada do commit de saída e destas provas **antes de qualquer
+instrução de login à pessoa**. Depois, se viável, preparo/continuidade fresh
+no mesmo HEAD/perfil e terminal próprio não capturante; recibo/perfil e0 e
+qualquer preparação de outro HEAD estão stale e não foram reutilizados aqui.
+Participação manual/entitlement/rota e autorização separada do run nativo
+continuam pendentes. Todos os treze whole native FAILED, último T1 sem
+dispatch OpenSpec/fenced JSON e T5/T7 NOT RUN, permanecem imutáveis, assim como
+os bytes do attempt-log. Nenhum 14º smoke, login, auth UI, conta/DB pessoal,
+inferência, pane/tuios, instalação de runtime, update global, archive,
+prepare-PR, push ou merge neste worker. Nove bytecodes e cache de grafo
+preexistentes preservados; AGENTS do checkout primário não foi copiado/staged.
+
+## Histórico — observador local pre-spawn (Planning somente)
 
 Entrada limpa `e0cea77d530270d395dd596c0a4556d8a87f1dc3`, plano antes aprovado
 `bde179386f8b2283d8045cd03a61acd2a506efb2`, mesmo run
