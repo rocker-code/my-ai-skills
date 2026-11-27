@@ -245,11 +245,17 @@ class PrivatePreparationTest(unittest.TestCase):
 
     def test_cancelled_supervised_process_cannot_prove_authentication(self):
         controller = self.controller()
+        _, issue, reference = self.grant(controller)
+        with patch.object(smoke, "canonical_attempt_issue", return_value=issue):
+            controller._native_attempt = smoke.consume_attempt(
+                controller, smoke.attempt_grant(controller, reference))
         with self.assertRaises(RuntimeError):
             self.complete(controller, exit_code=1)
         with self.assertRaises(RuntimeError):
             controller.public_receipt()
         self.assertIsNone(controller.connection)
+        self.pause(expected=controller.preparation["receipt_sha256"], lease=controller.lock)
+        self.assertEqual(smoke.attempt_state(self.base, lease=controller.lock), controller._native_attempt)
 
     def test_local_identity_lease_profile_runtime_head_and_code_fail_before_spawn(self):
         controller = self.controller()
@@ -436,6 +442,10 @@ class PrivatePreparationTest(unittest.TestCase):
 
     def wait_failure(self, kind):
         controller = self.controller()
+        _, issue, reference = self.grant(controller)
+        with patch.object(smoke, "canonical_attempt_issue", return_value=issue):
+            controller._native_attempt = smoke.consume_attempt(
+                controller, smoke.attempt_grant(controller, reference))
         popen = subprocess.Popen
         children = []
         def spawn(command, **kwargs):
@@ -469,6 +479,7 @@ class PrivatePreparationTest(unittest.TestCase):
         self.assertIsNotNone(children[0].poll())
         self.assertIsNone(controller._completion)
         self.assertIsNone(controller.connection)
+        self.assertEqual(smoke.attempt_state(self.base, lease=controller.lock), controller._native_attempt)
 
     def test_local_wait_timeout_stops_only_owned_child(self):
         self.wait_failure("timeout")
@@ -573,13 +584,59 @@ class PrivatePreparationTest(unittest.TestCase):
                   self.assertRaises(RuntimeError)):
                 smoke.attempt_grant(controller, reference)
 
+    def test_bound_fresh_attempt_is_consumed_once_and_every_writer_preserves_it(self):
+        controller = self.controller()
+        initial = smoke.attempt_state(self.base, lease=controller.lock)
+        self.assertEqual((initial["state"], initial["attempts"], initial["reference"]),
+                         ("unconsumed", 0, None))
+        self.assertEqual(initial["receipt_sha256"], controller.preparation["receipt_sha256"])
+        _, issue, reference = self.grant(controller)
+        with patch.object(smoke, "canonical_attempt_issue", return_value=issue):
+            grant = smoke.attempt_grant(controller, reference)
+        consumed = smoke.consume_attempt(controller, grant)
+        self.assertEqual((consumed["state"], consumed["attempts"], consumed["reference"]),
+                         ("consumed", 1, reference))
+        for payload in ({"status": "metadata_only"}, {"status": "blocked", "error": "synthetic"},
+                        {"status": "failed", "scenarios": {}},
+                        {"native_attempt": copy.deepcopy(consumed), "status": "observed"}):
+            persist(self.base, payload, lease=controller.lock)
+            self.assertEqual(smoke.attempt_state(self.base, lease=controller.lock), consumed)
+        self.pause(expected=controller.preparation["receipt_sha256"], lease=controller.lock)
+        self.assertEqual(smoke.attempt_state(self.base, lease=controller.lock), consumed)
+        with self.assertRaises(RuntimeError):
+            persist(self.base, {"native_attempt": initial}, lease=controller.lock)
+        with self.assertRaises(RuntimeError):
+            smoke.consume_attempt(controller, grant)
+        with self.assertRaises(BlockingIOError):
+            persist(self.base, {"status": "metadata_only"})  # cannot bypass held profile lease
+        self.assertEqual(smoke.attempt_state(self.base, lease=controller.lock), consumed)
+
+    def test_interrupted_consumption_write_is_uncertain_not_unconsumed(self):
+        controller = self.controller()
+        _, issue, reference = self.grant(controller)
+        with patch.object(smoke, "canonical_attempt_issue", return_value=issue):
+            grant = smoke.attempt_grant(controller, reference)
+        with (patch.object(smoke.os, "fsync", side_effect=OSError("synthetic write failure")),
+              self.assertRaises(OSError)):
+            smoke.consume_attempt(controller, grant)
+        self.assertTrue((self.base / "results.json.new").is_file())
+        original = (self.base / "results.json").read_bytes()
+        with self.assertRaises(RuntimeError):
+            smoke.attempt_state(self.base, lease=controller.lock)
+        with self.assertRaises(RuntimeError):
+            self.pause(expected=controller.preparation["receipt_sha256"], lease=controller.lock)
+        with self.assertRaises(RuntimeError):
+            persist(self.base, {"status": "metadata_only"}, lease=controller.lock)
+        self.assertEqual((self.base / "results.json").read_bytes(), original)
+
     def test_foreground_grant_recorder_and_consumed_attempt_block_before_auth_or_prompt(self):
         controller = self.controller()
         _, issue, reference = self.grant(controller)
         for boundary in ("grant", "recorder", "consumed"):
             with self.subTest(boundary=boundary):
                 if boundary == "consumed":
-                    persist(self.base, {"native_attempt": {"state": "consumed"}})
+                    with patch.object(smoke, "canonical_attempt_issue", return_value=issue):
+                        smoke.consume_attempt(controller, smoke.attempt_grant(controller, reference))
                 with (patch.object(smoke.SupervisedSubscription, "_terminal_identity",
                                    return_value="synthetic-terminal"),
                       patch.object(smoke, "SupervisedSubscription", return_value=controller),
@@ -648,7 +705,8 @@ class PrivatePreparationTest(unittest.TestCase):
         connection = dict(self.connection)
         def metadata(cli, repo, env, path, **kwargs):
             if path == "/api/integration/openai":
-                return {**self.integration, "connections": [connection] if auth else []}
+                return {**self.integration, "connections": [connection] if (
+                    auth and env["HOME"] == str(profile / "home")) else []}
             return self.api(cli, repo, env, path)
         def checked(command, *, cwd, env, **kwargs):
             if command[:3] == [str(runtime), "api", "--standalone"]:
@@ -811,7 +869,7 @@ class PrivatePreparationTest(unittest.TestCase):
                 raise
         original_close = module.SupervisedSubscription.close
         def close(controller):
-            if auth:
+            if any(controller is value for value in main_objects):
                 order.append("close")
                 self.assertIs(controller, main_objects[0])
             return original_close(controller)
@@ -859,6 +917,76 @@ class PrivatePreparationTest(unittest.TestCase):
                         prepared["receipt_sha256"], "--grant-reference", reference])
                 except RuntimeError as error:
                     self.fail(f"offline fixture: {error}; main={fixture_errors}; observed={observations}")
+            # Owning regression: consumption followed by a pre-auth stop leaves
+            # zero connections, but metadata-only resume must NEVER renew it.
+            failed_profile = self.base / "stopped-before-auth-profile"
+            with patch.dict(os.environ, {"RESUME_SMOKE_OUTPUT": str(failed_profile)}):
+                module.main(prepare_only=True)
+            saved = json.loads((failed_profile / "results.json").read_text())
+            failed_prepared = saved["preparation"]
+            self.assertEqual(saved["native_attempt"]["state"], "unconsumed")
+            proxy = SimpleNamespace(revision=revision, _profile_alias=failed_prepared["profile_alias"],
+                                    _preparation_sha256=failed_prepared["receipt_sha256"])
+            decision, _, _ = self.grant(proxy)
+            decision["runtime_sha256"] = module.RUNTIME_SHA256
+            failed_issue = {"body": module.GRANT_START + json.dumps(decision) + module.GRANT_END}
+            failed_reference = "sha256:" + hashlib.sha256(evidence.canonical(decision)).hexdigest()
+            arguments = ["--supervise-subscription", str(failed_profile), "--receipt-sha256",
+                         failed_prepared["receipt_sha256"], "--grant-reference", failed_reference]
+            with (patch.object(module, "canonical_attempt_issue", return_value=failed_issue),
+                  patch.object(module.SupervisedSubscription, "manual_login",
+                               side_effect=RuntimeError("synthetic stop before auth")) as login,
+                  patch("builtins.input", side_effect=["sim", "sim", "sim"]),
+                  self.assertRaisesRegex(RuntimeError, "synthetic stop")):
+                module.entrypoint(arguments)
+            login.assert_called_once()
+            state = json.loads((failed_profile / "results.json").read_text())["native_attempt"]
+            self.assertEqual(state["state"], "consumed")
+            # This is the actual metadata-only main path, not merely its helper.
+            module.main(private_base=failed_profile, receipt_sha256=failed_prepared["receipt_sha256"])
+            self.assertEqual(json.loads((failed_profile / "results.json").read_text())[
+                "native_attempt"], state)
+            with (patch.object(module, "native_metadata", side_effect=RuntimeError("synthetic metadata failure")),
+                  self.assertRaises(RuntimeError)):
+                module.main(private_base=failed_profile, receipt_sha256=failed_prepared["receipt_sha256"])
+            self.assertEqual(json.loads((failed_profile / "results.json").read_text())[
+                "native_attempt"], state)
+            original = (failed_profile / "results.json").read_bytes()
+            corruptions = (
+                None, b"{", b"not json", b"{}", b'{"native_attempt":null}',
+                b'{"native_attempt":true}', b'{"native_attempt":[]}',
+                json.dumps({"native_attempt": {**state, "state": "unknown"}}).encode(),
+                json.dumps({"native_attempt": {**state, "receipt_sha256": "0"*64}}).encode(),
+                json.dumps({"native_attempt": state, "invalid": float("nan")}).encode(),
+            )
+            # Include the valid consumed state first: same grant must be denied
+            # even after a successful metadata resume with no OAuth connection.
+            for corrupt in (original, *corruptions):
+                result_file = failed_profile / "results.json"
+                if corrupt is None:
+                    result_file.unlink()
+                else:
+                    result_file.write_bytes(corrupt)
+                    result_file.chmod(0o600)
+                if corrupt != original:
+                    with self.assertRaises(RuntimeError):
+                        module.main(private_base=failed_profile,
+                                    receipt_sha256=failed_prepared["receipt_sha256"])
+                    self.assertEqual(result_file.read_bytes() if result_file.exists() else None, corrupt)
+                with (patch.object(module, "canonical_attempt_issue", return_value=failed_issue),
+                      patch.object(module.SupervisedSubscription, "manual_login") as login,
+                      patch.object(module, "main") as inference,
+                      patch("builtins.input", side_effect=AssertionError("no prompt")),
+                      self.assertRaises(RuntimeError)):
+                    module.entrypoint(arguments)
+                login.assert_not_called()
+                inference.assert_not_called()
+                # Restore only the fixture-owned corruption for the next case;
+                # no production path or reset flag performs this transition.
+                result_file.write_bytes(original)
+                result_file.chmod(0o600)
+            self.assertEqual(len(auth), 1)  # positive synthetic child only; no additional auth
+            self.assertEqual(len(observations), 4)  # no inference from any resume/error/corruption
         self.assertEqual(order, ["synthetic-auth-child", "full-main", "export", "import", "close"])
         self.assertEqual(len(main_objects), 1)
         self.assertEqual([case for case, _ in observations], ["T1-phase1", "T5-phase1", "T7-phase1", "T7-phase2"])
@@ -872,6 +1000,7 @@ class PrivatePreparationTest(unittest.TestCase):
         self.assertEqual(manifest["phase_completion"]["state"], "returned")
         self.assertEqual(evidence.verify_manifest(manifest, directory, source)["state"], "verified")
         retained = json.loads((profile / "results.json").read_text())
+        self.assertEqual(retained["native_attempt"]["state"], "consumed")
         self.assertTrue(all(r["proof_complete"] for rows in retained["scenarios"].values() for r in rows))
         with __import__("tarfile").open(directory / "phase-bundle.tar.gz") as bundle:
             names = bundle.getnames()

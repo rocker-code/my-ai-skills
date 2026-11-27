@@ -3743,3 +3743,96 @@ fixture ou fabricar source/native PASS. O resultado original é verified no
 clone sintético; fora dele pode ser stale, como deve ser. A execução externa
 do teste fica vinculada ao HEAD limpo real e é a prova da qualificação
 offline; nenhum dos dois registros é o gate native ou local final.
+
+## Handoff atual — correção afetada do consumo de grant
+
+Entrada **260d8b25b9856259d1952c80ea8cb4919fdc579c**, contrato aprovado
+**a1c4a04fd4bd3843c622e92cf00a450481ea7282**. Revisão independente concluída
+`ses_de54fc8dbffed3zUg171lt6LA5`: CHANGES REQUIRED, um MUST FIX de
+consumo/preservação de autorização. Mesmo worker nativo
+`ses_de576ed5bffeL5OULzv3zeNFvm`, continuidade/reserva desta correção
+`wf-20261116T064328Z-45cb0ecc`, mesmo checkout/change/branch; reserva normal
+após WAITING sem owner/drift. Nenhuma decisão de produto ou contrato novo.
+
+**Finding confirmado:** a retomada metadata-only reescrevia `results.json`
+sem `native_attempt`, e ausência do arquivo/campo era confundida com primeira
+tentativa. Assim, parada/falha pré-auth com conexões vazias podia renovar o
+mesmo grant após resume. O marcador antigo não é prova válida de estado
+inicial e não recebe upgrade automático.
+
+### Estado e escritores corrigidos
+
+- Somente criação **fresh** da preparação inicializa `native_attempt`
+  fechado em `unconsumed`, attempts=0/reference=null. O marcador vincula
+  issue/run, HEAD, proposta, runtime, alias derivado do nonce e checksum do
+  recibo **não secreto**. Perfil/recibo existente não é reinicializado;
+  preparação nova gera nonce/vínculo novos, incompatíveis com grant antigo.
+- `consume_attempt` é a única transição unconsumed→consumed, attempts=1 com
+  referência canônica. Lê/valida e publica estado durável antes de auth.
+  Consumo repetido, shape/tipo/estado/vínculo errado, arquivo/campo ausente,
+  JSON truncado/malformado/duplicado ou `results.json.new` pendente bloqueiam.
+- A lease existente `supervisor.lock` cobre verificação, consumo e writes
+  metadata/main/erro, mantendo o mesmo FD durante foreground. Escritas
+  usam arquivo temporário exclusivo/no-follow/0600, flush+fsync, replace
+  atômico e fsync do diretório; falha deixa consumo ou estado inconclusivo,
+  nunca permissão automática de nova tentativa. Continuidade do Supervisor
+  reconfere o marcador consumido antes dos efeitos seguintes.
+- Inventário completo de escritores: `_prepare_private_pause` inicializa
+  uma vez; `consume_attempt` consome uma vez; `persist` preserva o marcador
+  validado em **todos** os demais writes. Os callers são o ramo
+  prepare/resume do `main` (inclusive seu except, agora ainda sob lease),
+  preparação/finalização de cada `prepared_phase`, checkpoints/resultados
+  do loop completo e término do `main`. `_write_results` é apenas o
+  primitivo atômico chamado por esses três caminhos sob a mesma lease.
+  `persist` não aceita downgrade nem substituição de marcador fornecido.
+
+Sem novo arquivo de autorização/registry/framework, flag de reset ou
+reconstrução por JSON. Não se promete autenticidade contra reescrita hostil
+coerente: a fronteira continua sendo controlador/runtime/operador cooperantes,
+lock e integridade dos metadados, nunca hash de DB ou identidade de conta.
+
+### Provas proporcionais e limites
+
+A integração L2 existente mantém a entrada/main completo no mesmo objeto e
+acrescenta outro perfil **sintético**: consumo→parada antes do spawn auth,
+conexões vazias→`main` metadata-only real→erro metadata-only real→mesmo grant
+recusado com **zero chamadas adicionais de auth/inferência**. Exercita também
+arquivo perdido/truncado/malformado, campo ausente/tipo inválido/estado
+desconhecido/vínculo divergente, sem regenerar ou sobrescrever a corrupção.
+
+Casos menores verificam inicialização fresh vinculada, consumo único,
+preservação pelos escritores metadata/erro/main, recusa de downgrade e de
+writer sem a lease, interrupção de fsync com temporário inconclusivo e
+preservação após filho inofensivo não-zero/timeout/cancelamento/sinal.
+O resultado do main completo continua `consumed` após finalize/transport.
+Não houve auth/modelo real; o DB da integração é somente schema de fixture.
+
+Amostra afetada inicial **32/32**, `ev-20261127T020013Z-177b6ea4`;
+resume completo focado **98/98**, `ev-20261127T020121Z-79232eec`;
+regressões de evidência **66/66**, `ev-20261127T020145Z-06b50a2f`,
+antes da suíte ampla. IDs posteriores no HEAD limpo exato serão entregues
+fora do commit. Testes/fonte atuais, não recibos anteriores, qualificam
+a correção; revisão independente afetada do pai ainda é necessária.
+
+**Classificação explícita de gate:** o manifesto original
+`ev-20261127T014307Z-24da4d2b` declara required_gate=local para
+**OFFLINE-PREP** e o satisfez em 260d8b2. Não era `no_required_gate`;
+o manifesto foi preservado. É gate de preparação offline, **não** o gate
+FINAL de entrega após archive/sync/preparo. Continua vinculado àquele HEAD
+pré-correção e não aprova o novo candidato. A nova suíte de preparação
+mantém essa classificação local; o gate FINAL continua NOT RUN.
+
+API de fase/CLI de evidência/gates legados, prompts, guards, oráculos
+T1/T5/T7, preço/quota e TTY direto não foram alterados. O pacote sintético
+`ev-20261127T014236Z-7a64e76a` permanece original e stale fora da fixture,
+sem prova auth/native. Attempt-log inteiro e treze runs native FAILED
+preservados byte a byte; sem retro-PASS ou décima quarta observação.
+Os vinte itens anteriores e 3.13 permanecem concluídos **somente offline**
+após esta correção provada; 3.4/4.3 continuam pendentes.
+
+Próximo: revisão independente afetada, preparação/continuidade **fresh** no
+HEAD corrigido, decisão canônica específica posterior e participação da pessoa
+em terminal próprio com seleção real de catálogo e confirmação fresca de
+entitlement/quota. Grant específico real segue NÃO emitido. Nenhum login,
+inferência, perfil/DB autenticado anterior, atualização global/runtime,
+archive, PR, push ou merge nesta correção. Nove bytecodes/cache preservados.

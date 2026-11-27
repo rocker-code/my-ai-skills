@@ -11,7 +11,7 @@ import argparse
 import base64
 import copy
 import fcntl
-from contextlib import closing
+from contextlib import closing, contextmanager
 import hashlib
 import json
 import math
@@ -2127,13 +2127,154 @@ def evidence_files(base):
     return files
 
 
-def persist(base, results):
+@contextmanager
+def profile_lease(base, lease=None):
+    """Reuse the existing profile lock for every state read/modify/write."""
+    if (base.is_symlink() or not base.is_dir() or base.stat().st_uid != os.getuid() or
+            any(p.is_symlink() for p in base.parents)):
+        raise RuntimeError("unsafe profile lease directory")
+    owned = lease is None
+    if owned:
+        lease = os.fdopen(os.open(base / "supervisor.lock",
+                                 os.O_CREAT | os.O_APPEND | os.O_WRONLY | os.O_NOFOLLOW,
+                                 0o600), "a")
+    try:
+        if lease.closed:
+            raise RuntimeError("profile lease closed")
+        fd, path = os.fstat(lease.fileno()), (base / "supervisor.lock").lstat()
+        if (not stat.S_ISREG(path.st_mode) or path.st_uid != os.getuid() or
+                path.st_nlink != 1 or stat.S_IMODE(path.st_mode) != 0o600 or
+                (fd.st_dev, fd.st_ino) != (path.st_dev, path.st_ino)):
+            raise RuntimeError("profile lease replaced/invalid")
+        fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield lease
+    finally:
+        if owned:
+            lease.close()
+
+
+def state_object(raw):
+    def nonfinite(value):
+        raise ValueError("nonfinite state field")
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate state field")
+            result[key] = value
+        return result
+    try:
+        result = json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite)
+        if not isinstance(result, dict):
+            raise ValueError("state object required")
+        return result
+    except (ValueError, TypeError, RecursionError):
+        raise RuntimeError("private attempt state malformed/uncertain") from None
+
+
+def attempt_template(base):
+    raw = private_bytes(base, base / "private-preparation.json")
+    receipt = state_object(raw)
+    binding, nonce = receipt.get("binding", {}), receipt.get("nonce")
+    if (receipt.get("state") != "metadata_only" or not isinstance(binding, dict) or
+            binding.get("profile") != str(base) or
+            binding.get("approved_proposal") != APPROVED_PROPOSAL or
+            binding.get("runtime_sha256") != RUNTIME_SHA256 or
+            not re.fullmatch(r"[a-f0-9]{40}", str(binding.get("candidate", ""))) or
+            not isinstance(nonce, str) or not re.fullmatch(r"[a-f0-9]{48}", nonce)):
+        raise RuntimeError("private attempt preparation binding invalid")
+    return {"state": "unconsumed", "issue": 61, "run": NATIVE_RUN,
+            "candidate": binding["candidate"], "approved_proposal": APPROVED_PROPOSAL,
+            "runtime_sha256": RUNTIME_SHA256,
+            "profile_alias": hashlib.sha256(nonce.encode()).hexdigest(),
+            "receipt_sha256": hashlib.sha256(raw).hexdigest(),
+            "reference": None, "attempts": 0}
+
+
+def read_results(base):
+    # A crash before replacement must not expose the previous unconsumed state
+    # as permission to retry. Never quietly delete or regenerate a pending write.
+    pending = base / "results.json.new"
+    if pending.exists() or pending.is_symlink():
+        raise RuntimeError("private attempt write incomplete/uncertain")
+    try:
+        return state_object(phase_evidence.phase_read(base / "results.json"))
+    except (OSError, ValueError):
+        raise RuntimeError("private attempt state lost/uncertain") from None
+
+
+def checked_attempt(base, results):
+    expected = attempt_template(base)
+    value = results.get("native_attempt")
+    if not isinstance(value, dict) or value.keys() != expected.keys():
+        raise RuntimeError("private attempt state missing/invalid")
+    for key in expected.keys() - {"state", "reference", "attempts"}:
+        if type(value[key]) is not type(expected[key]) or value[key] != expected[key]:
+            raise RuntimeError("private attempt state binding mismatch")
+    if value["state"] == "unconsumed":
+        valid = value["reference"] is None and type(value["attempts"]) is int and value["attempts"] == 0
+    elif value["state"] == "consumed":
+        valid = (type(value["attempts"]) is int and value["attempts"] == 1 and
+                 isinstance(value["reference"], str) and
+                 re.fullmatch(r"sha256:[a-f0-9]{64}", value["reference"]))
+    else:
+        valid = False
+    if not valid:
+        raise RuntimeError("private attempt state unknown/uncertain")
+    return copy.deepcopy(value)
+
+
+def attempt_state(base, *, lease):
+    with profile_lease(base, lease):
+        return checked_attempt(base, read_results(base))
+
+
+def _write_results(base, results):
+    """Atomic durable output; callers already hold the profile lease."""
     public_evidence(results)
-    path = base / "results.json"
     temporary = base / "results.json.new"
-    temporary.write_text(json.dumps(results, indent=2) + "\n")
-    temporary.chmod(0o600)
-    temporary.replace(path)
+    with os.fdopen(os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
+                           0o600), "w") as stream:
+        stream.write(json.dumps(results, indent=2) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(base / "results.json")
+    directory = os.open(base, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def persist(base, results, *, lease=None):
+    with profile_lease(base, lease):
+        prior = read_results(base) if (base / "results.json").exists() else None
+        private = (base / "private-preparation.json").exists()
+        private |= "native_attempt" in results or prior is not None and "native_attempt" in prior
+        if private:
+            if prior is None:
+                raise RuntimeError("private attempt state lost; no regeneration")
+            value = checked_attempt(base, prior)
+            if "native_attempt" in results and results["native_attempt"] != value:
+                raise RuntimeError("attempt transition forbidden in ordinary persistence")
+            results["native_attempt"] = value  # every metadata/main/error writer preserves it
+        _write_results(base, results)
+
+
+def consume_attempt(supervisor, grant):
+    with profile_lease(supervisor.base, supervisor.lock):
+        results = read_results(supervisor.base)
+        previous = checked_attempt(supervisor.base, results)
+        if previous["state"] != "unconsumed":
+            raise RuntimeError("attempt already consumed; no auth retry")
+        if any(grant.get(k) != previous[k] for k in ("issue", "run", "candidate", "profile_alias")):
+            raise RuntimeError("attempt grant binding mismatch")
+        consumed = {**previous, "state": "consumed", "reference": grant["reference"], "attempts": 1}
+        checked_attempt(supervisor.base, {"native_attempt": consumed})
+        results.update(status="blocked", inference_verified=False,
+                       native_attempt=consumed, native_proof="NOT_RUN")
+        _write_results(supervisor.base, results)  # durable BEFORE any auth spawn
+        return consumed
 
 
 def private_environment(base, cli, inherited):
@@ -2467,8 +2608,13 @@ def chatgpt_method(integration):
     return {key: methods[0][key] for key in ("id", "type", "label")}
 
 
-def prepare_private_pause(base, cli, revision, env, *, expected=None):
+def prepare_private_pause(base, cli, revision, env, *, expected=None, lease=None):
     """Metadata-only pause. A checksum validates continuity, NOT authentication."""
+    with profile_lease(base, lease) as held:
+        return _prepare_private_pause(base, cli, revision, env, expected=expected, lease=held)
+
+
+def _prepare_private_pause(base, cli, revision, env, *, expected, lease):
     validate_private_environment(base, env)
     binding = private_binding(base, cli, revision)
     receipt_path = base / "private-preparation.json"
@@ -2479,8 +2625,10 @@ def prepare_private_pause(base, cli, revision, env, *, expected=None):
         receipt = json.loads(raw_receipt)
         if receipt["binding"] != binding or receipt["state"] != "metadata_only":
             raise RuntimeError("private preparation HEAD/runtime/config/profile mismatch")
+        attempt_state(base, lease=lease)  # missing/uncertain is not a fresh preparation
     else:
-        if receipt_path.exists():
+        if any(p.exists() or p.is_symlink() for p in (
+                receipt_path, base / "results.json", base / "results.json.new")):
             raise RuntimeError("private preparation already exists")
         receipt = {"binding": binding, "nonce": secrets.token_hex(24), "state": "metadata_only"}
     with OwnedMetadataRuntime(cli, ROOT, env) as runtime:
@@ -2507,6 +2655,13 @@ def prepare_private_pause(base, cli, revision, env, *, expected=None):
         with os.fdopen(os.open(receipt_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
                                os.O_NOFOLLOW, 0o600), "w") as stream:
             stream.write(json.dumps(receipt, sort_keys=True))
+            stream.flush()
+            os.fsync(stream.fileno())
+        # The sole initialization path: a new receipt/nonce in a fresh profile.
+        # Interrupted creation leaves an unusable profile, never an upgrade of
+        # an old/missing results file into an unconsumed authorization.
+        _write_results(base, {"status": "metadata_only", "inference_verified": False,
+                              "native_proof": "NOT_RUN", "native_attempt": attempt_template(base)})
     return {"state": "metadata_only", "inference_verified": False,
             "profile_alias": hashlib.sha256(receipt["nonce"].encode()).hexdigest(),
             "candidate": revision, "approved_proposal": APPROVED_PROPOSAL,
@@ -2622,7 +2777,7 @@ class SupervisedSubscription:
         try:
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.preparation = prepare_private_pause(
-                base, cli, revision, env, expected=receipt_sha256)
+                base, cli, revision, env, expected=receipt_sha256, lease=self.lock)
         except Exception:
             self.lock.close()
             raise
@@ -2812,6 +2967,9 @@ class SupervisedSubscription:
                 git(ROOT, os.environ, "status", "--porcelain")):
             raise RuntimeError("supervised profile/runtime/HEAD/config/environment continuity lost")
         self._code_identity()
+        if getattr(self, "_native_attempt", None) is not None:
+            if attempt_state(self.base, lease=self.lock) != self._native_attempt:
+                raise RuntimeError("consumed attempt continuity lost; no auth/inference")
 
     def _require_completion(self):
         if (self._identity is not self or self._controller != self._process_identity(os.getpid()) or
@@ -2959,12 +3117,12 @@ def execute_model(cli, repo, env, base, case, prompt, session=None, *, model):
     return events, "\n".join(texts), sessions[0], str(transcript)
 
 
-def prepared_phase(base, results, case, record, launch, take_snapshot):
+def prepared_phase(base, results, case, record, launch, take_snapshot, *, lease=None):
     """Write preparation BEFORE launch and finalize failures without advancing."""
     results["scenarios"].setdefault(case, []).append(record)
     record.update(status="prepared", outcome=False, unchanged=None, after=None,
                   after_status="unavailable", session_id=None)
-    persist(base, results)
+    persist(base, results, lease=lease)
     try:
         value = launch()
     except BaseException as error:
@@ -2984,11 +3142,11 @@ def prepared_phase(base, results, case, record, launch, take_snapshot):
             record["after_error"] = redact(str(error), os.environ)
             record["after_status"] = "unavailable"
             record["unchanged"] = None
-        persist(base, results)
+        persist(base, results, lease=lease)
     if record["after_status"] != "available":
         record.update(status="failed", error="after snapshot unavailable (not PASS)")
         results.update(status="failed", finished_at=datetime.now(timezone.utc).isoformat())
-        persist(base, results)
+        persist(base, results, lease=lease)
         raise RuntimeError(record["error"])
     return value
 
@@ -3021,6 +3179,7 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
         subscription._full_run_started = True
         private_base = subscription.base
         receipt_sha256 = subscription.preparation["receipt_sha256"]
+    result_lease = subscription.lock if subscription is not None else None
     base = Path(private_base) if private_base else (
         Path(output) if output else Path(tempfile.mkdtemp(
             prefix="resume-candidate-", dir="/tmp/opencode")))
@@ -3097,13 +3256,10 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
     if prepare_only or (private_base and subscription is None):
         # This command NEVER logs in, selects a model, or starts a model phase.
         # Serializes only metadata, not profile, database or authentication I/O.
-        with os.fdopen(os.open(base / "supervisor.lock",
-                               os.O_CREAT | os.O_APPEND | os.O_WRONLY | os.O_NOFOLLOW,
-                               0o600), "a") as lease:
-            fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with profile_lease(base) as lease:
             try:
                 results["preparation"] = prepare_private_pause(
-                    base, cli, revision, env, expected=receipt_sha256)
+                    base, cli, revision, env, expected=receipt_sha256, lease=lease)
             except Exception as error:
                 results.update(status="blocked", inference_verified=False,
                                preparation={"state": "blocked", "inference_verified": False,
@@ -3111,10 +3267,10 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
                                             "auth_availability": "technical_blocked",
                                             "route_proof": "pending", "economic_eligibility": "blocked",
                                             "error": str(error)})
-                persist(base, results)
+                persist(base, results, lease=lease)
                 raise
-        results.update(status="metadata_only", inference_verified=False)
-        persist(base, results)
+            results.update(status="metadata_only", inference_verified=False)
+            persist(base, results, lease=lease)
         print(json.dumps(results["preparation"], sort_keys=True))
         return
 
@@ -3359,7 +3515,7 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
                 if case == "T1" and not before["artifact_comparison"]["verified"]:
                     raise RuntimeError("artifact comparison prerequisites not verified; no inference")
                 shell_guard_preflight(cli, repo, case_env, guard)
-                persist(base, results)
+                persist(base, results, lease=result_lease)
                 model = model_preflight(cli, repo, case_env, record["model_preflight"],
                                         selected_model if subscription is not None else
                                         os.environ.get("RESUME_SMOKE_MODEL"),
@@ -3374,14 +3530,14 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
                     native_candidates=inspection_sources,
                     runtime_paths={"opencode": cli, "openspec": openspec,
                                    "git": shutil.which("git", path=case_env["PATH"])})
-                persist(base, results)
+                persist(base, results, lease=result_lease)
                 return execute_model(cli, repo, case_env, base, f"{case}-phase{phase}",
                                      message, session, model=model)
 
             events, response, session, transcript = prepared_phase(
                 base, results, case, record, launch,
-                lambda: snapshot(repo, worktrees, gh_root, reservation, case_env, openspec,
-                                 provenance=provenance))
+                 lambda: snapshot(repo, worktrees, gh_root, reservation, case_env, openspec,
+                                  provenance=provenance), lease=result_lease)
             after = record["after"]
             calls_after = (gh_root / "calls.jsonl").read_text().splitlines()
             reads_after = (gh_root / "reads.jsonl").read_text().splitlines()
@@ -3456,7 +3612,7 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
                                 if case == "T1" else None)
             record["model_apply_gate_proved"] = apply_gate_proved
             phases.append(record)
-            persist(base, results)
+            persist(base, results, lease=result_lease)
             required = (before == after and calls_safe and new_calls and outcome and
                         bool(record["delivered_skill_catalog"]))
             required &= any(args[:1] == ["api"] for args in new_calls)
@@ -3560,18 +3716,18 @@ def main(*, prepare_only=False, private_base=None, receipt_sha256=None, subscrip
                 "independent_response_event_review": "required"}
             if not required:
                 record.update(status="failed", proof_complete=False)
-                persist(base, results)
+                persist(base, results, lease=result_lease)
                 raise RuntimeError(f"{case} phase {phase}: recovery proof incomplete; "
                                     f"see {base}/results.json")
             record.update(status="proof_complete", proof_complete=True)
-            persist(base, results)
+            persist(base, results, lease=result_lease)
             before, calls_before = after, calls_after
             reads_before = reads_after
             previous_events = events
         if case == "T7":
             assert phases[0]["session_id"] == phases[1]["session_id"]
     results["finished_at"] = datetime.now(timezone.utc).isoformat()
-    persist(base, results)
+    persist(base, results, lease=result_lease)
     print(f"Model-backed observations retained at {base}/results.json; inspect responses "
           "and events against T1/T5/T7 before claiming scenario PASS")
 
@@ -3709,8 +3865,7 @@ def _foreground_subscription(base, receipt_sha256, grant_reference):
             raise RuntimeError("post-auth recorder unsupported; stop before login")
         phase_evidence.phase_support(ROOT, native_phase)  # pre-auth, no record/log yet
         grant = attempt_grant(supervisor, grant_reference)
-        prior = base / "results.json"
-        if prior.exists() and "native_attempt" in json.loads(private_bytes(base, prior)):
+        if attempt_state(base, lease=supervisor.lock)["state"] != "unconsumed":
             raise RuntimeError("attempt already consumed/uncertain; no auth retry")
         supervisor._preflight_terminal(env)  # technical gates BEFORE asking the person
         print("Terminal próprio obrigatório. isatty não detecta recording pelo host/emulador.")
@@ -3721,9 +3876,7 @@ def _foreground_subscription(base, receipt_sha256, grant_reference):
             raise RuntimeError("local pre-auth consent refused; no login")
         if attempt_grant(supervisor, grant_reference) != grant:
             raise RuntimeError("canonical grant changed; no login")
-        supervisor._native_attempt = grant
-        persist(base, {"status": "blocked", "inference_verified": False,
-                       "native_attempt": grant, "native_proof": "NOT_RUN"})
+        supervisor._native_attempt = consume_attempt(supervisor, grant)
         supervisor.manual_login(env, quota_authorized=quota, entitlement_confirmed=entitlement,
                                 terminal_privacy_confirmed=privacy)
         catalog = subscription_catalog(supervisor, env)
